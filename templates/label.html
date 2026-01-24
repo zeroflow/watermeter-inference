@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Label Images - AI Water Meter</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .progress-stats {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .progress-item {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-width: 200px;
+        }
+
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: white;
+            font-size: 14px;
+        }
+
+        .progress-label {
+            font-weight: 600;
+        }
+
+        .progress-count {
+            font-weight: 700;
+            font-size: 16px;
+        }
+
+        .progress-bar-container {
+            height: 8px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: white;
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+
+        .back-button {
+            color: white;
+            text-decoration: none;
+            font-size: 14px;
+            opacity: 0.9;
+            transition: opacity 0.2s;
+        }
+
+        .back-button:hover {
+            opacity: 1;
+        }
+
+        .label-content {
+            padding: 40px 32px;
+            text-align: center;
+            min-height: 600px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .image-display {
+            margin: 2rem 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .image-display img {
+            height: 500px;
+            width: auto;
+            border: 3px solid var(--border);
+            border-radius: 8px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+            image-rendering: pixelated;
+        }
+
+        .model-type-badge {
+            display: inline-block;
+            padding: 8px 20px;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .model-type-digits {
+            background: var(--success);
+            color: white;
+        }
+
+        .model-type-arrows {
+            background: var(--primary);
+            color: white;
+        }
+
+        .label-input-container {
+            margin: 2rem 0;
+        }
+
+        .label-input {
+            font-size: 3rem;
+            padding: 1.5rem;
+            width: 250px;
+            text-align: center;
+            border: 3px solid var(--border);
+            border-radius: 12px;
+            font-family: monospace;
+            font-weight: 700;
+            transition: all 0.2s;
+        }
+
+        .label-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+        }
+
+        .instructions {
+            margin: 1.5rem 0;
+            padding: 16px 24px;
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            border-radius: 6px;
+            font-size: 15px;
+            color: #856404;
+            max-width: 600px;
+        }
+
+        .message {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 16px 24px;
+            border-radius: 8px;
+            font-weight: 500;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1000;
+            display: none;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .message.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+            display: block;
+        }
+
+        .message.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+            display: block;
+        }
+
+        .no-images {
+            padding: 4rem 2rem;
+            text-align: center;
+        }
+
+        .no-images h2 {
+            font-size: 32px;
+            color: var(--text-dark);
+            margin-bottom: 16px;
+        }
+
+        .no-images p {
+            font-size: 18px;
+            color: var(--text-light);
+            margin-bottom: 32px;
+        }
+
+        .keyboard-shortcuts {
+            margin-top: 2rem;
+            padding: 12px 20px;
+            background: var(--bg-light);
+            border-radius: 6px;
+            font-size: 14px;
+            color: var(--text-light);
+        }
+
+        .keyboard-shortcuts strong {
+            color: var(--text-dark);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🌊 AI Water Meter Dashboard</h1>
+            <div class="header-actions">
+                <a href="/" class="back-button">← Back to Dashboard</a>
+                <div class="progress-stats">
+                    <div class="progress-item">
+                        <div class="progress-header">
+                            <span class="progress-label">Digits</span>
+                            <span class="progress-count" id="remaining-digits">-</span>
+                        </div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar-fill" id="progress-digits" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="progress-item">
+                        <div class="progress-header">
+                            <span class="progress-label">Arrows</span>
+                            <span class="progress-count" id="remaining-arrows">-</span>
+                        </div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar-fill" id="progress-arrows" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="progress-item">
+                        <div class="progress-header">
+                            <span class="progress-label">Total</span>
+                            <span class="progress-count" id="remaining-total">-</span>
+                        </div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar-fill" id="progress-total" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div id="message" class="message"></div>
+
+        <main class="label-content">
+            <div id="labeling-interface" style="display: none;">
+                <span id="model-type-badge" class="model-type-badge"></span>
+
+                <div class="image-display">
+                    <img id="current-image" src="" alt="Image to label">
+                </div>
+
+                <div class="instructions" id="instructions">
+                    <!-- Will be filled dynamically -->
+                </div>
+
+                <div class="label-input-container">
+                    <input
+                        type="text"
+                        id="label-input"
+                        class="label-input"
+                        placeholder=""
+                        autocomplete="off"
+                        autofocus>
+                </div>
+
+                <div class="keyboard-shortcuts">
+                    <strong>Keyboard:</strong> Type the label and press Enter to submit
+                </div>
+            </div>
+
+            <div id="no-images" class="no-images" style="display: none;">
+                <h2>🎉 All images labeled!</h2>
+                <p>No unlabeled images remaining.</p>
+                <a href="/" class="btn btn-primary">Back to Dashboard</a>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        let currentImage = null;
+        let initialCounts = { digits: 0, arrows: 0, total: 0 };
+
+        async function loadNextImage() {
+            try {
+                const response = await fetch('/api/label/next-image');
+                const data = await response.json();
+
+                if (!data.has_images) {
+                    document.getElementById('labeling-interface').style.display = 'none';
+                    document.getElementById('no-images').style.display = 'block';
+                    // Show 100% completion
+                    updateProgress(0, 0, 0);
+                    return;
+                }
+
+                currentImage = data;
+
+                // Track initial counts on first load
+                if (initialCounts.total === 0) {
+                    initialCounts = {
+                        digits: data.remaining.digits,
+                        arrows: data.remaining.arrows,
+                        total: data.remaining.total
+                    };
+                }
+
+                // Update stats and progress bars
+                updateProgress(data.remaining.digits, data.remaining.arrows, data.remaining.total);
+
+                // Display image
+                document.getElementById('current-image').src = 'data:image/jpeg;base64,' + data.image_base64;
+
+                // Update model type badge
+                const badge = document.getElementById('model-type-badge');
+                const instructions = document.getElementById('instructions');
+                const input = document.getElementById('label-input');
+
+                if (data.model_type === 'digits') {
+                    badge.textContent = 'DIGIT';
+                    badge.className = 'model-type-badge model-type-digits';
+                    instructions.innerHTML = '<strong>Digits:</strong> Enter 0-9 for the digit, or N for NAN (not a number)';
+                    input.placeholder = '0-9 or N';
+                } else {
+                    badge.textContent = 'ARROW';
+                    badge.className = 'model-type-badge model-type-arrows';
+                    instructions.innerHTML = '<strong>Arrows:</strong> Enter 0-99 (e.g., 12 for 1.2, 95 for 9.5)';
+                    input.placeholder = '0-99';
+                }
+
+                // Show interface
+                document.getElementById('labeling-interface').style.display = 'block';
+                document.getElementById('no-images').style.display = 'none';
+
+                // Clear and focus input
+                input.value = '';
+                input.focus();
+
+                // Hide message
+                const message = document.getElementById('message');
+                message.style.display = 'none';
+
+            } catch (error) {
+                console.error('Error loading next image:', error);
+                showMessage('Error loading image: ' + error.message, 'error');
+            }
+        }
+
+        function updateProgress(digitsRemaining, arrowsRemaining, totalRemaining) {
+            // Update counts
+            document.getElementById('remaining-digits').textContent = digitsRemaining;
+            document.getElementById('remaining-arrows').textContent = arrowsRemaining;
+            document.getElementById('remaining-total').textContent = totalRemaining;
+
+            // Calculate and update progress bars (showing completion, not remaining)
+            const digitsProgress = initialCounts.digits > 0
+                ? ((initialCounts.digits - digitsRemaining) / initialCounts.digits * 100)
+                : 100;
+            const arrowsProgress = initialCounts.arrows > 0
+                ? ((initialCounts.arrows - arrowsRemaining) / initialCounts.arrows * 100)
+                : 100;
+            const totalProgress = initialCounts.total > 0
+                ? ((initialCounts.total - totalRemaining) / initialCounts.total * 100)
+                : 100;
+
+            document.getElementById('progress-digits').style.width = digitsProgress + '%';
+            document.getElementById('progress-arrows').style.width = arrowsProgress + '%';
+            document.getElementById('progress-total').style.width = totalProgress + '%';
+        }
+
+        async function submitLabel(label) {
+            if (!currentImage) return;
+
+            try {
+                const response = await fetch('/api/label/submit', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        filename: currentImage.filename,
+                        model_type: currentImage.model_type,
+                        label: label
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showMessage(`✓ Labeled as ${data.label}`, 'success');
+                    // Load next image after a short delay
+                    setTimeout(() => {
+                        loadNextImage();
+                    }, 500);
+                } else {
+                    showMessage('Error: ' + data.message, 'error');
+                    document.getElementById('label-input').focus();
+                }
+
+            } catch (error) {
+                console.error('Error submitting label:', error);
+                showMessage('Error: ' + error.message, 'error');
+            }
+        }
+
+        function showMessage(text, type) {
+            const message = document.getElementById('message');
+            message.textContent = text;
+            message.className = 'message ' + type;
+            message.style.display = 'block';
+
+            if (type === 'success') {
+                setTimeout(() => {
+                    message.style.display = 'none';
+                }, 2000);
+            }
+        }
+
+        function validateAndSubmit(value) {
+            if (!value) return;
+
+            // Normalize input
+            value = value.toUpperCase().trim();
+
+            if (currentImage.model_type === 'digits') {
+                // Accept 0-9 or N
+                if (value === 'N' || (value.length === 1 && value >= '0' && value <= '9')) {
+                    submitLabel(value === 'N' ? 'NAN' : value);
+                } else {
+                    showMessage('Invalid input. Enter 0-9 or N for NAN', 'error');
+                }
+            } else {
+                // Accept 0-99
+                const num = parseInt(value);
+                if (!isNaN(num) && num >= 0 && num <= 99) {
+                    submitLabel(value);
+                } else {
+                    showMessage('Invalid input. Enter 0-99', 'error');
+                }
+            }
+        }
+
+        // Event listener for Enter key
+        document.getElementById('label-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                validateAndSubmit(this.value);
+            }
+        });
+
+        // Load first image on page load
+        window.addEventListener('load', function() {
+            loadNextImage();
+        });
+    </script>
+</body>
+</html>

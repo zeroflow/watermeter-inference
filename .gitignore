@@ -4,3 +4,4 @@ dataset
 dataset_100
 ov_model
 *.onnx
+ground_truth

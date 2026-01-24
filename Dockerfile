@@ -24,7 +24,11 @@ RUN pip install --no-cache-dir \
 
 # Set up directory structure
 WORKDIR /app
-RUN mkdir -p /config /config_default /data
+RUN mkdir -p /config /config_default /data \
+    /training/arrows/input \
+    /training/arrows/ground_truth \
+    /training/digits/input \
+    /training/digits/ground_truth
 
 # Copy application files
 COPY app.py watermeter_service.py persistence.py inference.py /app/

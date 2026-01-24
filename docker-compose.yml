@@ -14,8 +14,9 @@ services:
       - ./config:/config
       # Data persistence (state.json)
       - ./data:/data
-      # Training images (shared with Label Studio)
-      - /var/ml/label-studio-data/import/:/training
+      # Training images & GT
+      - ./arrows/:/training/arrows
+      - ./digits/:/training/digits
 
     devices:
       # Intel GPU for OpenVINO acceleration

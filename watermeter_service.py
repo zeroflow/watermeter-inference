@@ -346,9 +346,9 @@ class WatermeterService:
         # Generate timestamp
         timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
 
-        # Determine save path
+        # Determine save path - save to input folder for manual review
         image_class = prediction['model']
-        save_dir = Path(config['save_path']) / image_class
+        save_dir = Path(config['save_path']) / image_class / 'input'
         save_dir.mkdir(parents=True, exist_ok=True)
 
         save_path = save_dir / f"{image_id}_{timestamp}.jpg"
@@ -359,10 +359,6 @@ class WatermeterService:
 
         # Update rate limit
         self.last_save_times[image_id] = now
-
-        # TODO: Label Studio sync if enabled
-        if config['label_studio_enabled']:
-            logger.info("Label Studio sync not yet implemented")
 
     async def process_reading(self) -> Dict:
         """

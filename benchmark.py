@@ -128,7 +128,7 @@ def round_to_class(value: float, num_classes: int) -> str:
         raise ValueError(f"Unsupported num_classes: {num_classes}")
 
 
-def collect_test_images(dataset_path: str = "arrows/dataset_100") -> Dict[float, List[str]]:
+def collect_test_images(dataset_path: str = "arrows/ground_truth") -> Dict[float, List[str]]:
     """
     Collect test images organized by ground truth value.
 

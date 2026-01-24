@@ -16,6 +16,7 @@ docker run -it --rm \
   -p 8001:8001 \
   -v $(pwd)/config:/config \
   -v $(pwd)/data:/data \
-  -v /var/ml/label-studio-data/import/:/training \
+  -v ./arrows/:/training/arrows \
+  -v ./digits/:/training/digits \
   wmi_full
 
