@@ -3,16 +3,27 @@ FastAPI Web Application for Water Meter Dashboard
 """
 
 import asyncio
+import base64
 from contextlib import asynccontextmanager
+from datetime import datetime
+from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 import logging
 
 from watermeter_service import get_service
 
 logger = logging.getLogger(__name__)
+
+
+class TrainingSubmission(BaseModel):
+    """Request model for training submissions."""
+    id: str
+    image_base64: str
+    model: str
 
 
 @asynccontextmanager
@@ -112,6 +123,47 @@ async def toggle_ha_publish(enabled: bool):
     service.toggle_ha_publish(enabled)
     status = "enabled" if enabled else "disabled"
     return JSONResponse({"message": f"Home Assistant publishing {status}"})
+
+
+@app.post("/api/submit-training")
+async def submit_for_training(submission: TrainingSubmission):
+    """Submit an image for manual training/correction."""
+    try:
+        service = get_service()
+
+        # Get save path from config
+        save_path = service.config.get('low_confidence', {}).get('save_path', '/var/ml/label-studio-data/import')
+
+        # Create directory structure: save_path/{model}/
+        model_dir = Path(save_path) / submission.model
+        model_dir.mkdir(parents=True, exist_ok=True)
+
+        # Decode base64 image
+        image_data = base64.b64decode(submission.image_base64)
+
+        # Create filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{submission.id}_{timestamp}.jpg"
+        filepath = model_dir / filename
+
+        # Save image
+        with open(filepath, 'wb') as f:
+            f.write(image_data)
+
+        logger.info(f"Training image saved: {filepath}")
+
+        return JSONResponse({
+            "success": True,
+            "message": f"Bild gespeichert: {filename}",
+            "path": str(filepath)
+        })
+
+    except Exception as e:
+        logger.error(f"Error submitting for training: {e}")
+        return JSONResponse({
+            "success": False,
+            "message": f"Fehler beim Speichern: {str(e)}"
+        }, status_code=500)
 
 
 @app.get("/health")

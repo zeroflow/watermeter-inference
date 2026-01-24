@@ -28,7 +28,7 @@
                     ↺ Reset
                 </button>
                 <label class="toggle">
-                    <input type="checkbox" id="auto-refresh" onchange="toggleAutoRefresh(this)">
+                    <input type="checkbox" id="auto-refresh" checked onchange="toggleAutoRefresh(this)">
                     <span>Auto-Refresh</span>
                 </label>
                 <label class="toggle">
@@ -40,7 +40,7 @@
 
         <div id="status-message" class="status-message"></div>
 
-        <main hx-get="/api/status/html" hx-trigger="load" hx-swap="innerHTML">
+        <main hx-get="/api/status/html" hx-trigger="load, every 5s" hx-swap="innerHTML">
             <!-- Status wird hier dynamisch geladen -->
             <div class="loading">
                 <p>Lade Status...</p>
@@ -95,6 +95,37 @@
                 hideStatusMessage();
             }
         });
+
+        // Submit image for training
+        function submitForTraining(id, imageBase64, model) {
+            fetch('/api/submit-training', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    id: id,
+                    image_base64: imageBase64,
+                    model: model
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                const msg = document.getElementById('status-message');
+                if (data.success) {
+                    msg.innerHTML = `✅ ${data.message}`;
+                } else {
+                    msg.innerHTML = `⚠️ ${data.message}`;
+                }
+                hideStatusMessage();
+            })
+            .catch(error => {
+                const msg = document.getElementById('status-message');
+                msg.innerHTML = `❌ Fehler beim Einreichen: ${error}`;
+                hideStatusMessage();
+                console.error('Error submitting for training:', error);
+            });
+        }
 
         // Initialize HA publish checkbox on page load
         window.addEventListener('load', function() {

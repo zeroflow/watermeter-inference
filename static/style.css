@@ -315,6 +315,24 @@ main {
     border-radius: 3px;
 }
 
+.image-card .submit-btn {
+    width: 100%;
+    margin-top: 4px;
+    padding: 4px 8px;
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: all 0.2s;
+}
+
+.image-card .submit-btn:hover {
+    background: #1d4ed8;
+    transform: scale(1.05);
+}
+
 .confidence-high .confidence {
     background: #d1fae5;
     color: var(--success);

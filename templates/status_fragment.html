@@ -58,6 +58,9 @@
             <img src="data:image/jpeg;base64,{{ pred.image_base64 }}" alt="{{ pred.id }}" class="thumbnail">
             <div class="prediction">{{ pred.class }}</div>
             <div class="confidence">{{ "%.1f%%"|format(pred.confidence * 100) }}</div>
+            <button class="submit-btn" onclick="submitForTraining('{{ pred.id }}', '{{ pred.image_base64 }}', '{{ pred.model }}')" title="Submit for training">
+                🔍
+            </button>
         </div>
         {% endfor %}
     </div>
