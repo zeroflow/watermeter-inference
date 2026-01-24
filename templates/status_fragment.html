@@ -1,0 +1,65 @@
+{% if status == 'idle' or not total_value %}
+<div class="no-data">
+    <h3>Keine Daten verfügbar</h3>
+    <p>Klicke auf "Jetzt Auslesen" um eine Messung zu starten.</p>
+</div>
+
+{% elif status == 'processing' %}
+<div class="loading">
+    <h3>🔄 Verarbeitung läuft...</h3>
+    <p>Bilder werden geladen und analysiert</p>
+</div>
+
+{% elif status == 'error' %}
+<div class="error">
+    <h3>⚠️ Fehler aufgetreten</h3>
+    {% if warnings %}
+    <ul>
+        {% for warning in warnings %}
+        <li>{{ warning }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</div>
+
+{% else %}
+<!-- Total Value Display -->
+<div class="total-value">
+    <h2>Aktueller Zählerstand</h2>
+    <div>
+        <span class="value">{{ "%.4f"|format(total_value) }}</span>
+        <span class="unit">{{ unit }}</span>
+    </div>
+    <div class="meta">
+        <span>🕒 {{ last_update }}</span>
+        <span class="status {{ status }}">{{ status.upper() }}</span>
+    </div>
+</div>
+
+<!-- Warnings -->
+{% if warnings %}
+<div class="warnings">
+    <h3>⚠️ Warnungen</h3>
+    <ul>
+        {% for warning in warnings %}
+        <li>{{ warning }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+<!-- All Images in One Row -->
+<div class="images-section">
+    <h3>Zählerstände (Digits + Arrows)</h3>
+    <div class="images-grid">
+        {% for pred in predictions %}
+        <div class="image-card {% if pred.confidence >= 0.95 %}confidence-high{% elif pred.confidence >= 0.80 %}confidence-medium{% else %}confidence-low{% endif %}">
+            <div class="id">{{ pred.id }}</div>
+            <img src="data:image/jpeg;base64,{{ pred.image_base64 }}" alt="{{ pred.id }}" class="thumbnail">
+            <div class="prediction">{{ pred.class }}</div>
+            <div class="confidence">{{ "%.1f%%"|format(pred.confidence * 100) }}</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}

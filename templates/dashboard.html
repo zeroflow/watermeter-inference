@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Water Meter Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🌊 AI Water Meter Dashboard</h1>
+            <div class="header-actions">
+                <button
+                    hx-post="/api/trigger"
+                    hx-target="#status-message"
+                    hx-swap="innerHTML"
+                    class="btn btn-primary">
+                    🔄 Jetzt Auslesen
+                </button>
+                <button
+                    hx-post="/api/reset"
+                    hx-target="#status-message"
+                    hx-swap="innerHTML"
+                    class="btn btn-secondary"
+                    onclick="return confirm('Previous Value zurücksetzen?')">
+                    ↺ Reset
+                </button>
+                <label class="toggle">
+                    <input type="checkbox" id="auto-refresh" onchange="toggleAutoRefresh(this)">
+                    <span>Auto-Refresh</span>
+                </label>
+                <label class="toggle">
+                    <input type="checkbox" id="ha-publish" checked onchange="toggleHaPublish(this)">
+                    <span>HA Publish</span>
+                </label>
+            </div>
+        </header>
+
+        <div id="status-message" class="status-message"></div>
+
+        <main hx-get="/api/status/html" hx-trigger="load, every 5s" hx-swap="innerHTML">
+            <!-- Status wird hier dynamisch geladen -->
+            <div class="loading">
+                <p>Lade Status...</p>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        function toggleAutoRefresh(checkbox) {
+            const main = document.querySelector('main');
+            if (checkbox.checked) {
+                // Enable HTMX polling
+                main.setAttribute('hx-trigger', 'load, every 5s');
+                htmx.process(main); // Re-process HTMX attributes
+                console.log('Auto-refresh aktiviert');
+            } else {
+                // Disable HTMX polling
+                main.setAttribute('hx-trigger', 'load');
+                htmx.process(main); // Re-process HTMX attributes
+                console.log('Auto-refresh deaktiviert');
+            }
+        }
+
+        function toggleHaPublish(checkbox) {
+            const enabled = checkbox.checked;
+            fetch('/api/toggle-ha-publish?enabled=' + enabled, {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                const msg = document.getElementById('status-message');
+                msg.innerHTML = data.message;
+                hideStatusMessage();
+                console.log(data.message);
+            })
+            .catch(error => {
+                console.error('Error toggling HA publish:', error);
+            });
+        }
+
+        // Status-Message nach 5 Sekunden ausblenden
+        function hideStatusMessage() {
+            setTimeout(() => {
+                const msg = document.getElementById('status-message');
+                if (msg) msg.innerHTML = '';
+            }, 5000);
+        }
+
+        // HTMX Event Listener
+        document.body.addEventListener('htmx:afterSwap', function(evt) {
+            if (evt.detail.target.id === 'status-message') {
+                hideStatusMessage();
+            }
+        });
+
+        // Initialize HA publish checkbox on page load
+        window.addEventListener('load', function() {
+            fetch('/api/status')
+                .then(response => response.json())
+                .then(data => {
+                    const checkbox = document.getElementById('ha-publish');
+                    if (checkbox && data.ha_publish_enabled !== undefined) {
+                        checkbox.checked = data.ha_publish_enabled;
+                    }
+                })
+                .catch(error => console.error('Error loading HA publish status:', error));
+        });
+    </script>
+</body>
+</html>
