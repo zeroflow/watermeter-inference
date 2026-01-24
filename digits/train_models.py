@@ -23,19 +23,21 @@ NUM_CLASSES = 11  # 0-9 + NAN
 MODEL_NAMES = [
   'densenet121',
   'densenet169',
-  'densenet201',
+  # 'densenet201',  # Slower than 169, worse accuracy
   'efficientnet_b2',
   'efficientnet_b3',
   'efficientnet_b4',
-  'efficientnet_b5',
+  # 'efficientnet_b5',  # Consistently underperforms b3/b4, higher low-confidence rate
   'efficientnet_lite0',
-  'efficientnetv2_rw_m',
+  # 'efficientnetv2_rw_m',  # Slower than rw_s, worse metrics
   'efficientnetv2_rw_s',
-  'mobilenetv3_large_100',
-  'mobilenetv3_small_100',
+  # 'mobilenetv3_large_100',  # Worse than efficientnet_lite0 at similar speed
+  # 'mobilenetv3_small_100',  # Catastrophic failure on some configs (45.5% digits)
   'resnet50',
-  'resnext101_64x4d',
+  # 'resnext101_64x4d',  # 2x slower than resnext50, worse accuracy
   'resnext50_32x4d',
+  'convnext_tiny',  # new - modern CNN, potential improvement over EfficientNet
+  'regnetx_032',  # new - efficient alternative to ResNet/EfficientNet
 ]
 EPOCHS = 10
 BATCH_SIZE = 16

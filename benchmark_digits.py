@@ -57,7 +57,7 @@ def parse_model_filename(filepath: Path) -> Dict[str, any]:
     Returns:
         Dict with keys: model_name, num_classes, resolution, filepath
     """
-    pattern = r'model_(.+?)_c(\d+)_r(\d+)\.xml'
+    pattern = r'model_(.+?)_r(\d+)\.xml'
     match = re.match(pattern, filepath.name)
 
     if not match:
@@ -65,13 +65,13 @@ def parse_model_filename(filepath: Path) -> Dict[str, any]:
 
     return {
         'model_name': match.group(1),
-        'num_classes': int(match.group(2)),
-        'resolution': int(match.group(3)),
+        'resolution': int(match.group(2)),
+        'num_classes': 11,
         'filepath': str(filepath)
     }
 
 
-def generate_classes(num_classes: int) -> List[str]:
+def generate_classes(num_classes: int = 11) -> List[str]:
     """
     Generate class labels for digits.
 

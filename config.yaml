@@ -55,7 +55,7 @@ inference:
   device: "GPU"  # CPU, GPU, or AUTO
 
   # Model paths (container paths)
-  digits_model: "/app/models/digits/model_mobilenetv3_small_100_c11_r144.xml"
+  digits_model: "/app/models/digits/model_digits_resnext50_32x4d_r144.xml"
   arrows_model: "/app/models/arrows/model_efficientnetv2_rw_m_c20_r144.xml"
 
   # Model classes
