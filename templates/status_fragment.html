@@ -10,20 +10,9 @@
     <p>Bilder werden geladen und analysiert</p>
 </div>
 
-{% elif status == 'error' %}
-<div class="error">
-    <h3>⚠️ Fehler aufgetreten</h3>
-    {% if warnings %}
-    <ul>
-        {% for warning in warnings %}
-        <li>{{ warning }}</li>
-        {% endfor %}
-    </ul>
-    {% endif %}
-</div>
-
 {% else %}
 <!-- Total Value Display -->
+{% if total_value %}
 <div class="total-value">
     <h2>Aktueller Zählerstand</h2>
     <div>
@@ -35,11 +24,12 @@
         <span class="status {{ status }}">{{ status.upper() }}</span>
     </div>
 </div>
+{% endif %}
 
-<!-- Warnings -->
+<!-- Warnings and Errors -->
 {% if warnings %}
-<div class="warnings">
-    <h3>⚠️ Warnungen</h3>
+<div class="{% if status == 'error' %}error{% else %}warnings{% endif %}">
+    <h3>{% if status == 'error' %}⚠️ Fehler aufgetreten{% else %}⚠️ Warnungen{% endif %}</h3>
     <ul>
         {% for warning in warnings %}
         <li>{{ warning }}</li>
@@ -48,7 +38,8 @@
 </div>
 {% endif %}
 
-<!-- All Images in One Row -->
+<!-- All Images in One Row - Always show if predictions available -->
+{% if predictions %}
 <div class="images-section">
     <h3>Zählerstände (Digits + Arrows)</h3>
     <div class="images-grid">
@@ -65,4 +56,5 @@
         {% endfor %}
     </div>
 </div>
+{% endif %}
 {% endif %}

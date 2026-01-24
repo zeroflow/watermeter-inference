@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  watermeter:
+    build: .
+    image: watermeter-dashboard:latest
+    container_name: watermeter-dashboard
+
+    ports:
+      - "8001:8001"
+
+    volumes:
+      # Configuration (will be auto-populated with defaults if empty)
+      - ./config:/config
+      # Data persistence (state.json)
+      - ./data:/data
+      # Training images (shared with Label Studio)
+      - /var/ml/label-studio-data/import/:/training
+
+    devices:
+      # Intel GPU for OpenVINO acceleration
+      - /dev/dri/renderD128:/dev/dri/renderD128
+
+    group_add:
+      # Grant access to GPU device
+      - "${RENDER_GROUP:-44}"
+
+    environment:
+      # Optional: Override logging level
+      - LOG_LEVEL=INFO
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+# Optionally create named volumes instead of bind mounts
+# volumes:
+#   config:
+#   data:

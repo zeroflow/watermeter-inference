@@ -8,12 +8,13 @@ from pydantic import BaseModel
 from typing import Optional
 import tempfile
 import httpx
+import yaml
 
 class Classifier:
-    def __init__(self, model_path, classes, label_config_tag):
+    def __init__(self, model_path, classes, label_config_tag, device='GPU'):
         core = ov.Core()
         model = core.read_model(model_path)
-        self.compiled = core.compile_model(model, 'GPU')
+        self.compiled = core.compile_model(model, device)
         self.classes = classes
         self.label_config_tag = label_config_tag
     
@@ -35,19 +36,26 @@ class Classifier:
             'confidence': float(probs[idx])
         }
 
+# Load configuration
+with open('config.yaml', 'r') as f:
+    config = yaml.safe_load(f)
+
+inference_config = config['inference']
+
 app = FastAPI()
 
 digits_classifier = Classifier(
-    'digits/ov_model/model_mobilenetv3_small_100_c11_r144.xml',
-    ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'NAN'],
-    'digit'
+    inference_config['digits_model'],
+    inference_config['digits_classes'],
+    'digit',
+    device=inference_config.get('device', 'GPU')
 )
 
 arrows_classifier = Classifier(
-    'arrows/ov_model/model_mobilenetv3_small_100_c20_r144.xml',
-    ['0.0', '0.5', '1.0', '1.5', '2.0', '2.5', '3.0', '3.5', '4.0', '4.5',
-     '5.0', '5.5', '6.0', '6.5', '7.0', '7.5', '8.0', '8.5', '9.0', '9.5'],
-    'arrow_value'
+    inference_config['arrows_model'],
+    inference_config['arrows_classes'],
+    'arrow_value',
+    device=inference_config.get('device', 'GPU')
 )
 
 classifiers = {

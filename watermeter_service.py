@@ -422,6 +422,18 @@ class WatermeterService:
                         )
 
                 # 7. Update state
+                # Always store predictions (even on error) so images are displayed
+                self.current_state['predictions'] = [
+                    {
+                        'id': pred['id'],
+                        'class': pred['class'],
+                        'confidence': pred['confidence'],
+                        'model': pred['model'],
+                        'image_base64': base64.b64encode(pred['image_bytes']).decode('utf-8')
+                    }
+                    for pred in predictions.values()
+                ]
+
                 if is_valid:
                     self.previous_value = total_value
                     self.last_update_time = datetime.now()
@@ -434,16 +446,6 @@ class WatermeterService:
                     self.current_state['last_update'] = self.last_update_time.isoformat()
                     self.current_state['status'] = 'warning' if all_warnings else 'ok'
                     self.current_state['warnings'] = all_warnings
-                    self.current_state['predictions'] = [
-                        {
-                            'id': pred['id'],
-                            'class': pred['class'],
-                            'confidence': pred['confidence'],
-                            'model': pred['model'],
-                            'image_base64': base64.b64encode(pred['image_bytes']).decode('utf-8')
-                        }
-                        for pred in predictions.values()
-                    ]
 
                     logger.info(f"✓ Reading accepted: {total_value:.4f} m³")
 
@@ -452,6 +454,7 @@ class WatermeterService:
                 else:
                     self.current_state['status'] = 'error'
                     self.current_state['warnings'] = all_warnings
+                    self.current_state['total_value'] = total_value
                     logger.error(f"✗ Reading rejected: {total_value:.4f} m³")
 
                 logger.info("=" * 60)
@@ -460,6 +463,21 @@ class WatermeterService:
                 logger.error(f"Error during processing: {e}", exc_info=True)
                 self.current_state['status'] = 'error'
                 self.current_state['warnings'] = [str(e)]
+                # Try to save predictions if we got that far
+                try:
+                    if 'predictions' in locals() and predictions:
+                        self.current_state['predictions'] = [
+                            {
+                                'id': pred['id'],
+                                'class': pred['class'],
+                                'confidence': pred['confidence'],
+                                'model': pred['model'],
+                                'image_base64': base64.b64encode(pred['image_bytes']).decode('utf-8')
+                            }
+                            for pred in predictions.values()
+                        ]
+                except Exception as pred_err:
+                    logger.error(f"Could not save predictions after error: {pred_err}")
             finally:
                 self.current_state['processing'] = False
 
