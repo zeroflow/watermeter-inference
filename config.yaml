@@ -31,21 +31,23 @@ mqtt:
   trigger_payload: "Flow finished"
   reset_topic: "watermeter/reset"
 
-  # Home Assistant
-  ha_publish_enabled: false  # Set to false to disable MQTT publishing during testing
-  ha_publish_topic: "homeassistant/sensor/watermeter/state"
-  ha_discovery_prefix: "homeassistant"
-
-# Home Assistant MQTT Discovery
+# Home Assistant Integration
 homeassistant:
-  device_name: "AI Water Meter"
-  device_manufacturer: "Node-RED"
-  device_model: "OpenVINO Inference"
-  sensor_name: "Water Usage"
-  unit: "m³"
-  device_class: "water"
-  state_class: "total_increasing"
-  icon: "mdi:water"
+  enabled: true  # Set to false to disable MQTT publishing during testing
+  discovery_prefix: "homeassistant"
+  publish_topic: "homeassistant/sensor/watermeter/state"
+
+  device:
+    name: "DIY AI Water Meter"
+    manufacturer: "with Claude Code"
+    model: "OpenVINO Inference"
+
+  sensor:
+    name: "Water Usage"
+    unit: "m³"
+    device_class: "water"
+    state_class: "total_increasing"
+    icon: "mdi:water"
 
 # Inference Settings
 inference:
@@ -66,7 +68,7 @@ plausibility:
 # Low Confidence Handling
 low_confidence:
   save_enabled: true
-  save_path: "import"  # Relative to working directory
+  save_path: "/var/ml/label-studio-data/import"
   save_rate_limit: 3600  # seconds (1 per hour per ID)
 
   # Label Studio Integration (optional)
@@ -76,6 +78,11 @@ low_confidence:
   label_studio_digits_storage_id: 1
   label_studio_arrows_storage_id: 3
   label_studio_sync_delay: 60  # seconds between syncs
+
+# Persistence
+persistence:
+  enabled: true
+  state_file: "/var/ml/openvino-notebooks/watermeter/state.json"
 
 # Web Dashboard
 dashboard:

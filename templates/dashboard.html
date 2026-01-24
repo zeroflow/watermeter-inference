@@ -40,7 +40,7 @@
 
         <div id="status-message" class="status-message"></div>
 
-        <main hx-get="/api/status/html" hx-trigger="load, every 5s" hx-swap="innerHTML">
+        <main hx-get="/api/status/html" hx-trigger="load" hx-swap="innerHTML">
             <!-- Status wird hier dynamisch geladen -->
             <div class="loading">
                 <p>Lade Status...</p>

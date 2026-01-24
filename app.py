@@ -24,6 +24,10 @@ async def lifespan(app: FastAPI):
     service.start_mqtt()
     logger.info("Water Meter Dashboard started")
 
+    # Initial reading on startup
+    logger.info("Triggering initial reading...")
+    asyncio.create_task(service.process_reading())
+
     yield
 
     # Shutdown

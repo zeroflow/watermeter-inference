@@ -16,6 +16,7 @@ import httpx
 import yaml
 import paho.mqtt.client as mqtt
 from inference import digits_classifier, arrows_classifier
+from persistence import StateStore
 
 # Configure logging
 logging.basicConfig(
@@ -41,7 +42,7 @@ class WatermeterService:
         # State management
         self.previous_value: Optional[float] = None
         self.last_update_time: Optional[datetime] = None
-        self.ha_publish_enabled: bool = self.config['mqtt']['ha_publish_enabled']
+        self.ha_publish_enabled: bool = self.config['homeassistant']['enabled']
         self.current_state: Dict = {
             'total_value': None,
             'unit': 'm³',
@@ -53,11 +54,24 @@ class WatermeterService:
             'ha_publish_enabled': self.ha_publish_enabled
         }
 
+        # Persistence
+        persistence_config = self.config.get('persistence', {})
+        if persistence_config.get('enabled', False):
+            self.state_store = StateStore(persistence_config['state_file'])
+            # Load previous state
+            self.previous_value, self.last_update_time = self.state_store.load()
+        else:
+            self.state_store = None
+            logger.info("Persistence disabled")
+
         # Low confidence rate limiting
         self.last_save_times: Dict[str, float] = {}
 
         # Async lock for processing
         self.processing_lock = asyncio.Lock()
+
+        # Event loop reference for MQTT callbacks
+        self.loop = None
 
         # MQTT client
         self.mqtt_client = None
@@ -412,6 +426,10 @@ class WatermeterService:
                     self.previous_value = total_value
                     self.last_update_time = datetime.now()
 
+                    # Persist state to disk
+                    if self.state_store:
+                        self.state_store.save(self.previous_value, self.last_update_time)
+
                     self.current_state['total_value'] = total_value
                     self.current_state['last_update'] = self.last_update_time.isoformat()
                     self.current_state['status'] = 'warning' if all_warnings else 'ok'
@@ -465,29 +483,23 @@ class WatermeterService:
             logger.warning("MQTT client not connected - skipping publish")
             return
 
-        mqtt_config = self.config['mqtt']
         ha_config = self.config['homeassistant']
 
         # Build payload
         payload = {
             'state': round(value, 4),
             'attributes': {
-                'unit_of_measurement': ha_config['unit'],
-                'device_class': ha_config['device_class'],
-                'state_class': ha_config['state_class'],
-                'friendly_name': ha_config['sensor_name'],
-                'icon': ha_config['icon'],
                 'last_update': datetime.now().isoformat(),
                 'warnings': warnings,
                 'confidences': {
-                    pred['id']: round(pred['confidence'], 3)
+                    pred['id']: round(pred['confidence'] * 100, 1)
                     for pred in predictions.values()
                 }
             }
         }
 
         # Publish
-        topic = mqtt_config['ha_publish_topic']
+        topic = ha_config['publish_topic']
         self.mqtt_client.publish(
             topic,
             json.dumps(payload),
@@ -502,11 +514,54 @@ class WatermeterService:
         self.previous_value = None
         self.last_update_time = None
 
+        # Clear persisted state
+        if self.state_store:
+            self.state_store.clear()
+
     def toggle_ha_publish(self, enabled: bool) -> None:
         """Toggle Home Assistant MQTT publishing."""
         self.ha_publish_enabled = enabled
         self.current_state['ha_publish_enabled'] = enabled
         logger.info(f"Home Assistant publishing {'enabled' if enabled else 'disabled'}")
+
+    def publish_discovery(self) -> None:
+        """Publish Home Assistant MQTT Discovery message."""
+        if not self.mqtt_client or not self.mqtt_client.is_connected():
+            logger.warning("MQTT client not connected - skipping discovery")
+            return
+
+        ha_config = self.config['homeassistant']
+
+        # Discovery topic: <discovery_prefix>/<component>/<node_id>/<object_id>/config
+        discovery_topic = f"{ha_config['discovery_prefix']}/sensor/watermeter_ai/watermeter_usage/config"
+
+        # Discovery payload
+        discovery_payload = {
+            "name": ha_config['sensor']['name'],
+            "state_topic": ha_config['publish_topic'],
+            "unit_of_measurement": ha_config['sensor']['unit'],
+            "device_class": ha_config['sensor']['device_class'],
+            "state_class": ha_config['sensor']['state_class'],
+            "icon": ha_config['sensor']['icon'],
+            "unique_id": "watermeter_ai_usage",
+            "value_template": "{{ value_json.state }}",
+            "json_attributes_topic": ha_config['publish_topic'],
+            "device": {
+                "identifiers": ["watermeter_ai"],
+                "name": ha_config['device']['name'],
+                "manufacturer": ha_config['device']['manufacturer'],
+                "model": ha_config['device']['model']
+            }
+        }
+
+        # Publish with retain=True so HA finds it after restart
+        self.mqtt_client.publish(
+            discovery_topic,
+            json.dumps(discovery_payload),
+            qos=1,
+            retain=True
+        )
+        logger.info(f"Published MQTT Discovery to {discovery_topic}")
 
     # MQTT Callbacks
     def on_mqtt_connect(self, client, userdata, flags, rc):
@@ -517,8 +572,13 @@ class WatermeterService:
             mqtt_config = self.config['mqtt']
             client.subscribe(mqtt_config['trigger_topic'], qos=2)
             client.subscribe(mqtt_config['reset_topic'], qos=2)
+            client.subscribe("homeassistant/status", qos=1)
             logger.info(f"Subscribed to {mqtt_config['trigger_topic']}")
             logger.info(f"Subscribed to {mqtt_config['reset_topic']}")
+            logger.info("Subscribed to homeassistant/status")
+
+            # Publish discovery on connect
+            self.publish_discovery()
         else:
             logger.error(f"MQTT connection failed with code {rc}")
 
@@ -533,14 +593,29 @@ class WatermeterService:
         if topic == mqtt_config['trigger_topic']:
             if payload == mqtt_config['trigger_payload']:
                 logger.info("Trigger received - starting processing")
-                # Start processing in background
-                asyncio.create_task(self.process_reading())
+                # Start processing in background from MQTT thread
+                if self.loop:
+                    asyncio.run_coroutine_threadsafe(self.process_reading(), self.loop)
+                else:
+                    logger.error("Event loop not available - cannot process reading")
 
         elif topic == mqtt_config['reset_topic']:
             self.reset_previous_value()
 
+        elif topic == "homeassistant/status":
+            if payload == "online":
+                logger.info("Home Assistant came online - republishing discovery")
+                self.publish_discovery()
+
     def start_mqtt(self):
         """Initialize and start MQTT client."""
+        # Capture the event loop for MQTT callbacks
+        try:
+            self.loop = asyncio.get_running_loop()
+            logger.info("Event loop captured for MQTT callbacks")
+        except RuntimeError:
+            logger.warning("No running event loop - MQTT triggers may not work")
+
         mqtt_config = self.config['mqtt']
 
         self.mqtt_client = mqtt.Client(client_id=mqtt_config['client_id'])
