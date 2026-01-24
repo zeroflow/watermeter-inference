@@ -334,8 +334,8 @@
                 } else {
                     badge.textContent = 'ARROW';
                     badge.className = 'model-type-badge model-type-arrows';
-                    instructions.innerHTML = '<strong>Arrows:</strong> Enter 0-99 (e.g., 12 for 1.2, 95 for 9.5)';
-                    input.placeholder = '0-99';
+                    instructions.innerHTML = '<strong>Arrows:</strong> Enter value 0,0 to 9,9 (e.g., 1,2 or 6,9 or 3,3 or just 3 for 3,0)';
+                    input.placeholder = 'e.g. 3,3 or 6,9';
                 }
 
                 // Show interface
@@ -429,10 +429,10 @@
         function validateAndSubmit(value) {
             if (!value) return;
 
-            // Normalize input
-            value = value.toUpperCase().trim();
-
             if (currentImage.model_type === 'digits') {
+                // Normalize input for digits
+                value = value.toUpperCase().trim();
+
                 // Accept 0-9 or N
                 if (value === 'N' || (value.length === 1 && value >= '0' && value <= '9')) {
                     submitLabel(value === 'N' ? 'NAN' : value);
@@ -440,12 +440,23 @@
                     showMessage('Invalid input. Enter 0-9 or N for NAN', 'error');
                 }
             } else {
-                // Accept 0-99
-                const num = parseInt(value);
-                if (!isNaN(num) && num >= 0 && num <= 99) {
-                    submitLabel(value);
+                // Accept decimal format with comma or dot: 0,0 to 9,9 (or 0.0 to 9.9)
+                // Also accept integers: 0-9 (interpreted as X.0)
+                value = value.trim();
+
+                // Replace comma with dot for parsing
+                const normalizedValue = value.replace(',', '.');
+
+                // Parse as float
+                const num = parseFloat(normalizedValue);
+
+                // Validate: must be a number between 0.0 and 9.9
+                if (!isNaN(num) && num >= 0.0 && num <= 9.9) {
+                    // Format to one decimal place with dot (e.g., "3.3")
+                    const formattedValue = num.toFixed(1);
+                    submitLabel(formattedValue);
                 } else {
-                    showMessage('Invalid input. Enter 0-99', 'error');
+                    showMessage('Invalid input. Enter 0,0 to 9,9 (e.g., 1,2 or 6,9 or 3)', 'error');
                 }
             }
         }

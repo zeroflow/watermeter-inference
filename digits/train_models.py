@@ -1,14 +1,9 @@
 """
-Train multiple arrow detection models
-Converted from Arrows.ipynb
+Train multiple digit detection models
 """
-import json
-import os
 import random
-import shutil
 import time
 from pathlib import Path
-from collections import Counter
 
 import numpy as np
 import torch
@@ -24,7 +19,7 @@ from sklearn.utils.class_weight import compute_class_weight
 
 # Configuration
 RESOLUTION = 144
-STEPS = 1.0  # 1.0 = 10 classes, 0.5 = 20 classes, 0.1 = 100 classes
+NUM_CLASSES = 11  # 0-9 + NAN
 MODEL_NAMES = [
   'densenet121',
   'densenet169',
@@ -47,133 +42,9 @@ BATCH_SIZE = 16
 LEARNING_RATE = 1e-3
 
 # Paths
-GROUND_TRUTH_DIR = Path('ground_truth')
-DATASET_DIR = Path('dataset')
+DATASET_DIR = Path('ground_truth')
 OV_MODEL_DIR = Path('ov_model')
 OV_MODEL_DIR.mkdir(exist_ok=True)
-
-
-def create_subsampled_dataset(ground_truth_dir: Path, dataset_dir: Path, step: float):
-    """Create physical dataset folder with subsampled classes from ground_truth.
-
-    Args:
-        ground_truth_dir: Path to ground_truth folder with 100 classes (0.0-9.9 in 0.1 steps)
-        dataset_dir: Path to output dataset folder
-        step: Step size (1.0 = 10 classes, 0.5 = 20 classes, 0.1 = 100 classes)
-    """
-    print("\n" + "="*80)
-    print("CREATING SUBSAMPLED DATASET")
-    print("="*80)
-    print(f"Source: {ground_truth_dir}")
-    print(f"Target: {dataset_dir}")
-    print(f"Step: {step} -> {int(10/step)} classes")
-
-    # Remove existing dataset folder
-    if dataset_dir.exists():
-        shutil.rmtree(dataset_dir)
-    dataset_dir.mkdir(exist_ok=True)
-
-    # Count images per class
-    class_counts = {}
-    total_images = 0
-
-    # Iterate through all images in ground_truth
-    for class_dir in sorted(ground_truth_dir.iterdir()):
-        if not class_dir.is_dir():
-            continue
-
-        # Parse original class value (e.g., "0.0", "0.1", ..., "9.9")
-        original_value = float(class_dir.name)
-
-        # Round to nearest step
-        new_value = round(original_value / step) * step
-
-        # Handle 10.0 wrapping to 0.0
-        if new_value >= 10.0:
-            new_value = 0.0
-
-        new_class_name = f"{new_value:.1f}"
-
-        # Create target class directory if it doesn't exist
-        target_class_dir = dataset_dir / new_class_name
-        target_class_dir.mkdir(exist_ok=True)
-
-        # Copy all images from this class to the target class
-        for img_file in class_dir.glob('*'):
-            if img_file.is_file():
-                # Use symlink instead of copy for efficiency
-                target_file = target_class_dir / f"{class_dir.name}_{img_file.name}"
-                shutil.copy(img_file, target_file)
-                total_images += 1
-                class_counts[new_class_name] = class_counts.get(new_class_name, 0) + 1
-
-    # Print summary
-    num_classes = len(class_counts)
-    print(f"\n✓ Created {num_classes} classes with {total_images} images")
-    print(f"  Classes: {', '.join(sorted(class_counts.keys(), key=lambda x: float(x)))}")
-    print(f"\n  Images per class:")
-    for class_name in sorted(class_counts.keys(), key=lambda x: float(x)):
-        print(f"    {class_name}: {class_counts[class_name]}")
-
-    return dataset_dir
-
-
-def create_dataset_from_annotations(export_file: str, dataset_dir: Path, resolution: int):
-    """Create dataset directory structure from Label Studio annotations."""
-    print("\n" + "="*80)
-    print("CREATING DATASET")
-    print("="*80)
-
-    with open(export_file) as f:
-        data = json.load(f)
-
-    print(f"Total annotations: {len(data)}")
-
-    # Purge existing data
-    if dataset_dir.exists():
-        shutil.rmtree(dataset_dir)
-    dataset_dir.mkdir(exist_ok=True)
-
-    for item in data:
-        # Extract label
-        annotations = item.get('annotations', [])
-        if not annotations:
-            continue
-
-        result = annotations[0]['result']
-        if not result:
-            continue
-
-        label_float = result[0]['value']['number']
-        #label = f"{label_float:.1f}" # 0.1 steps
-        #label = f"{round(label_float * 5) / 5:.1f}" # 0.2 steps
-        label = f"{round(label_float * 2) / 2:.1f}" # 0.5 steps
-        #label = f"{label_float:.0f}" # 1 steps
-        #label = str(int(label_float)) # 1 steps, round down
-
-        if label == "10.0":
-            label = "0.0"
-
-        # Create class directory
-        class_dir = dataset_dir / label
-        class_dir.mkdir(exist_ok=True)
-
-        # Extract and copy image
-        img_path = item['data']['image']
-        if '?d=' in img_path:
-            img_path = img_path.split('?d=')[1]
-            img_path = os.path.join("/import", img_path)
-
-        # fix path outside docker
-        img_path = img_path.replace("/import/", "/var/ml/label-studio-data/import/")
-
-        src_file = Path(img_path)
-        if src_file.exists():
-            shutil.copy(src_file, class_dir / src_file.name)
-        else:
-            print(f"✗ Not found: {img_path}")
-
-    print(f"✓ Dataset structure created in: {dataset_dir}")
 
 
 def analyze_dataset(dataset_dir: Path):
@@ -182,10 +53,10 @@ def analyze_dataset(dataset_dir: Path):
     print("DATASET ANALYSIS")
     print("="*80)
 
-    classes = [d.name for d in dataset_dir.iterdir() if d.is_dir()]
+    classes = sorted([d.name for d in dataset_dir.iterdir() if d.is_dir()])
     counts = np.array([len(list((dataset_dir/cls).glob('*'))) for cls in classes])
 
-    print(f"Classes          : {len(counts)}")
+    print(f"Classes          : {len(counts)} ({', '.join(classes)})")
     print(f"Total samples    : {counts.sum()}")
     print(f"Min              : {counts.min()}")
     print(f"Max              : {counts.max()}")
@@ -195,24 +66,13 @@ def analyze_dataset(dataset_dir: Path):
     print(f"CV               : {counts.std()/counts.mean():.2f}")
     print(f"Imbalance ratio  : {counts.max()/counts.min():.1f}x")
 
-    sorted_idx = np.argsort(counts)
-    print(f"\nSmallest 5:")
-    for i in sorted_idx[:5]:
-        print(f"  {classes[i]}: {int(counts[i])}")
-
-    print(f"Largest 5:")
-    for i in sorted_idx[-5:]:
-        print(f"  {classes[i]}: {int(counts[i])}")
+    print(f"\nPer-class counts:")
+    for cls, count in zip(classes, counts):
+        print(f"  {cls}: {int(count)}")
 
 
 def create_data_loaders(dataset_dir: Path, resolution: int, batch_size: int):
-    """Create train and validation data loaders with stratified split.
-
-    Args:
-        dataset_dir: Path to dataset folder with subsampled classes
-        resolution: Image resolution for training
-        batch_size: Batch size for data loaders
-    """
+    """Create train and validation data loaders with stratified split."""
     # Transforms
     train_transform = transforms.Compose([
         transforms.Resize((resolution, resolution)),
@@ -257,7 +117,7 @@ def create_data_loaders(dataset_dir: Path, resolution: int, batch_size: int):
 
     print(f"\n✓ Train samples: {len(train_ds)}")
     print(f"✓ Val samples: {len(val_ds)}")
-    print(f"✓ Classes: {len(dataset.classes)}")
+    print(f"✓ Classes: {len(dataset.classes)} ({', '.join(dataset.classes)})")
 
     return train_loader, val_loader, dataset, train_idx
 
@@ -290,7 +150,7 @@ def compute_class_weights(dataset, train_idx, device):
 
     if len(unique_labels) < num_classes:
         missing = set(range(num_classes)) - set(unique_labels)
-        print(f"  ⚠ Warning: {len(missing)} classes not in train set: {missing}")
+        print(f"  Warning: {len(missing)} classes not in train set: {missing}")
 
     return class_weights_tensor
 
@@ -303,7 +163,7 @@ def train_model(model_name: str, resolution: int, epochs: int, train_loader, val
     print("="*80)
 
     num_classes = len(dataset.classes)
-    model_filename = f'model_arrows_{model_name}_c{num_classes}_r{resolution}'
+    model_filename = f'model_digits_{model_name}_r{resolution}'
 
     # Validate inputs
     print(f"\nValidating training setup...")
@@ -419,7 +279,7 @@ def train_model(model_name: str, resolution: int, epochs: int, train_loader, val
     print(f"✓ Best model from epoch {best_epoch+1} with {best_val_loss:.3f} loss")
 
     # Save training plot
-    print(f"\n[1/5] Saving training plot...")
+    print(f"\n[1/4] Saving training plot...")
     try:
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
         ax1.plot(train_losses)
@@ -444,7 +304,7 @@ def train_model(model_name: str, resolution: int, epochs: int, train_loader, val
         raise
 
     # Export to ONNX
-    print(f"\n[2/5] Exporting to ONNX...")
+    print(f"\n[2/4] Exporting to ONNX...")
     try:
         model.cpu()
         model.eval()
@@ -473,7 +333,7 @@ def train_model(model_name: str, resolution: int, epochs: int, train_loader, val
         raise
 
     # Convert to OpenVINO
-    print(f"\n[3/5] Converting to OpenVINO...")
+    print(f"\n[3/4] Converting to OpenVINO...")
     try:
         core = ov.Core()
         model_onnx = core.read_model(onnx_path)
@@ -504,9 +364,9 @@ def train_model(model_name: str, resolution: int, epochs: int, train_loader, val
     # Test OpenVINO inference
     print(f"\n[4/4] Testing OpenVINO inference...")
     try:
-        test_img_paths = list(Path('dataset').rglob('*.jpg'))
+        test_img_paths = list(DATASET_DIR.rglob('*.jpg'))
         if not test_img_paths:
-            test_img_paths = list(Path('dataset').rglob('*.png'))
+            test_img_paths = list(DATASET_DIR.rglob('*.png'))
         if not test_img_paths:
             raise FileNotFoundError("No test images found in dataset folder")
 
@@ -554,19 +414,16 @@ def train_model(model_name: str, resolution: int, epochs: int, train_loader, val
 def main():
     """Main training pipeline."""
     print("="*80)
-    print("ARROW DETECTION MODEL TRAINING")
+    print("DIGIT DETECTION MODEL TRAINING")
     print("="*80)
     print(f"\nModels to train: {len(MODEL_NAMES)}")
     for i, name in enumerate(MODEL_NAMES, 1):
         print(f"  {i}. {name}")
-    print(f"\nStep size: {STEPS} (results in {int(10/STEPS)} classes)")
+    print(f"\nExpected classes: {NUM_CLASSES} (0-9 + NAN)")
 
     # Setup device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Device: {device}")
-
-    # Create subsampled dataset from ground_truth
-    create_subsampled_dataset(GROUND_TRUTH_DIR, DATASET_DIR, STEPS)
 
     # Analyze dataset
     analyze_dataset(DATASET_DIR)
@@ -578,6 +435,11 @@ def main():
     train_loader, val_loader, dataset, train_idx = create_data_loaders(
         DATASET_DIR, RESOLUTION, BATCH_SIZE
     )
+
+    # Validate number of classes
+    if len(dataset.classes) != NUM_CLASSES:
+        print(f"\n⚠ Warning: Expected {NUM_CLASSES} classes, found {len(dataset.classes)}")
+        print(f"  Found classes: {dataset.classes}")
 
     # Compute class weights
     class_weights_tensor = compute_class_weights(dataset, train_idx, device)

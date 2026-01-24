@@ -255,19 +255,28 @@ async def submit_label(submission: LabelSubmission):
             label_folder = submission.label
 
         elif submission.model_type == 'arrows':
-            # Valid labels: 0-99 representing 0.0 to 9.9
+            # Valid labels: decimal 0.0 to 9.9 (e.g., "1.2", "6.9", "3.3")
             try:
-                value = int(submission.label)
-                if value < 0 or value > 99:
+                # Try parsing as float (decimal format)
+                label_value = float(submission.label)
+                if label_value < 0.0 or label_value > 9.9:
                     raise ValueError("Out of range")
-                # Convert to decimal format: 12 -> 1.2
-                label_value = value / 10.0
+                # Format to one decimal place
                 label_folder = f"{label_value:.1f}"
             except ValueError:
-                return JSONResponse({
-                    "success": False,
-                    "message": f"Invalid label for arrows: {submission.label}. Must be 0-99"
-                }, status_code=400)
+                # Fallback: try old integer format (0-99) for backward compatibility
+                try:
+                    value = int(submission.label)
+                    if value < 0 or value > 99:
+                        raise ValueError("Out of range")
+                    # Convert to decimal format: 12 -> 1.2
+                    label_value = value / 10.0
+                    label_folder = f"{label_value:.1f}"
+                except ValueError:
+                    return JSONResponse({
+                        "success": False,
+                        "message": f"Invalid label for arrows: {submission.label}. Must be 0.0-9.9 (e.g., 1.2, 6.9)"
+                    }, status_code=400)
         else:
             return JSONResponse({
                 "success": False,
