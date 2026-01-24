@@ -1,0 +1,90 @@
+# Water Meter AI Service Configuration
+
+# AI-on-the-edge Device
+aiote:
+  host: "192.168.5.136"
+  image_path: "/img_tmp"
+  timeout: 30  # seconds
+  fetch_delay: 0.1  # seconds between image fetches
+
+# Image IDs
+images:
+  digits:
+    - "main_dig1"  # x100
+    - "main_dig2"  # x10
+    - "main_dig3"  # x1
+  arrows:
+    - "main_ana1"  # x0.1
+    - "main_ana2"  # x0.01
+    - "main_ana3"  # x0.001
+    - "main_ana4"  # x0.0001
+
+# MQTT Settings
+mqtt:
+  broker: "192.168.4.11"
+  port: 1883
+  client_id: "watermeter-ai-service"
+  keepalive: 60
+
+  # Topics
+  trigger_topic: "watermeter/status"
+  trigger_payload: "Flow finished"
+  reset_topic: "watermeter/reset"
+
+  # Home Assistant
+  ha_publish_enabled: false  # Set to false to disable MQTT publishing during testing
+  ha_publish_topic: "homeassistant/sensor/watermeter/state"
+  ha_discovery_prefix: "homeassistant"
+
+# Home Assistant MQTT Discovery
+homeassistant:
+  device_name: "AI Water Meter"
+  device_manufacturer: "Node-RED"
+  device_model: "OpenVINO Inference"
+  sensor_name: "Water Usage"
+  unit: "m³"
+  device_class: "water"
+  state_class: "total_increasing"
+  icon: "mdi:water"
+
+# Inference Settings
+inference:
+  confidence_threshold: 0.8
+  device: "GPU"  # CPU, GPU, or AUTO
+
+  # Model paths
+  digits_model: "digits/ov_model/model_mobilenetv3_small_100_c11_r144.xml"
+  arrows_model: "arrows/ov_model/model_mobilenetv3_small_100_c20_r144.xml"
+
+# Plausibility Checks
+plausibility:
+  enable_reverse_detection: true
+  enable_rate_limit: true
+  max_rate_per_hour: 5.0  # m³/hour - unrealistic high usage
+  max_rate_per_minute: 1.0  # m³/minute
+
+# Low Confidence Handling
+low_confidence:
+  save_enabled: true
+  save_path: "import"  # Relative to working directory
+  save_rate_limit: 3600  # seconds (1 per hour per ID)
+
+  # Label Studio Integration (optional)
+  label_studio_enabled: false
+  label_studio_url: "http://192.168.4.35:8080"
+  label_studio_token: "***REMOVED***"
+  label_studio_digits_storage_id: 1
+  label_studio_arrows_storage_id: 3
+  label_studio_sync_delay: 60  # seconds between syncs
+
+# Web Dashboard
+dashboard:
+  host: "0.0.0.0"
+  port: 8001
+  auto_refresh_interval: 5  # seconds
+
+# Logging
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: null  # Set to path for file logging, null for stdout only
