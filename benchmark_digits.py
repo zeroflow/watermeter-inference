@@ -1,5 +1,6 @@
 """
 Benchmark script to compare all digit models in digits/ov_model directory
+Supports ONNX with CUDA (if available) or OpenVINO with AUTO fallback
 """
 import openvino as ov
 import cv2
@@ -7,21 +8,43 @@ import numpy as np
 from pathlib import Path
 import time
 from collections import defaultdict
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 import re
+
+try:
+    import onnxruntime as ort
+    ONNX_AVAILABLE = True
+except ImportError:
+    ONNX_AVAILABLE = False
+
+
+def check_cuda_available() -> bool:
+    """Check if CUDA is available for ONNX Runtime."""
+    if not ONNX_AVAILABLE:
+        return False
+    providers = ort.get_available_providers()
+    return 'CUDAExecutionProvider' in providers
 
 
 class DigitClassifier:
-    """Lightweight classifier for benchmarking."""
+    """Lightweight classifier for benchmarking. Supports ONNX (CUDA) or OpenVINO."""
 
-    def __init__(self, model_path: str, classes: List[str], resolution: int = 144, device: str = 'GPU'):
-        core = ov.Core()
-        model = core.read_model(model_path)
-        self.compiled = core.compile_model(model, device)
+    def __init__(self, model_path: str, classes: List[str], resolution: int = 144,
+                 use_onnx: bool = False, device: str = 'AUTO'):
         self.classes = classes
         self.model_path = model_path
         self.num_classes = len(classes)
         self.resolution = resolution
+        self.use_onnx = use_onnx
+
+        if use_onnx:
+            providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+            self.session = ort.InferenceSession(model_path, providers=providers)
+            self.input_name = self.session.get_inputs()[0].name
+        else:
+            core = ov.Core()
+            model = core.read_model(model_path)
+            self.compiled = core.compile_model(model, device)
 
     def preprocess(self, image_path: str) -> np.ndarray:
         """Preprocess image for inference."""
@@ -30,7 +53,7 @@ class DigitClassifier:
         img = cv2.resize(img, (self.resolution, self.resolution))
         img = img.astype(np.float32) / 255.0
         img = (img - [0.485, 0.456, 0.406]) / [0.229, 0.224, 0.225]
-        return img.transpose(2, 0, 1)[np.newaxis, ...]
+        return img.transpose(2, 0, 1)[np.newaxis, ...].astype(np.float32)
 
     def predict(self, image_path: str) -> Tuple[str, float, float]:
         """
@@ -41,7 +64,12 @@ class DigitClassifier:
         """
         start_time = time.perf_counter()
         img = self.preprocess(image_path)
-        result = self.compiled([img])[self.compiled.output(0)][0]
+
+        if self.use_onnx:
+            result = self.session.run(None, {self.input_name: img})[0][0]
+        else:
+            result = self.compiled([img])[self.compiled.output(0)][0]
+
         result = result - result.max()  # numerical stability
         probs = np.exp(result) / np.exp(result).sum()
         idx = probs.argmax()
@@ -50,16 +78,16 @@ class DigitClassifier:
         return self.classes[idx], float(probs[idx]), inference_time
 
 
-def parse_model_filename(filepath: Path) -> Dict[str, any]:
+def parse_model_filename(filepath: Path) -> Optional[Dict[str, any]]:
     """
     Parse model filename to extract metadata.
 
-    Expected format: model_{model_name}_c{num_classes}_r{resolution}.xml
+    Expected format: model_{model_name}_r{resolution}.xml or .onnx
 
     Returns:
-        Dict with keys: model_name, num_classes, resolution, filepath
+        Dict with keys: model_name, num_classes, resolution, filepath, is_onnx
     """
-    pattern = r'model_(.+?)_r(\d+)\.xml'
+    pattern = r'model_(.+?)_r(\d+)\.(xml|onnx)'
     match = re.match(pattern, filepath.name)
 
     if not match:
@@ -69,7 +97,8 @@ def parse_model_filename(filepath: Path) -> Dict[str, any]:
         'model_name': match.group(1),
         'resolution': int(match.group(2)),
         'num_classes': 11,
-        'filepath': str(filepath)
+        'filepath': str(filepath),
+        'is_onnx': match.group(3) == 'onnx'
     }
 
 
@@ -127,18 +156,23 @@ def calculate_accuracy(predictions: List[Tuple[str, float]], expected_label: str
     return correct / len(predictions) if predictions else 0.0
 
 
-def discover_models(ov_model_dir: str = "digits/ov_model") -> List[Dict]:
+def discover_models(model_dir: str = "digits/ov_model", use_onnx: bool = False) -> List[Dict]:
     """
-    Discover all models in the OpenVINO model directory.
+    Discover all models in the model directory.
+
+    Args:
+        model_dir: Directory containing model files
+        use_onnx: If True, look for .onnx files; otherwise look for .xml files
 
     Returns:
         List of model metadata dicts
     """
-    model_dir = Path(ov_model_dir)
+    model_path = Path(model_dir)
     models = []
+    extension = "*.onnx" if use_onnx else "*.xml"
 
-    for xml_file in sorted(model_dir.glob("model_*.xml")):
-        metadata = parse_model_filename(xml_file)
+    for model_file in sorted(model_path.glob(f"model_{extension}")):
+        metadata = parse_model_filename(model_file)
         if metadata:
             models.append(metadata)
 
@@ -150,15 +184,25 @@ def main():
     print("Digit Model Benchmark - Auto-Discovery")
     print("=" * 100)
 
+    # Check for CUDA availability
+    use_cuda = check_cuda_available()
+    if use_cuda:
+        print("\n✓ CUDA detected - using ONNX Runtime with CUDA")
+        backend = "ONNX+CUDA"
+    else:
+        print("\n✗ CUDA not available - using OpenVINO with AUTO device")
+        backend = "OpenVINO+AUTO"
+
     # Discover all models
     print("\n[1/5] Discovering models...")
-    model_metadata = discover_models()
+    model_metadata = discover_models(use_onnx=use_cuda)
 
     if not model_metadata:
-        print("  ✗ No models found in digits/ov_model/")
+        ext = ".onnx" if use_cuda else ".xml"
+        print(f"  ✗ No {ext} models found in digits/ov_model/")
         return
 
-    print(f"  ✓ Found {len(model_metadata)} model(s):")
+    print(f"  ✓ Found {len(model_metadata)} model(s) [{backend}]:")
     for meta in model_metadata:
         print(f"    - {meta['model_name']} ({meta['num_classes']} classes, {meta['resolution']}px)")
 
@@ -168,7 +212,12 @@ def main():
     for meta in model_metadata:
         try:
             classes = generate_classes(meta['num_classes'])
-            model = DigitClassifier(meta['filepath'], classes, resolution=meta['resolution'])
+            model = DigitClassifier(
+                meta['filepath'], classes,
+                resolution=meta['resolution'],
+                use_onnx=use_cuda,
+                device='AUTO'
+            )
             models.append({
                 'classifier': model,
                 'metadata': meta,
