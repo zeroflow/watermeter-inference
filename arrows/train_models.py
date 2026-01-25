@@ -9,6 +9,7 @@ import shutil
 import time
 from pathlib import Path
 from collections import Counter
+import math
 
 import numpy as np
 import torch
@@ -23,24 +24,24 @@ from sklearn.utils.class_weight import compute_class_weight
 
 
 # Configuration
-RESOLUTIONS = [96, 128, 144, 160, 192]
-STEPS_LIST = [1.0, 0.5, 0.2, 0.1]  # 1.0 = 10 classes, 0.5 = 20 classes, 0.2 = 50 classes, 0.1 = 100 classes
+RESOLUTIONS = [96, 128] #[96, 128, 144, 160, 192]
+STEPS_LIST = [1.0] #[1.0, 0.5, 0.2, 0.1]  # 1.0 = 10 classes, 0.5 = 20 classes, 0.2 = 50 classes, 0.1 = 100 classes
 MODEL_NAMES = [
-  'densenet121',
-  'densenet169',
-  'densenet201',
-  'efficientnet_b2',
-  'efficientnet_b3',
-  'efficientnet_b4',
-  'efficientnet_b5',
-  'efficientnet_lite0',
-  'efficientnetv2_rw_m',
-  'efficientnetv2_rw_s',
-  'mobilenetv3_large_100',
-  'mobilenetv3_small_100',
-  'resnet50',
-  'resnext101_64x4d',
-  'resnext50_32x4d',
+#   'densenet121',
+#   'densenet169',
+#   'densenet201',
+   'efficientnet_b2',
+#   'efficientnet_b3',
+#   'efficientnet_b4',
+#   'efficientnet_b5',
+#   'efficientnet_lite0',
+#   'efficientnetv2_rw_m',
+   'efficientnetv2_rw_s',
+   'mobilenetv3_large_100',
+#   'mobilenetv3_small_100',
+#   'resnet50',
+#   'resnext101_64x4d',
+#   'resnext50_32x4d',
 ]
 EPOCHS = 20
 BATCH_SIZE = 16
@@ -86,7 +87,8 @@ def create_subsampled_dataset(ground_truth_dir: Path, dataset_dir: Path, step: f
         original_value = float(class_dir.name)
 
         # Round to nearest step
-        new_value = round(original_value / step) * step
+        #new_value = round(original_value / step) * step
+        new_value = math.floor(original_value / step) * step
 
         # Handle 10.0 wrapping to 0.0
         if new_value >= 10.0:

@@ -18,11 +18,11 @@ from sklearn.utils.class_weight import compute_class_weight
 
 
 # Configuration
-RESOLUTION = 144
+RESOLUTION = 128
 NUM_CLASSES = 11  # 0-9 + NAN
 MODEL_NAMES = [
   #'densenet121', # 1.9% low-conf vs 0.5% for 169/resnext50, no advantage
-  'densenet169',
+  #'densenet169',
   # 'densenet201',  # Slower than 169, worse accuracy
   #'efficientnet_b2', # 91.0% acc, worse than b3/b4/lite0
   #'efficientnet_b3', # 92.0% acc, 1.5% low-conf, beaten by lite0
@@ -30,7 +30,7 @@ MODEL_NAMES = [
   # 'efficientnet_b5',  # Consistently underperforms b3/b4, higher low-confidence rate
   'efficientnet_lite0',
   # 'efficientnetv2_rw_m',  # Slower than rw_s, worse metrics
-  'efficientnetv2_rw_s',
+  #'efficientnetv2_rw_s',
   # 'mobilenetv3_large_100',  # Worse than efficientnet_lite0 at similar speed
   # 'mobilenetv3_small_100',  # Catastrophic failure on some configs (45.5% digits)
   # 'resnet50', # 91.5% acc, worse than top tier

@@ -9,6 +9,7 @@ import time
 from collections import defaultdict
 from typing import Dict, List, Tuple
 import re
+import math
 
 
 class ArrowClassifier:
@@ -107,22 +108,22 @@ def round_to_class(value: float, num_classes: int) -> str:
         Rounded class label as string
     """
     if num_classes == 10:
-        rounded = round(value)
+        rounded = math.floor(value)
         if rounded >= 10:
             rounded = 0
         return str(int(rounded))
     elif num_classes == 20:
-        rounded = round(value * 2) / 2
+        rounded = math.floor(value * 2) / 2
         if rounded >= 10.0:
             rounded = 0.0
         return f"{rounded:.1f}"
     elif num_classes == 50:
-        rounded = round(value * 5) / 5
+        rounded = math.floor(value * 5) / 5
         if rounded >= 10.0:
             rounded = 0.0
         return f"{rounded:.1f}"
     elif num_classes == 100:
-        rounded = round(value * 10) / 10
+        rounded = math.floor(value * 10) / 10
         if rounded >= 10.0:
             rounded = 0.0
         return f"{rounded:.1f}"
