@@ -67,6 +67,14 @@ class WatermeterService:
         # Low confidence rate limiting
         self.last_save_times: Dict[str, float] = {}
 
+        # Rate history for plausibility checks (list of (value, timestamp) tuples)
+        self.rate_history: List[Tuple[float, datetime]] = []
+        self.rate_history_size = self.config['plausibility'].get('rate_history_size', 5)
+
+        # Consecutive rejection tracking for stuck state detection
+        self.consecutive_rejections = 0
+        self.max_consecutive_rejections = 5  # Warn user after this many rejections
+
         # Async lock for processing
         self.processing_lock = asyncio.Lock()
 
@@ -293,6 +301,7 @@ class WatermeterService:
         # Check if we have a previous value
         if self.previous_value is None:
             logger.info("No previous value - accepting first reading")
+            self._add_to_rate_history(new_value)
             return True, warnings
 
         # Reverse detection
@@ -309,21 +318,61 @@ class WatermeterService:
             value_diff = new_value - self.previous_value
 
             if time_diff > 0:
-                # Rate per hour
-                rate_per_hour = (value_diff / time_diff) * 3600
-                if rate_per_hour > config['max_rate_per_hour']:
-                    msg = f"Rate too high: {rate_per_hour:.2f} m³/h (max: {config['max_rate_per_hour']})"
-                    warnings.append(msg)
-                    logger.warning(msg)
-
-                # Rate per minute
+                # Rate per minute - immediate rejection using last known good value
                 rate_per_minute = (value_diff / time_diff) * 60
                 if rate_per_minute > config['max_rate_per_minute']:
-                    msg = f"Rate too high: {rate_per_minute:.4f} m³/min (max: {config['max_rate_per_minute']})"
+                    msg = f"Rate per minute too high: {rate_per_minute:.4f} m³/min (max: {config['max_rate_per_minute']})"
                     warnings.append(msg)
-                    logger.warning(msg)
+                    logger.error(msg)
+                    return False, warnings
+
+                # Rate per hour - check against history if available
+                rate_per_hour = (value_diff / time_diff) * 3600
+                if rate_per_hour > config['max_rate_per_hour']:
+                    # If we have history, verify the rate is consistently high
+                    if len(self.rate_history) >= 2:
+                        avg_rate = self._calculate_average_rate_per_hour()
+                        if avg_rate is not None and avg_rate > config['max_rate_per_hour']:
+                            msg = f"Rate per hour too high: {rate_per_hour:.2f} m³/h (avg: {avg_rate:.2f}, max: {config['max_rate_per_hour']})"
+                            warnings.append(msg)
+                            logger.error(msg)
+                            return False, warnings
+                        else:
+                            # Single spike, warn but accept
+                            msg = f"Rate spike: {rate_per_hour:.2f} m³/h (avg: {avg_rate:.2f if avg_rate else 'N/A'}, max: {config['max_rate_per_hour']})"
+                            warnings.append(msg)
+                            logger.warning(msg)
+                    else:
+                        # No history yet, warn but accept
+                        msg = f"Rate per hour high (no history): {rate_per_hour:.2f} m³/h (max: {config['max_rate_per_hour']})"
+                        warnings.append(msg)
+                        logger.warning(msg)
 
         return True, warnings
+
+    def _add_to_rate_history(self, value: float) -> None:
+        """Add a reading to rate history."""
+        self.rate_history.append((value, datetime.now()))
+        # Keep only the last N readings
+        if len(self.rate_history) > self.rate_history_size:
+            self.rate_history = self.rate_history[-self.rate_history_size:]
+
+    def _calculate_average_rate_per_hour(self) -> Optional[float]:
+        """Calculate average rate per hour from history."""
+        if len(self.rate_history) < 2:
+            return None
+
+        # Calculate rate from oldest to newest in history
+        oldest_value, oldest_time = self.rate_history[0]
+        newest_value, newest_time = self.rate_history[-1]
+
+        time_diff = (newest_time - oldest_time).total_seconds()
+        if time_diff <= 0:
+            return None
+
+        value_diff = newest_value - oldest_value
+        rate_per_hour = (value_diff / time_diff) * 3600
+        return rate_per_hour
 
     async def save_low_confidence(self, image_id: str, image_bytes: bytes,
                                   prediction: Dict) -> None:
@@ -441,6 +490,10 @@ class WatermeterService:
                 if is_valid:
                     self.previous_value = total_value
                     self.last_update_time = datetime.now()
+                    self.consecutive_rejections = 0  # Reset rejection counter
+
+                    # Add to rate history for plausibility checks
+                    self._add_to_rate_history(total_value)
 
                     # Persist state to disk
                     if self.state_store:
@@ -456,10 +509,22 @@ class WatermeterService:
                     # Publish to MQTT
                     await self.publish_to_mqtt(total_value, all_warnings, predictions)
                 else:
+                    self.consecutive_rejections += 1
                     self.current_state['status'] = 'error'
                     self.current_state['warnings'] = all_warnings
                     self.current_state['total_value'] = total_value
-                    logger.error(f"✗ Reading rejected: {total_value:.4f} m³")
+                    logger.error(f"✗ Reading rejected: {total_value:.4f} m³ (consecutive: {self.consecutive_rejections})")
+
+                    # Check for stuck state
+                    if self.consecutive_rejections >= self.max_consecutive_rejections:
+                        stuck_msg = (
+                            f"STUCK: {self.consecutive_rejections} consecutive rejections. "
+                            f"Previous value: {self.previous_value:.4f}, Current: {total_value:.4f}. "
+                            f"Consider using /reset if previous value is incorrect."
+                        )
+                        all_warnings.append(stuck_msg)
+                        self.current_state['warnings'] = all_warnings
+                        logger.error(stuck_msg)
 
                 logger.info("=" * 60)
 
@@ -531,10 +596,12 @@ class WatermeterService:
         logger.info(f"Published to MQTT: {topic}")
 
     def reset_previous_value(self) -> None:
-        """Reset the previous value (for meter replacement)."""
-        logger.info("Resetting previous value")
+        """Reset the previous value (for meter replacement or stuck state)."""
+        logger.info("Resetting previous value, rate history, and rejection counter")
         self.previous_value = None
         self.last_update_time = None
+        self.rate_history = []
+        self.consecutive_rejections = 0
 
         # Clear persisted state
         if self.state_store:

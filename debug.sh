@@ -61,7 +61,7 @@ fi
 docker run -it --rm \
   --name wmi_full \
   $DRI_FLAGS \
-  -p 8001:8001 \
+  -p 8002:8001 \
   -v $(pwd)/config:/config \
   -v $(pwd)/data:/data \
   -v ./arrows/:/training/arrows \
