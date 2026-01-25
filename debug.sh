@@ -47,10 +47,20 @@ rm -rf ./config
 mkdir -p ./config ./data
 
 echo "Starting container..."
+
+# Check if GPU device exists
+DRI_DEVICE="/dev/dri/renderD128"
+DRI_FLAGS=""
+if [[ -e "$DRI_DEVICE" ]]; then
+  echo "GPU device found, enabling hardware acceleration..."
+  DRI_FLAGS="--device $DRI_DEVICE:$DRI_DEVICE --group-add=$(stat -c "%g" $DRI_DEVICE)"
+else
+  echo "No GPU device found, running in CPU-only mode..."
+fi
+
 docker run -it --rm \
   --name wmi_full \
-  --device /dev/dri/renderD128:/dev/dri/renderD128 \
-  --group-add=$(stat -c "%g" /dev/dri/renderD128) \
+  $DRI_FLAGS \
   -p 8001:8001 \
   -v $(pwd)/config:/config \
   -v $(pwd)/data:/data \

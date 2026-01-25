@@ -18,12 +18,45 @@ except ImportError:
     ONNX_AVAILABLE = False
 
 
-def check_cuda_available() -> bool:
-    """Check if CUDA is available for ONNX Runtime."""
+def check_cuda_available() -> tuple[bool, str]:
+    """
+    Check if CUDA is available and working for ONNX Runtime.
+
+    Returns:
+        (is_available, message): Tuple of availability status and descriptive message
+    """
     if not ONNX_AVAILABLE:
-        return False
+        return False, "onnxruntime not installed"
+
     providers = ort.get_available_providers()
-    return 'CUDAExecutionProvider' in providers
+    if 'CUDAExecutionProvider' not in providers:
+        return False, "CUDAExecutionProvider not in available providers"
+
+    # Try to actually create a session with CUDA to verify it works
+    try:
+        import tempfile
+        import onnx
+        from onnx import helper, TensorProto
+
+        # Create a minimal ONNX model for testing
+        node = helper.make_node('Identity', ['input'], ['output'])
+        graph = helper.make_graph([node], 'test',
+                                   [helper.make_tensor_value_info('input', TensorProto.FLOAT, [1, 3, 64, 64])],
+                                   [helper.make_tensor_value_info('output', TensorProto.FLOAT, [1, 3, 64, 64])])
+        model = helper.make_model(graph)
+
+        with tempfile.NamedTemporaryFile(suffix='.onnx', delete=True) as f:
+            onnx.save(model, f.name)
+            # Try to create a session with CUDA
+            session = ort.InferenceSession(f.name, providers=['CUDAExecutionProvider'])
+            # Check which provider is actually being used
+            actual_providers = session.get_providers()
+            if 'CUDAExecutionProvider' in actual_providers:
+                return True, "CUDA is working"
+            else:
+                return False, f"CUDA failed to initialize, using: {actual_providers[0]}"
+    except Exception as e:
+        return False, f"CUDA test failed: {str(e)}"
 
 
 class DigitClassifier:
@@ -185,12 +218,14 @@ def main():
     print("=" * 100)
 
     # Check for CUDA availability
-    use_cuda = check_cuda_available()
+    use_cuda, cuda_message = check_cuda_available()
     if use_cuda:
-        print("\n✓ CUDA detected - using ONNX Runtime with CUDA")
+        print(f"\n✓ CUDA detected - using ONNX Runtime with CUDA")
+        print(f"  Status: {cuda_message}")
         backend = "ONNX+CUDA"
     else:
-        print("\n✗ CUDA not available - using OpenVINO with AUTO device")
+        print(f"\n✗ CUDA not available - using OpenVINO with AUTO device")
+        print(f"  Reason: {cuda_message}")
         backend = "OpenVINO+AUTO"
 
     # Discover all models

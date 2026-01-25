@@ -1,12 +1,13 @@
 __pycache__/
 .ipynb_checkpoints/
+venv
 
 # Training data and models (in any subfolder)
 **/dataset/
 **/ov_model/
 **/ground_truth/
 **/input/
-**/selected/
+# **/selected/ the one selected model is uploaded.
 
 # Build artifacts
 *.onnx

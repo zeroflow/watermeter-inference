@@ -17,6 +17,7 @@ RSYNC_EXCLUDES = [
     "dataset_100",
     "venv",
     "ov_model",
+    "input"
 ]
 
 
@@ -34,8 +35,8 @@ def is_server():
 
 def sync_folder(folder_name: str):
     """Sync a folder from server to local machine."""
-    remote_path = f"{SERVER_USER}@{SERVER_IP}:{SERVER_BASE_PATH}/{folder_name}"
-    local_path = f"{LOCAL_BASE_PATH}/{folder_name}"
+    remote_path = f"{SERVER_USER}@{SERVER_IP}:{SERVER_BASE_PATH}/{folder_name}/"
+    local_path = f"{LOCAL_BASE_PATH}/{folder_name}/"
 
     cmd = ["rsync", "-avz", "--progress"]
     for exclude in RSYNC_EXCLUDES:

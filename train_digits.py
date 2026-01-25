@@ -31,7 +31,7 @@ MODEL_NAMES = [
   #'efficientnet_b3', # 92.0% acc, 1.5% low-conf, beaten by lite0
   #'efficientnet_b4', # 92.2% acc, 1.7% low-conf, no advantage over lite0
   # 'efficientnet_b5',  # Consistently underperforms b3/b4, higher low-confidence rate
-  'efficientnet_lite0',
+  #'efficientnet_lite0',
   # 'efficientnetv2_rw_m',  # Slower than rw_s, worse metrics
   #'efficientnetv2_rw_s',
   # 'mobilenetv3_large_100',  # Worse than efficientnet_lite0 at similar speed
@@ -40,7 +40,7 @@ MODEL_NAMES = [
   # 'resnext101_64x4d',  # 2x slower than resnext50, worse accuracy
   'resnext50_32x4d',
   # 'convnext_tiny',  # not supported by ONNX, too new
-  'regnetx_032',  # new - efficient alternative to ResNet/EfficientNet
+  #'regnetx_032',  # new - efficient alternative to ResNet/EfficientNet
 ]
 EPOCHS = 20
 BATCH_SIZE = 16

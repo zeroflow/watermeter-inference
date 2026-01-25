@@ -27,25 +27,46 @@ from sklearn.utils.class_weight import compute_class_weight
 
 
 # Configuration
-RESOLUTIONS = [96, 128] #[96, 128, 144, 160, 192]
+# RESOLUTIONS = [96, 128] #[96, 128, 144, 160, 192]
+# STEPS_LIST = [1.0] #[1.0, 0.5, 0.2, 0.1]  # 1.0 = 10 classes, 0.5 = 20 classes, 0.2 = 50 classes, 0.1 = 100 classes
+# MODEL_NAMES = [
+# #   'densenet121',
+# #   'densenet169',
+# #   'densenet201',
+#    'efficientnet_b2',
+# #   'efficientnet_b3',
+# #   'efficientnet_b4',
+# #   'efficientnet_b5',
+# #   'efficientnet_lite0',
+# #   'efficientnetv2_rw_m',
+#    'efficientnetv2_rw_s',
+#    'mobilenetv3_large_100',
+# #   'mobilenetv3_small_100',
+# #   'resnet50',
+# #   'resnext101_64x4d',
+# #   'resnext50_32x4d',
+# ]
+
+RESOLUTIONS = [128] #[96, 128, 144, 160, 192]
 STEPS_LIST = [1.0] #[1.0, 0.5, 0.2, 0.1]  # 1.0 = 10 classes, 0.5 = 20 classes, 0.2 = 50 classes, 0.1 = 100 classes
 MODEL_NAMES = [
 #   'densenet121',
 #   'densenet169',
 #   'densenet201',
-   'efficientnet_b2',
+#   'efficientnet_b2',
 #   'efficientnet_b3',
 #   'efficientnet_b4',
 #   'efficientnet_b5',
 #   'efficientnet_lite0',
 #   'efficientnetv2_rw_m',
    'efficientnetv2_rw_s',
-   'mobilenetv3_large_100',
+#   'mobilenetv3_large_100',
 #   'mobilenetv3_small_100',
 #   'resnet50',
 #   'resnext101_64x4d',
 #   'resnext50_32x4d',
 ]
+
 EPOCHS = 20
 BATCH_SIZE = 16
 LEARNING_RATE = 1e-3

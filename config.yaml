@@ -52,7 +52,7 @@ homeassistant:
 # Inference Settings
 inference:
   confidence_threshold: 0.8
-  device: "GPU"  # CPU, GPU, or AUTO
+  device: "AUTO"  # CPU, GPU, or AUTO
 
   # Digits model settings
   digits_model: "/app/models/digits/model_digits_resnext50_32x4d_r128.xml"
