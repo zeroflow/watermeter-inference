@@ -35,9 +35,9 @@ COPY app.py watermeter_service.py persistence.py inference.py /app/
 COPY templates/ /app/templates/
 COPY static/ /app/static/
 
-# Copy all available models (allows users to switch models via config)
-COPY digits/ov_model/ /app/models/digits/
-COPY arrows/ov_model/ /app/models/arrows/
+# Copy selected models (run ./debug.sh before docker build)
+COPY digits/selected/ /app/models/digits/
+COPY arrows/selected/ /app/models/arrows/
 
 # Copy default configuration
 COPY config.yaml /config_default/config.yaml

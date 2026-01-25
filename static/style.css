@@ -70,6 +70,7 @@ header h1 {
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    text-decoration: none;
 }
 
 .btn-primary {
@@ -214,6 +215,12 @@ main {
     background: rgba(217, 119, 6, 0.3);
 }
 
+.status.error,
+.status.warning,
+.status.none {
+    display: none;
+}
+
 /* Warnings */
 .warnings {
     background: #fef3c7;
@@ -266,7 +273,6 @@ main {
 }
 
 .image-card:hover {
-    transform: translateY(-4px);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
 }
 

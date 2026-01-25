@@ -1,8 +1,12 @@
-__pycache__
-.ipynb_checkpoints
-dataset
-dataset_100
-ov_model
+__pycache__/
+.ipynb_checkpoints/
+
+# Training data and models (in any subfolder)
+**/dataset/
+**/ov_model/
+**/ground_truth/
+**/input/
+**/selected/
+
+# Build artifacts
 *.onnx
-ground_truth
-input

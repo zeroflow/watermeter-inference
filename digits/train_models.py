@@ -21,25 +21,25 @@ from sklearn.utils.class_weight import compute_class_weight
 RESOLUTION = 144
 NUM_CLASSES = 11  # 0-9 + NAN
 MODEL_NAMES = [
-  'densenet121',
+  #'densenet121', # 1.9% low-conf vs 0.5% for 169/resnext50, no advantage
   'densenet169',
   # 'densenet201',  # Slower than 169, worse accuracy
-  'efficientnet_b2',
-  'efficientnet_b3',
-  'efficientnet_b4',
+  #'efficientnet_b2', # 91.0% acc, worse than b3/b4/lite0
+  #'efficientnet_b3', # 92.0% acc, 1.5% low-conf, beaten by lite0
+  #'efficientnet_b4', # 92.2% acc, 1.7% low-conf, no advantage over lite0
   # 'efficientnet_b5',  # Consistently underperforms b3/b4, higher low-confidence rate
   'efficientnet_lite0',
   # 'efficientnetv2_rw_m',  # Slower than rw_s, worse metrics
   'efficientnetv2_rw_s',
   # 'mobilenetv3_large_100',  # Worse than efficientnet_lite0 at similar speed
   # 'mobilenetv3_small_100',  # Catastrophic failure on some configs (45.5% digits)
-  'resnet50',
+  # 'resnet50', # 91.5% acc, worse than top tier
   # 'resnext101_64x4d',  # 2x slower than resnext50, worse accuracy
   'resnext50_32x4d',
-  'convnext_tiny',  # new - modern CNN, potential improvement over EfficientNet
+  # 'convnext_tiny',  # not supported by ONNX, too new
   'regnetx_032',  # new - efficient alternative to ResNet/EfficientNet
 ]
-EPOCHS = 10
+EPOCHS = 20
 BATCH_SIZE = 16
 LEARNING_RATE = 1e-3
 
@@ -224,9 +224,11 @@ def train_model(model_name: str, resolution: int, epochs: int, train_loader, val
     print(f"\nTraining for {epochs} epochs...")
     train_losses = []
     val_accs = []
+    best_val_acc = 0
     best_val_loss = float('inf')
     best_epoch = 0
     best_model_state = None
+
 
     total_start = time.time()
 
@@ -265,7 +267,8 @@ def train_model(model_name: str, resolution: int, epochs: int, train_loader, val
         val_acc = 100 * correct / total
         val_accs.append(val_acc)
 
-        if avg_loss < best_val_loss:
+        if val_acc > best_val_acc:
+            best_val_acc = val_acc
             best_val_loss = avg_loss
             best_epoch = epoch
             best_model_state = model.state_dict().copy()
@@ -278,7 +281,7 @@ def train_model(model_name: str, resolution: int, epochs: int, train_loader, val
 
     # Load best model
     model.load_state_dict(best_model_state)
-    print(f"✓ Best model from epoch {best_epoch+1} with {best_val_loss:.3f} loss")
+    print(f"✓ Best model from epoch {best_epoch+1} with {best_val_acc:.2f}% acc")
 
     # Save training plot
     print(f"\n[1/4] Saving training plot...")
@@ -406,9 +409,9 @@ def train_model(model_name: str, resolution: int, epochs: int, train_loader, val
         'model_name': model_name,
         'model_filename': model_filename,
         'num_params': num_params,
+        'best_val_acc': best_val_acc,
         'best_val_loss': best_val_loss,
         'best_epoch': best_epoch,
-        'final_val_acc': val_accs[-1],
         'training_time': total_time
     }
 
@@ -469,18 +472,18 @@ def main():
     print("\n" + "="*80)
     print("TRAINING SUMMARY")
     print("="*80)
-    print(f"\n{'Model':<30} {'Params':<12} {'Val Loss':<12} {'Val Acc':<12} {'Time':<10}")
+    print(f"\n{'Model':<30} {'Params':<12} {'Val Acc':<12} {'Val Loss':<12} {'Time':<10}")
     print("-"*80)
     for r in results:
-        print(f"{r['model_name']:<30} {r['num_params']:>11,} {r['best_val_loss']:>11.4f} "
-              f"{r['final_val_acc']:>10.2f}% {r['training_time']:>8.1f}s")
+        print(f"{r['model_name']:<30} {r['num_params']:>11,} {r['best_val_acc']:>10.2f}% "
+              f"{r['best_val_loss']:>11.4f} {r['training_time']:>8.1f}s")
 
     # Best model
     if results:
-        best = max(results, key=lambda x: x['final_val_acc'])
+        best = max(results, key=lambda x: x['best_val_acc'])
         print("\n" + "="*80)
         print(f"✓ BEST MODEL: {best['model_name']}")
-        print(f"  Validation Accuracy: {best['final_val_acc']:.2f}%")
+        print(f"  Validation Accuracy: {best['best_val_acc']:.2f}%")
         print(f"  Validation Loss: {best['best_val_loss']:.4f}")
         print(f"  Parameters: {best['num_params']:,}")
         print("="*80)

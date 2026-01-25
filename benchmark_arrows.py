@@ -14,19 +14,20 @@ import re
 class ArrowClassifier:
     """Lightweight classifier for benchmarking."""
 
-    def __init__(self, model_path: str, classes: List[str], device: str = 'GPU'):
+    def __init__(self, model_path: str, classes: List[str], resolution: int = 144, device: str = 'GPU'):
         core = ov.Core()
         model = core.read_model(model_path)
         self.compiled = core.compile_model(model, device)
         self.classes = classes
         self.model_path = model_path
         self.num_classes = len(classes)
+        self.resolution = resolution
 
     def preprocess(self, image_path: str) -> np.ndarray:
         """Preprocess image for inference."""
         img = cv2.imread(str(image_path))
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        img = cv2.resize(img, (144, 144))
+        img = cv2.resize(img, (self.resolution, self.resolution))
         img = img.astype(np.float32) / 255.0
         img = (img - [0.485, 0.456, 0.406]) / [0.229, 0.224, 0.225]
         return img.transpose(2, 0, 1)[np.newaxis, ...]
@@ -41,6 +42,7 @@ class ArrowClassifier:
         start_time = time.perf_counter()
         img = self.preprocess(image_path)
         result = self.compiled([img])[self.compiled.output(0)][0]
+        result = result - result.max()  # numerical stability
         probs = np.exp(result) / np.exp(result).sum()
         idx = probs.argmax()
         inference_time = time.perf_counter() - start_time
@@ -210,13 +212,13 @@ def main():
     for meta in model_metadata:
         try:
             classes = generate_classes(meta['num_classes'])
-            model = ArrowClassifier(meta['filepath'], classes)
+            model = ArrowClassifier(meta['filepath'], classes, resolution=meta['resolution'])
             models.append({
                 'classifier': model,
                 'metadata': meta,
-                'label': f"{meta['model_name']}_c{meta['num_classes']}"
+                'label': f"{meta['model_name']}_c{meta['num_classes']}_r{meta['resolution']}"
             })
-            print(f"  ✓ {meta['model_name']} ({meta['num_classes']} classes)")
+            print(f"  ✓ {meta['model_name']} ({meta['num_classes']} classes, {meta['resolution']}px)")
         except Exception as e:
             print(f"  ✗ Failed to load {meta['model_name']}: {e}")
 

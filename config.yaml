@@ -54,13 +54,15 @@ inference:
   confidence_threshold: 0.8
   device: "GPU"  # CPU, GPU, or AUTO
 
-  # Model paths (container paths)
-  digits_model: "/app/models/digits/model_digits_resnext50_32x4d_r144.xml"
-  arrows_model: "/app/models/arrows/model_efficientnetv2_rw_m_c20_r144.xml"
-
-  # Model classes
+  # Digits model settings
+  digits_model: "/app/models/digits/model_digits_mobilenetv3_large_100_r144.xml"
   digits_classes: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'NAN']
-  arrows_classes: ['0.0', '0.5', '1.0', '1.5', '2.0', '2.5', '3.0', '3.5', '4.0', '4.5', '5.0', '5.5', '6.0', '6.5', '7.0', '7.5', '8.0', '8.5', '9.0', '9.5']
+  digits_resolution: 144
+
+  # Arrows model settings
+  arrows_model: "/app/models/arrows/model_arrows_mobilenetv3_large_100_c10_r96.xml"
+  arrows_classes: ['0.0', '1.0', '2.0', '3.0', '4.0', '5.0', '6.0', '7.0', '8.0', '9.0']
+  arrows_resolution: 96
 
 # Plausibility Checks
 plausibility:
@@ -68,10 +70,12 @@ plausibility:
   enable_rate_limit: true
   max_rate_per_hour: 5.0  # m³/hour - unrealistic high usage
   max_rate_per_minute: 1.0  # m³/minute
+  enable_consistency_check: true  # Check half/upper consistency between adjacent positions
 
 # Low Confidence Handling
 low_confidence:
-  save_enabled: true
+  warn_enabled: true  # Show warnings for low confidence predictions
+  save_enabled: true  # Save low confidence images for training
   save_path: "/training"
   save_rate_limit: 3600  # seconds (1 per hour per ID)
 

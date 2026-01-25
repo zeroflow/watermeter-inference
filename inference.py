@@ -11,17 +11,18 @@ import httpx
 import yaml
 
 class Classifier:
-    def __init__(self, model_path, classes, label_config_tag, device='GPU'):
+    def __init__(self, model_path, classes, resolution, label_config_tag, device='GPU'):
         core = ov.Core()
         model = core.read_model(model_path)
         self.compiled = core.compile_model(model, device)
         self.classes = classes
+        self.resolution = resolution
         self.label_config_tag = label_config_tag
     
     def preprocess(self, image_path):
         img = cv2.imread(str(image_path))
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        img = cv2.resize(img, (144, 144))
+        img = cv2.resize(img, (self.resolution, self.resolution))
         img = img.astype(np.float32) / 255.0
         img = (img - [0.485, 0.456, 0.406]) / [0.229, 0.224, 0.225]
         return img.transpose(2, 0, 1)[np.newaxis, ...]
@@ -47,6 +48,7 @@ app = FastAPI()
 digits_classifier = Classifier(
     inference_config['digits_model'],
     inference_config['digits_classes'],
+    inference_config['digits_resolution'],
     'digit',
     device=inference_config.get('device', 'GPU')
 )
@@ -54,6 +56,7 @@ digits_classifier = Classifier(
 arrows_classifier = Classifier(
     inference_config['arrows_model'],
     inference_config['arrows_classes'],
+    inference_config['arrows_resolution'],
     'arrow_value',
     device=inference_config.get('device', 'GPU')
 )

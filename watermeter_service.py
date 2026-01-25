@@ -240,6 +240,10 @@ class WatermeterService:
         """
         warnings = []
 
+        # Check if consistency check is enabled
+        if not self.config['plausibility'].get('enable_consistency_check', True):
+            return warnings
+
         # Collect all values in order
         all_ids = self.config['images']['digits'] + self.config['images']['arrows']
         all_values = []
@@ -405,17 +409,21 @@ class WatermeterService:
 
                 # 6. Handle low confidence images
                 threshold = self.config['inference']['confidence_threshold']
+                low_conf_config = self.config['low_confidence']
                 for pred in predictions.values():
                     if pred['confidence'] < threshold:
                         logger.warning(f"Low confidence: {pred['id']} = {pred['class']} ({pred['confidence']:.3f})")
+                        # Save low confidence images if enabled
                         await self.save_low_confidence(
                             pred['id'],
                             pred['image_bytes'],
                             pred
                         )
-                        all_warnings.append(
-                            f"Low confidence: {pred['id']} = {pred['class']} ({pred['confidence']*100:.1f}%)"
-                        )
+                        # Add warning if enabled
+                        if low_conf_config.get('warn_enabled', True):
+                            all_warnings.append(
+                                f"Low confidence: {pred['id']} = {pred['class']} ({pred['confidence']*100:.1f}%)"
+                            )
 
                 # 7. Update state
                 # Always store predictions (even on error) so images are displayed

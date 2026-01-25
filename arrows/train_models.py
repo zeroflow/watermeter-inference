@@ -23,8 +23,8 @@ from sklearn.utils.class_weight import compute_class_weight
 
 
 # Configuration
-RESOLUTION = 144
-STEPS = 1.0  # 1.0 = 10 classes, 0.5 = 20 classes, 0.1 = 100 classes
+RESOLUTIONS = [96, 128, 144, 160, 192]
+STEPS_LIST = [1.0, 0.5, 0.2, 0.1]  # 1.0 = 10 classes, 0.5 = 20 classes, 0.2 = 50 classes, 0.1 = 100 classes
 MODEL_NAMES = [
   'densenet121',
   'densenet169',
@@ -42,7 +42,7 @@ MODEL_NAMES = [
   'resnext101_64x4d',
   'resnext50_32x4d',
 ]
-EPOCHS = 10
+EPOCHS = 20
 BATCH_SIZE = 16
 LEARNING_RATE = 1e-3
 
@@ -362,9 +362,11 @@ def train_model(model_name: str, resolution: int, epochs: int, train_loader, val
     print(f"\nTraining for {epochs} epochs...")
     train_losses = []
     val_accs = []
+    best_val_acc = 0
     best_val_loss = float('inf')
     best_epoch = 0
     best_model_state = None
+
 
     total_start = time.time()
 
@@ -403,7 +405,8 @@ def train_model(model_name: str, resolution: int, epochs: int, train_loader, val
         val_acc = 100 * correct / total
         val_accs.append(val_acc)
 
-        if avg_loss < best_val_loss:
+        if val_acc > best_val_acc:
+            best_val_acc = val_acc
             best_val_loss = avg_loss
             best_epoch = epoch
             best_model_state = model.state_dict().copy()
@@ -416,7 +419,7 @@ def train_model(model_name: str, resolution: int, epochs: int, train_loader, val
 
     # Load best model
     model.load_state_dict(best_model_state)
-    print(f"✓ Best model from epoch {best_epoch+1} with {best_val_loss:.3f} loss")
+    print(f"✓ Best model from epoch {best_epoch+1} with {best_val_acc:.2f}% acc")
 
     # Save training plot
     print(f"\n[1/5] Saving training plot...")
@@ -544,9 +547,9 @@ def train_model(model_name: str, resolution: int, epochs: int, train_loader, val
         'model_name': model_name,
         'model_filename': model_filename,
         'num_params': num_params,
+        'best_val_acc': best_val_acc,
         'best_val_loss': best_val_loss,
         'best_epoch': best_epoch,
-        'final_val_acc': val_accs[-1],
         'training_time': total_time
     }
 
@@ -556,72 +559,96 @@ def main():
     print("="*80)
     print("ARROW DETECTION MODEL TRAINING")
     print("="*80)
-    print(f"\nModels to train: {len(MODEL_NAMES)}")
+
+    total_configs = len(STEPS_LIST) * len(RESOLUTIONS) * len(MODEL_NAMES)
+    print(f"\nConfigurations to train: {total_configs}")
+    print(f"  Steps: {STEPS_LIST}")
+    print(f"  Resolutions: {RESOLUTIONS}")
+    print(f"  Models: {len(MODEL_NAMES)}")
     for i, name in enumerate(MODEL_NAMES, 1):
-        print(f"  {i}. {name}")
-    print(f"\nStep size: {STEPS} (results in {int(10/STEPS)} classes)")
+        print(f"    {i}. {name}")
 
     # Setup device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Device: {device}")
 
-    # Create subsampled dataset from ground_truth
-    create_subsampled_dataset(GROUND_TRUTH_DIR, DATASET_DIR, STEPS)
+    # Track all results
+    all_results = []
+    config_idx = 0
 
-    # Analyze dataset
-    analyze_dataset(DATASET_DIR)
+    # Outer loop: steps (dataset needs to be recreated for each step)
+    for step_idx, step in enumerate(STEPS_LIST, 1):
+        print("\n" + "#"*80)
+        print(f"# STEP {step_idx}/{len(STEPS_LIST)}: {step} ({int(10/step)} classes)")
+        print("#"*80)
 
-    # Create data loaders
-    print("\n" + "="*80)
-    print("CREATING DATA LOADERS")
-    print("="*80)
-    train_loader, val_loader, dataset, train_idx = create_data_loaders(
-        DATASET_DIR, RESOLUTION, BATCH_SIZE
-    )
+        # Create subsampled dataset from ground_truth
+        create_subsampled_dataset(GROUND_TRUTH_DIR, DATASET_DIR, step)
 
-    # Compute class weights
-    class_weights_tensor = compute_class_weights(dataset, train_idx, device)
+        # Analyze dataset
+        analyze_dataset(DATASET_DIR)
 
-    # Train all models
-    results = []
-    for i, model_name in enumerate(MODEL_NAMES, 1):
-        print(f"\n{'='*80}")
-        print(f"MODEL {i}/{len(MODEL_NAMES)}")
-        print(f"{'='*80}")
+        # Middle loop: resolutions
+        for res_idx, resolution in enumerate(RESOLUTIONS, 1):
+            print("\n" + "+"*80)
+            print(f"+ RESOLUTION {res_idx}/{len(RESOLUTIONS)}: {resolution}px (step={step})")
+            print("+"*80)
 
-        try:
-            result = train_model(
-                model_name, RESOLUTION, EPOCHS, train_loader, val_loader,
-                dataset, class_weights_tensor, device, OV_MODEL_DIR
+            # Create data loaders for this resolution
+            print("\n" + "="*80)
+            print("CREATING DATA LOADERS")
+            print("="*80)
+            train_loader, val_loader, dataset, train_idx = create_data_loaders(
+                DATASET_DIR, resolution, BATCH_SIZE
             )
-            results.append(result)
-        except Exception as e:
-            print(f"\n✗ Error training {model_name}: {e}")
-            import traceback
-            traceback.print_exc()
-            continue
+
+            # Compute class weights
+            class_weights_tensor = compute_class_weights(dataset, train_idx, device)
+
+            # Inner loop: models
+            for model_idx, model_name in enumerate(MODEL_NAMES, 1):
+                config_idx += 1
+                print(f"\n{'='*80}")
+                print(f"CONFIG {config_idx}/{total_configs}: {model_name} (step={step}, res={resolution})")
+                print(f"{'='*80}")
+
+                try:
+                    result = train_model(
+                        model_name, resolution, EPOCHS, train_loader, val_loader,
+                        dataset, class_weights_tensor, device, OV_MODEL_DIR
+                    )
+                    result['step'] = step
+                    result['resolution'] = resolution
+                    all_results.append(result)
+                except Exception as e:
+                    print(f"\n✗ Error training {model_name}: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    continue
 
     # Summary
     print("\n" + "="*80)
     print("TRAINING SUMMARY")
     print("="*80)
-    print(f"\n{'Model':<30} {'Params':<12} {'Val Loss':<12} {'Val Acc':<12} {'Time':<10}")
-    print("-"*80)
-    for r in results:
-        print(f"{r['model_name']:<30} {r['num_params']:>11,} {r['best_val_loss']:>11.4f} "
-              f"{r['final_val_acc']:>10.2f}% {r['training_time']:>8.1f}s")
+    print(f"\n{'Model':<30} {'Step':<6} {'Res':<6} {'Params':<12} {'Val Acc':<12} {'Val Loss':<12} {'Time':<10}")
+    print("-"*90)
+    for r in all_results:
+        print(f"{r['model_name']:<30} {r['step']:<6} {r['resolution']:<6} {r['num_params']:>11,} {r['best_val_acc']:>10.2f}% "
+              f"{r['best_val_loss']:>11.4f} {r['training_time']:>8.1f}s")
 
     # Best model
-    if results:
-        best = max(results, key=lambda x: x['final_val_acc'])
+    if all_results:
+        best = max(all_results, key=lambda x: x['best_val_acc'])
         print("\n" + "="*80)
         print(f"✓ BEST MODEL: {best['model_name']}")
-        print(f"  Validation Accuracy: {best['final_val_acc']:.2f}%")
+        print(f"  Step: {best['step']} ({int(10/best['step'])} classes)")
+        print(f"  Resolution: {best['resolution']}px")
+        print(f"  Validation Accuracy: {best['best_val_acc']:.2f}%")
         print(f"  Validation Loss: {best['best_val_loss']:.4f}")
         print(f"  Parameters: {best['num_params']:,}")
         print("="*80)
 
-    print("\n✓ All models trained successfully!")
+    print(f"\n✓ All {len(all_results)} models trained successfully!")
 
 
 if __name__ == "__main__":

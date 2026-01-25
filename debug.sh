@@ -1,6 +1,44 @@
 #!/bin/bash
 set -e
 
+CONFIG_FILE="config.yaml"
+
+echo "Preparing selected models from config.yaml..."
+rm -rf digits/selected arrows/selected
+mkdir -p digits/selected arrows/selected
+
+# Extract model paths from config.yaml
+DIGITS_MODEL=$(grep 'digits_model:' "$CONFIG_FILE" | sed 's/.*\/app\/models\/digits\///' | tr -d '"' | tr -d "'" | xargs)
+ARROWS_MODEL=$(grep 'arrows_model:' "$CONFIG_FILE" | sed 's/.*\/app\/models\/arrows\///' | tr -d '"' | tr -d "'" | xargs)
+
+DIGITS_BASE="${DIGITS_MODEL%.xml}"
+ARROWS_BASE="${ARROWS_MODEL%.xml}"
+
+echo "  Digits: $DIGITS_BASE"
+echo "  Arrows: $ARROWS_BASE"
+
+# Validate model files exist
+MISSING=0
+for f in "digits/ov_model/${DIGITS_BASE}.xml" "digits/ov_model/${DIGITS_BASE}.bin" \
+         "arrows/ov_model/${ARROWS_BASE}.xml" "arrows/ov_model/${ARROWS_BASE}.bin"; do
+    if [[ ! -f "$f" ]]; then
+        echo "ERROR: Missing model file: $f"
+        MISSING=1
+    fi
+done
+if [[ $MISSING -eq 1 ]]; then
+    echo "Aborting. Check config.yaml model paths."
+    exit 1
+fi
+
+cp "digits/ov_model/${DIGITS_BASE}.xml" digits/selected/
+cp "digits/ov_model/${DIGITS_BASE}.bin" digits/selected/
+cp "arrows/ov_model/${ARROWS_BASE}.xml" arrows/selected/
+cp "arrows/ov_model/${ARROWS_BASE}.bin" arrows/selected/
+
+ls -lh digits/selected/ arrows/selected/
+
+echo ""
 echo "Building watermeter-dashboard..."
 docker build . -t wmi_full
 
