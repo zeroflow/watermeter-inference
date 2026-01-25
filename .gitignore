@@ -11,3 +11,7 @@ venv
 
 # Build artifacts
 *.onnx
+
+# Files from inside the running container
+data/*
+config/*
