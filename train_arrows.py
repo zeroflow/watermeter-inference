@@ -2,8 +2,8 @@
 Train multiple arrow detection models
 Converted from Arrows.ipynb
 """
-import server_detect
-server_detect.handle()
+# import server_detect
+# server_detect.handle()
 
 import json
 import os
@@ -533,9 +533,9 @@ def train_model(model_name: str, resolution: int, epochs: int, train_loader, val
     # Test OpenVINO inference
     print(f"\n[4/4] Testing OpenVINO inference...")
     try:
-        test_img_paths = list(Path('dataset').rglob('*.jpg'))
+        test_img_paths = list(Path('arrows/dataset').rglob('*.jpg'))
         if not test_img_paths:
-            test_img_paths = list(Path('dataset').rglob('*.png'))
+            test_img_paths = list(Path('arrows/dataset').rglob('*.png'))
         if not test_img_paths:
             raise FileNotFoundError("No test images found in dataset folder")
 

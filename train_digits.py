@@ -1,8 +1,8 @@
 """
 Train multiple digit detection models
 """
-import server_detect
-server_detect.handle()
+# import server_detect
+# server_detect.handle()
 
 import random
 import time
