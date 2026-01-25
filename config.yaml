@@ -60,9 +60,9 @@ inference:
   digits_resolution: 128
 
   # Arrows model settings
-  arrows_model: "/app/models/arrows/model_arrows_mobilenetv3_large_100_c10_r96.xml"
+  arrows_model: "/app/models/arrows/model_arrows_efficientnetv2_rw_s_c10_r128.xml"
   arrows_classes: ['0.0', '1.0', '2.0', '3.0', '4.0', '5.0', '6.0', '7.0', '8.0', '9.0']
-  arrows_resolution: 96
+  arrows_resolution: 128
 
 # Plausibility Checks
 plausibility:
