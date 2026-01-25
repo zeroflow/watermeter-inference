@@ -9,6 +9,11 @@ from typing import Optional
 import tempfile
 import httpx
 import yaml
+import re
+import sys
+import logging
+
+logger = logging.getLogger(__name__)
 
 class Classifier:
     def __init__(self, model_path, classes, resolution, label_config_tag, device='GPU'):
@@ -30,6 +35,8 @@ class Classifier:
     def predict(self, image_path):
         img = self.preprocess(image_path)
         result = self.compiled([img])[self.compiled.output(0)][0]
+        # Numerically stable softmax (subtract max to prevent overflow)
+        result = result - result.max()
         probs = np.exp(result) / np.exp(result).sum()
         idx = probs.argmax()
         return {
@@ -37,11 +44,74 @@ class Classifier:
             'confidence': float(probs[idx])
         }
 
+def validate_model_config(model_path: str, model_type: str, classes: list, resolution: int) -> None:
+    """
+    Validate model filename against config values.
+
+    Model filename patterns:
+      - arrows: model_arrows_<model>_c<num_classes>_r<resolution>
+      - digits: model_digits_<model>_r<resolution>
+
+    If filename conforms to pattern, validates that embedded values match config.
+    Logs error and exits if mismatch found.
+    """
+    filename = Path(model_path).stem
+
+    if model_type == 'arrows':
+        # Pattern: model_arrows_<model>_c<num_classes>_r<resolution>
+        pattern = r'^model_arrows_(.+)_c(\d+)_r(\d+)$'
+        match = re.match(pattern, filename)
+        if match:
+            file_num_classes = int(match.group(2))
+            file_resolution = int(match.group(3))
+            config_num_classes = len(classes)
+
+            errors = []
+            if file_num_classes != config_num_classes:
+                errors.append(f"arrows class count mismatch: filename has c{file_num_classes}, config has {config_num_classes} classes")
+            if file_resolution != resolution:
+                errors.append(f"arrows resolution mismatch: filename has r{file_resolution}, config has {resolution}")
+
+            if errors:
+                for error in errors:
+                    logger.error(error)
+                sys.exit(1)
+
+            logger.info(f"Arrows model validated: {filename} (classes={config_num_classes}, resolution={resolution})")
+
+    elif model_type == 'digits':
+        # Pattern: model_digits_<model>_r<resolution>
+        pattern = r'^model_digits_(.+)_r(\d+)$'
+        match = re.match(pattern, filename)
+        if match:
+            file_resolution = int(match.group(2))
+
+            if file_resolution != resolution:
+                logger.error(f"digits resolution mismatch: filename has r{file_resolution}, config has {resolution}")
+                sys.exit(1)
+
+            logger.info(f"Digits model validated: {filename} (resolution={resolution})")
+
+
 # Load configuration
 with open('config.yaml', 'r') as f:
     config = yaml.safe_load(f)
 
 inference_config = config['inference']
+
+# Validate model configurations
+validate_model_config(
+    inference_config['digits_model'],
+    'digits',
+    inference_config['digits_classes'],
+    inference_config['digits_resolution']
+)
+validate_model_config(
+    inference_config['arrows_model'],
+    'arrows',
+    inference_config['arrows_classes'],
+    inference_config['arrows_resolution']
+)
 
 app = FastAPI()
 

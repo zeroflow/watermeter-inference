@@ -55,9 +55,9 @@ inference:
   device: "GPU"  # CPU, GPU, or AUTO
 
   # Digits model settings
-  digits_model: "/app/models/digits/model_digits_mobilenetv3_large_100_r144.xml"
+  digits_model: "/app/models/digits/model_digits_resnext50_32x4d_r128.xml"
   digits_classes: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'NAN']
-  digits_resolution: 144
+  digits_resolution: 128
 
   # Arrows model settings
   arrows_model: "/app/models/arrows/model_arrows_mobilenetv3_large_100_c10_r96.xml"
@@ -70,7 +70,7 @@ plausibility:
   enable_rate_limit: true
   max_rate_per_hour: 5.0  # m³/hour - unrealistic high usage
   max_rate_per_minute: 1.0  # m³/minute
-  enable_consistency_check: true  # Check half/upper consistency between adjacent positions
+  enable_consistency_check: false  # Check half/upper consistency between adjacent positions
 
 # Low Confidence Handling
 low_confidence:
