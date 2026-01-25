@@ -2,6 +2,9 @@
 Train multiple arrow detection models
 Converted from Arrows.ipynb
 """
+import server_detect
+server_detect.handle()
+
 import json
 import os
 import random
@@ -48,9 +51,9 @@ BATCH_SIZE = 16
 LEARNING_RATE = 1e-3
 
 # Paths
-GROUND_TRUTH_DIR = Path('ground_truth')
-DATASET_DIR = Path('dataset')
-OV_MODEL_DIR = Path('ov_model')
+GROUND_TRUTH_DIR = Path('arrows/ground_truth')
+DATASET_DIR = Path('arrows/dataset')
+OV_MODEL_DIR = Path('arrows/ov_model')
 OV_MODEL_DIR.mkdir(exist_ok=True)
 
 
@@ -120,62 +123,62 @@ def create_subsampled_dataset(ground_truth_dir: Path, dataset_dir: Path, step: f
     return dataset_dir
 
 
-def create_dataset_from_annotations(export_file: str, dataset_dir: Path, resolution: int):
-    """Create dataset directory structure from Label Studio annotations."""
-    print("\n" + "="*80)
-    print("CREATING DATASET")
-    print("="*80)
+# def create_dataset_from_annotations(export_file: str, dataset_dir: Path, resolution: int):
+#     """Create dataset directory structure from Label Studio annotations."""
+#     print("\n" + "="*80)
+#     print("CREATING DATASET")
+#     print("="*80)
 
-    with open(export_file) as f:
-        data = json.load(f)
+#     with open(export_file) as f:
+#         data = json.load(f)
 
-    print(f"Total annotations: {len(data)}")
+#     print(f"Total annotations: {len(data)}")
 
-    # Purge existing data
-    if dataset_dir.exists():
-        shutil.rmtree(dataset_dir)
-    dataset_dir.mkdir(exist_ok=True)
+#     # Purge existing data
+#     if dataset_dir.exists():
+#         shutil.rmtree(dataset_dir)
+#     dataset_dir.mkdir(exist_ok=True)
 
-    for item in data:
-        # Extract label
-        annotations = item.get('annotations', [])
-        if not annotations:
-            continue
+#     for item in data:
+#         # Extract label
+#         annotations = item.get('annotations', [])
+#         if not annotations:
+#             continue
 
-        result = annotations[0]['result']
-        if not result:
-            continue
+#         result = annotations[0]['result']
+#         if not result:
+#             continue
 
-        label_float = result[0]['value']['number']
-        #label = f"{label_float:.1f}" # 0.1 steps
-        #label = f"{round(label_float * 5) / 5:.1f}" # 0.2 steps
-        label = f"{round(label_float * 2) / 2:.1f}" # 0.5 steps
-        #label = f"{label_float:.0f}" # 1 steps
-        #label = str(int(label_float)) # 1 steps, round down
+#         label_float = result[0]['value']['number']
+#         #label = f"{label_float:.1f}" # 0.1 steps
+#         #label = f"{round(label_float * 5) / 5:.1f}" # 0.2 steps
+#         label = f"{round(label_float * 2) / 2:.1f}" # 0.5 steps
+#         #label = f"{label_float:.0f}" # 1 steps
+#         #label = str(int(label_float)) # 1 steps, round down
 
-        if label == "10.0":
-            label = "0.0"
+#         if label == "10.0":
+#             label = "0.0"
 
-        # Create class directory
-        class_dir = dataset_dir / label
-        class_dir.mkdir(exist_ok=True)
+#         # Create class directory
+#         class_dir = dataset_dir / label
+#         class_dir.mkdir(exist_ok=True)
 
-        # Extract and copy image
-        img_path = item['data']['image']
-        if '?d=' in img_path:
-            img_path = img_path.split('?d=')[1]
-            img_path = os.path.join("/import", img_path)
+#         # Extract and copy image
+#         img_path = item['data']['image']
+#         if '?d=' in img_path:
+#             img_path = img_path.split('?d=')[1]
+#             img_path = os.path.join("/import", img_path)
 
-        # fix path outside docker
-        img_path = img_path.replace("/import/", "/var/ml/label-studio-data/import/")
+#         # fix path outside docker
+#         img_path = img_path.replace("/import/", "/var/ml/label-studio-data/import/")
 
-        src_file = Path(img_path)
-        if src_file.exists():
-            shutil.copy(src_file, class_dir / src_file.name)
-        else:
-            print(f"✗ Not found: {img_path}")
+#         src_file = Path(img_path)
+#         if src_file.exists():
+#             shutil.copy(src_file, class_dir / src_file.name)
+#         else:
+#             print(f"✗ Not found: {img_path}")
 
-    print(f"✓ Dataset structure created in: {dataset_dir}")
+#     print(f"✓ Dataset structure created in: {dataset_dir}")
 
 
 def analyze_dataset(dataset_dir: Path):
@@ -455,7 +458,7 @@ def train_model(model_name: str, resolution: int, epochs: int, train_loader, val
         model.eval()
         dummy_input = torch.randn(1, 3, resolution, resolution)
 
-        onnx_path = f'{model_filename}.onnx'
+        onnx_path = ov_model_dir / f'{model_filename}.onnx'
 
         torch.onnx.export(
             model,

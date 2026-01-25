@@ -1,0 +1,2 @@
+rsync -avz --no-perms --no-owner --no-group --progress /home/thomas/watermeter-inference/arrows/ov_model/  thomas@192.168.4.35:/home/thomas/watermeter-inference/arrows/ov_model/
+rsync -avz --no-perms --no-owner --no-group --progress /home/thomas/watermeter-inference/digits/ov_model/  thomas@192.168.4.35:/home/thomas/watermeter-inference/digits/ov_model/

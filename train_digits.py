@@ -1,6 +1,9 @@
 """
 Train multiple digit detection models
 """
+import server_detect
+server_detect.handle()
+
 import random
 import time
 from pathlib import Path
@@ -44,8 +47,8 @@ BATCH_SIZE = 16
 LEARNING_RATE = 1e-3
 
 # Paths
-DATASET_DIR = Path('ground_truth')
-OV_MODEL_DIR = Path('ov_model')
+DATASET_DIR = Path('digits/ground_truth')
+OV_MODEL_DIR = Path('digits/ov_model')
 OV_MODEL_DIR.mkdir(exist_ok=True)
 
 
@@ -315,7 +318,7 @@ def train_model(model_name: str, resolution: int, epochs: int, train_loader, val
         model.eval()
         dummy_input = torch.randn(1, 3, resolution, resolution)
 
-        onnx_path = f'{model_filename}.onnx'
+        onnx_path = ov_model_dir / f'{model_filename}.onnx'
 
         torch.onnx.export(
             model,
