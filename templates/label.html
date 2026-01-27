@@ -210,6 +210,27 @@
         .keyboard-shortcuts strong {
             color: var(--text-dark);
         }
+
+        .delete-button {
+            margin-top: 1.5rem;
+            padding: 12px 32px;
+            font-size: 16px;
+            font-weight: 600;
+            color: white;
+            background: #dc3545;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .delete-button:hover {
+            background: #c82333;
+        }
+
+        .delete-button:active {
+            background: #bd2130;
+        }
     </style>
 </head>
 <body>
@@ -274,8 +295,10 @@
                         autofocus>
                 </div>
 
+                <button class="delete-button" onclick="deleteImage()">Delete (Garbage)</button>
+
                 <div class="keyboard-shortcuts">
-                    <strong>Keyboard:</strong> Type the label and press Enter to submit
+                    <strong>Keyboard:</strong> Enter = Submit label | D = Delete image
                 </div>
             </div>
 
@@ -426,6 +449,38 @@
             }
         }
 
+        async function deleteImage() {
+            if (!currentImage) return;
+
+            try {
+                const response = await fetch('/api/label/delete', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        filename: currentImage.filename,
+                        model_type: currentImage.model_type
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showMessage('Deleted', 'success');
+                    setTimeout(() => {
+                        loadNextImage();
+                    }, 300);
+                } else {
+                    showMessage('Error: ' + data.message, 'error');
+                }
+
+            } catch (error) {
+                console.error('Error deleting image:', error);
+                showMessage('Error: ' + error.message, 'error');
+            }
+        }
+
         function validateAndSubmit(value) {
             if (!value) return;
 
@@ -465,6 +520,15 @@
         document.getElementById('label-input').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 validateAndSubmit(this.value);
+            }
+        });
+
+        // Global keyboard shortcut for Delete (D key when input is empty)
+        document.addEventListener('keydown', function(e) {
+            const input = document.getElementById('label-input');
+            if (e.key.toLowerCase() === 'd' && input.value === '' && document.activeElement === input) {
+                e.preventDefault();
+                deleteImage();
             }
         });
 

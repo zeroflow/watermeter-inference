@@ -35,6 +35,12 @@ class LabelSubmission(BaseModel):
     label: str
 
 
+class DeleteSubmission(BaseModel):
+    """Request model for delete submissions."""
+    filename: str
+    model_type: str
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifecycle manager for FastAPI app."""
@@ -301,6 +307,40 @@ async def submit_label(submission: LabelSubmission):
 
     except Exception as e:
         logger.error(f"Error submitting label: {e}", exc_info=True)
+        return JSONResponse({
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }, status_code=500)
+
+
+@app.post("/api/label/delete")
+async def delete_image(submission: DeleteSubmission):
+    """Delete an image (garbage/unusable)."""
+    try:
+        service = get_service()
+        training_path = Path(service.config.get('low_confidence', {}).get('save_path', '/training'))
+
+        # Source path
+        source_path = training_path / submission.model_type / 'input' / submission.filename
+
+        if not source_path.exists():
+            return JSONResponse({
+                "success": False,
+                "message": f"Image not found: {submission.filename}"
+            }, status_code=404)
+
+        # Delete file
+        source_path.unlink()
+
+        logger.info(f"Deleted garbage image: {source_path}")
+
+        return JSONResponse({
+            "success": True,
+            "message": f"Image deleted: {submission.filename}"
+        })
+
+    except Exception as e:
+        logger.error(f"Error deleting image: {e}", exc_info=True)
         return JSONResponse({
             "success": False,
             "message": f"Error: {str(e)}"
