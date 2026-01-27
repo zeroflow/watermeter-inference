@@ -313,40 +313,40 @@ class WatermeterService:
                 return False, warnings
 
         # Rate check
-        if config['enable_rate_limit'] and self.last_update_time:
-            time_diff = (datetime.now() - self.last_update_time).total_seconds()
+        if config['enable_rate_limit']:
             value_diff = new_value - self.previous_value
 
-            if time_diff > 0:
-                # Rate per minute - immediate rejection using last known good value
-                rate_per_minute = (value_diff / time_diff) * 60
-                if rate_per_minute > config['max_rate_per_minute']:
-                    msg = f"Rate per minute too high: {rate_per_minute:.4f} m³/min (max: {config['max_rate_per_minute']})"
-                    warnings.append(msg)
-                    logger.error(msg)
-                    return False, warnings
+            # Max rate per reading - immediate rejection (time-independent)
+            if value_diff > config['max_rate_per_reading']:
+                msg = f"Change per reading too high: {value_diff:.4f} m³ (max: {config['max_rate_per_reading']})"
+                warnings.append(msg)
+                logger.error(msg)
+                return False, warnings
 
-                # Rate per hour - check against history if available
-                rate_per_hour = (value_diff / time_diff) * 3600
-                if rate_per_hour > config['max_rate_per_hour']:
-                    # If we have history, verify the rate is consistently high
-                    if len(self.rate_history) >= 2:
-                        avg_rate = self._calculate_average_rate_per_hour()
-                        if avg_rate is not None and avg_rate > config['max_rate_per_hour']:
-                            msg = f"Rate per hour too high: {rate_per_hour:.2f} m³/h (avg: {avg_rate:.2f}, max: {config['max_rate_per_hour']})"
-                            warnings.append(msg)
-                            logger.error(msg)
-                            return False, warnings
+            # Rate per hour - check against history if available
+            if self.last_update_time:
+                time_diff = (datetime.now() - self.last_update_time).total_seconds()
+                if time_diff > 0:
+                    rate_per_hour = (value_diff / time_diff) * 3600
+                    if rate_per_hour > config['max_rate_per_hour']:
+                        # If we have history, verify the rate is consistently high
+                        if len(self.rate_history) >= 2:
+                            avg_rate = self._calculate_average_rate_per_hour()
+                            if avg_rate is not None and avg_rate > config['max_rate_per_hour']:
+                                msg = f"Rate per hour too high: {rate_per_hour:.2f} m³/h (avg: {avg_rate:.2f}, max: {config['max_rate_per_hour']})"
+                                warnings.append(msg)
+                                logger.error(msg)
+                                return False, warnings
+                            else:
+                                # Single spike, warn but accept
+                                msg = f"Rate spike: {rate_per_hour:.2f} m³/h (avg: {avg_rate:.2f if avg_rate else 'N/A'}, max: {config['max_rate_per_hour']})"
+                                warnings.append(msg)
+                                logger.warning(msg)
                         else:
-                            # Single spike, warn but accept
-                            msg = f"Rate spike: {rate_per_hour:.2f} m³/h (avg: {avg_rate:.2f if avg_rate else 'N/A'}, max: {config['max_rate_per_hour']})"
+                            # No history yet, warn but accept
+                            msg = f"Rate per hour high (no history): {rate_per_hour:.2f} m³/h (max: {config['max_rate_per_hour']})"
                             warnings.append(msg)
                             logger.warning(msg)
-                    else:
-                        # No history yet, warn but accept
-                        msg = f"Rate per hour high (no history): {rate_per_hour:.2f} m³/h (max: {config['max_rate_per_hour']})"
-                        warnings.append(msg)
-                        logger.warning(msg)
 
         return True, warnings
 

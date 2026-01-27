@@ -68,8 +68,8 @@ inference:
 plausibility:
   enable_reverse_detection: true
   enable_rate_limit: true
-  max_rate_per_hour: 5.0  # m³/hour - checked against history average
-  max_rate_per_minute: 0.1  # m³/minute - immediate rejection
+  max_rate_per_hour: 1.5  # m³/hour - checked against history average
+  max_rate_per_reading: 0.15  # m³ - maximum change per single reading (immediate rejection)
   rate_history_size: 25  # Number of readings to keep for hourly rate averaging
   enable_consistency_check: false  # Check half/upper consistency between adjacent positions
 
