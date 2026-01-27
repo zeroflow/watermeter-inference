@@ -11,7 +11,10 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import json
 import base64
+import io
 
+import cv2
+import numpy as np
 import httpx
 import yaml
 import paho.mqtt.client as mqtt
@@ -126,6 +129,156 @@ class WatermeterService:
         logger.info(f"Successfully fetched {len(images)}/{len(all_ids)} images")
         return images
 
+    async def fetch_whole_image(self) -> Optional[bytes]:
+        """
+        Fetch the whole source image from AI-on-the-edge device.
+
+        Returns:
+            Image bytes or None on failure
+        """
+        aiote_config = self.config['aiote']
+        src_url = self.config['images']['src']
+
+        logger.info(f"Fetching whole image from {src_url}")
+
+        async with httpx.AsyncClient(timeout=aiote_config['timeout']) as client:
+            try:
+                response = await client.get(src_url)
+                response.raise_for_status()
+                logger.info(f"Successfully fetched whole image ({len(response.content)} bytes)")
+                return response.content
+            except httpx.HTTPError as e:
+                logger.error(f"Failed to fetch whole image: {e}")
+                return None
+
+    def process_whole_image(self, image_bytes: bytes) -> Dict[str, Tuple[bytes, str]]:
+        """
+        Process whole image: apply rotation, marker alignment, and extract ROIs.
+
+        Args:
+            image_bytes: Raw image bytes
+
+        Returns:
+            Dict mapping ID to (image_bytes, image_class) - same format as fetch_images
+        """
+        # Decode image
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        height, width = img.shape[:2]
+
+        detection = self.config.get('detection', {})
+
+        # 1. Apply rotation if configured
+        rotation = detection.get('rotation', 0)
+        if rotation != 0:
+            center = (width / 2, height / 2)
+            matrix = cv2.getRotationMatrix2D(center, rotation, 1.0)
+            img = cv2.warpAffine(img, matrix, (width, height))
+            logger.debug(f"Applied rotation: {rotation}°")
+
+        # 2. Marker-based alignment if markers are configured
+        markers = detection.get('markers', [])
+        if len(markers) >= 2:
+            img = self._align_with_markers(img, markers)
+            height, width = img.shape[:2]  # Update dimensions after alignment
+
+        # 3. Extract ROIs
+        images = {}
+
+        # Extract digit ROIs - use detection config count, generate IDs
+        digits_config = detection.get('digits', {})
+        digit_rois = digits_config.get('rois', [])
+        digit_count = digits_config.get('count', len(digit_rois))
+
+        for i, roi in enumerate(digit_rois[:digit_count]):
+            roi_img = self._extract_roi(img, roi, width, height)
+            # Encode to JPEG bytes
+            _, encoded = cv2.imencode('.jpg', roi_img)
+            digit_id = f"digit_{i + 1}"
+            images[digit_id] = (encoded.tobytes(), 'digits')
+            logger.debug(f"Extracted digit ROI: {digit_id}")
+
+        # Extract analog ROIs - use detection config count, generate IDs
+        analogs_config = detection.get('analogs', {})
+        analog_rois = analogs_config.get('rois', [])
+        analog_count = analogs_config.get('count', len(analog_rois))
+
+        for i, roi in enumerate(analog_rois[:analog_count]):
+            roi_img = self._extract_roi(img, roi, width, height)
+            # Encode to JPEG bytes
+            _, encoded = cv2.imencode('.jpg', roi_img)
+            analog_id = f"analog_{i + 1}"
+            images[analog_id] = (encoded.tobytes(), 'arrows')
+            logger.debug(f"Extracted analog ROI: {analog_id}")
+
+        logger.info(f"Extracted {len(images)} ROIs from whole image")
+        return images
+
+    def _align_with_markers(self, img: np.ndarray, markers: List[Dict]) -> np.ndarray:
+        """
+        Align image using saved marker positions.
+        Uses affine transformation based on marker reference positions.
+
+        Args:
+            img: Input image
+            markers: List of marker dicts with x, y (normalized 0-1)
+
+        Returns:
+            Aligned image
+        """
+        height, width = img.shape[:2]
+
+        if len(markers) < 2:
+            logger.warning("Need at least 2 markers for alignment")
+            return img
+
+        # Convert normalized marker coordinates to pixel coordinates
+        src_points = []
+        for marker in markers[:3]:  # Use up to 3 markers
+            px = marker['x'] * width
+            py = marker['y'] * height
+            src_points.append([px, py])
+
+        src_points = np.float32(src_points)
+
+        # For alignment, we assume the saved markers are the "correct" positions
+        # The image should already be aligned if markers were saved from a good image
+        # This method is for future use when we want to align new images to reference
+        # For now, just return the image as-is since markers define the current state
+
+        logger.debug(f"Markers available for alignment: {len(markers)}")
+        return img
+
+    def _extract_roi(self, img: np.ndarray, roi: Dict, width: int, height: int) -> np.ndarray:
+        """
+        Extract a region of interest from the image.
+
+        Args:
+            img: Source image
+            roi: ROI dict with x, y, width, height (normalized 0-1)
+            width: Image width
+            height: Image height
+
+        Returns:
+            Cropped ROI image
+        """
+        # Convert normalized coordinates to pixels
+        x = int(roi['x'] * width)
+        y = int(roi['y'] * height)
+        w = int(roi['width'] * width)
+        h = int(roi['height'] * height)
+
+        # Clamp to image bounds
+        x = max(0, min(x, width - 1))
+        y = max(0, min(y, height - 1))
+        w = min(w, width - x)
+        h = min(h, height - y)
+
+        # Extract ROI
+        roi_img = img[y:y+h, x:x+w]
+
+        return roi_img
+
     async def run_inference(self, images: Dict[str, Tuple[bytes, str]]) -> Dict[str, Dict]:
         """
         Run inference on all images.
@@ -192,11 +345,26 @@ class WatermeterService:
         Returns:
             (total_value, raw_values_dict)
         """
-        # Sort predictions by ID to ensure correct order
+        # Determine digit and arrow IDs based on processing mode
+        process_separate = self.config['images'].get('process_separate', False)
+
+        if process_separate:
+            # Use IDs from config arrays
+            digit_ids = self.config['images']['digits']
+            arrow_ids = self.config['images']['arrows']
+        else:
+            # Use generated IDs from detection config
+            detection = self.config.get('detection', {})
+            digit_count = detection.get('digits', {}).get('count', 0)
+            analog_count = detection.get('analogs', {}).get('count', 0)
+            digit_ids = [f"digit_{i + 1}" for i in range(digit_count)]
+            arrow_ids = [f"analog_{i + 1}" for i in range(analog_count)]
+
+        # Collect predictions in order
         digits = []
         arrows = []
 
-        for image_id in self.config['images']['digits']:
+        for image_id in digit_ids:
             if image_id in predictions:
                 pred = predictions[image_id]
                 if pred['class'] != 'NAN' and pred['class'] != 'ERROR':
@@ -205,7 +373,7 @@ class WatermeterService:
                     logger.warning(f"{image_id} has invalid class: {pred['class']}")
                     digits.append(0)  # Default to 0
 
-        for image_id in self.config['images']['arrows']:
+        for image_id in arrow_ids:
             if image_id in predictions:
                 pred = predictions[image_id]
                 if pred['class'] != 'ERROR':
@@ -214,18 +382,18 @@ class WatermeterService:
                     logger.warning(f"{image_id} has error")
                     arrows.append(0.0)
 
-        # Calculate total: dig1*100 + dig2*10 + dig3*1 + floor(ana1)*0.1 + ...
+        # Calculate total with dynamic multipliers based on count
         total = 0.0
 
-        # Digits contribution
-        multipliers = [100, 10, 1]
-        for i, digit in enumerate(digits[:3]):  # Max 3 digits
-            total += digit * multipliers[i]
+        # Digits contribution: first digit has highest place value
+        for i, digit in enumerate(digits):
+            multiplier = 10 ** (len(digits) - 1 - i)
+            total += digit * multiplier
 
         # Arrows contribution (use floor of value)
-        arrow_multipliers = [0.1, 0.01, 0.001, 0.0001]
-        for i, arrow in enumerate(arrows[:4]):  # Max 4 arrows
-            total += int(arrow) * arrow_multipliers[i]
+        for i, arrow in enumerate(arrows):
+            multiplier = 10 ** (-(i + 1))  # 0.1, 0.01, 0.001, ...
+            total += int(arrow) * multiplier
 
         raw_values = {
             'digits': digits,
@@ -252,8 +420,20 @@ class WatermeterService:
         if not self.config['plausibility'].get('enable_consistency_check', True):
             return warnings
 
+        # Determine IDs based on processing mode
+        process_separate = self.config['images'].get('process_separate', False)
+
+        if process_separate:
+            all_ids = self.config['images']['digits'] + self.config['images']['arrows']
+        else:
+            detection = self.config.get('detection', {})
+            digit_count = detection.get('digits', {}).get('count', 0)
+            analog_count = detection.get('analogs', {}).get('count', 0)
+            digit_ids = [f"digit_{i + 1}" for i in range(digit_count)]
+            analog_ids = [f"analog_{i + 1}" for i in range(analog_count)]
+            all_ids = digit_ids + analog_ids
+
         # Collect all values in order
-        all_ids = self.config['images']['digits'] + self.config['images']['arrows']
         all_values = []
 
         for image_id in all_ids:
@@ -437,10 +617,22 @@ class WatermeterService:
                 logger.info("Starting new water meter reading")
                 logger.info("=" * 60)
 
-                # 1. Fetch images
-                images = await self.fetch_images()
-                if not images:
-                    raise Exception("No images fetched")
+                # 1. Fetch images (separate or whole image mode)
+                process_separate = self.config['images'].get('process_separate', False)
+
+                if process_separate:
+                    # Fetch individual images from AI-on-the-edge
+                    images = await self.fetch_images()
+                    if not images:
+                        raise Exception("No images fetched")
+                else:
+                    # Fetch whole image and extract ROIs
+                    whole_image = await self.fetch_whole_image()
+                    if not whole_image:
+                        raise Exception("Failed to fetch whole image")
+                    images = self.process_whole_image(whole_image)
+                    if not images:
+                        raise Exception("No ROIs extracted from whole image")
 
                 # 2. Run inference
                 predictions = await self.run_inference(images)

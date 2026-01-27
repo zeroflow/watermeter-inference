@@ -257,10 +257,17 @@ main {
 }
 
 .images-grid {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
+    display: flex;
+    flex-wrap: nowrap;
     gap: 8px;
     margin-bottom: 16px;
+}
+
+.images-row {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 8px;
+    flex: 1;
 }
 
 .image-card {
@@ -270,6 +277,8 @@ main {
     padding: 6px;
     transition: all 0.3s;
     position: relative;
+    flex: 1;
+    min-width: 0;
 }
 
 .image-card:hover {
@@ -363,7 +372,10 @@ main {
 /* Responsive */
 @media (max-width: 1400px) {
     .images-grid {
-        grid-template-columns: repeat(7, 1fr);
+        gap: 6px;
+    }
+
+    .images-row {
         gap: 6px;
     }
 
@@ -399,19 +411,15 @@ main {
         gap: 8px;
     }
 
+    /* Stack digits and arrows rows vertically on mobile */
     .images-grid {
-        grid-template-columns: repeat(12, 1fr);
+        flex-direction: column;
         gap: 10px;
     }
 
-    /* First 3 items (digits): each spans 4 columns (3 × 4 = 12) */
-    .image-card:nth-child(-n+3) {
-        grid-column: span 4;
-    }
-
-    /* Next 4 items (arrows): each spans 3 columns (4 × 3 = 12) */
-    .image-card:nth-child(n+4):nth-child(-n+7) {
-        grid-column: span 3;
+    .images-row {
+        flex-wrap: nowrap;
+        gap: 8px;
     }
 
     main {

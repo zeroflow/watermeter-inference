@@ -38,22 +38,42 @@
 </div>
 {% endif %}
 
-<!-- All Images in One Row - Always show if predictions available -->
+<!-- All Images - Digits and Arrows -->
 {% if predictions %}
+{% set ns = namespace(digit_count=0, analog_count=0) %}
+{% for pred in predictions %}
+    {% if pred.model == 'digits' %}{% set ns.digit_count = ns.digit_count + 1 %}{% endif %}
+    {% if pred.model == 'arrows' %}{% set ns.analog_count = ns.analog_count + 1 %}{% endif %}
+{% endfor %}
 <div class="images-section">
     <h3>Zählerstände (Digits + Arrows)</h3>
     <div class="images-grid">
-        {% for pred in predictions %}
-        <div class="image-card {% if pred.confidence >= 0.95 %}confidence-high{% elif pred.confidence >= 0.80 %}confidence-medium{% else %}confidence-low{% endif %}">
-            <div class="id">{{ pred.id }}</div>
-            <img src="data:image/jpeg;base64,{{ pred.image_base64 }}" alt="{{ pred.id }}" class="thumbnail">
-            <div class="prediction">{{ pred.class }}</div>
-            <div class="confidence">{{ "%.1f%%"|format(pred.confidence * 100) }}</div>
-            <button class="submit-btn" onclick="submitForTraining('{{ pred.id }}', '{{ pred.image_base64 }}', '{{ pred.model }}')" title="Submit for training">
-                🔍
-            </button>
+        <div class="images-row digits-row">
+            {% for pred in predictions if pred.model == 'digits' %}
+            <div class="image-card {% if pred.confidence >= 0.95 %}confidence-high{% elif pred.confidence >= 0.80 %}confidence-medium{% else %}confidence-low{% endif %}">
+                <div class="id">DIG {{ loop.index }} (×{{ 10 ** (ns.digit_count - loop.index) }})</div>
+                <img src="data:image/jpeg;base64,{{ pred.image_base64 }}" alt="{{ pred.id }}" class="thumbnail">
+                <div class="prediction">{{ pred.class }}</div>
+                <div class="confidence">{{ "%.1f%%"|format(pred.confidence * 100) }}</div>
+                <button class="submit-btn" onclick="submitForTraining('{{ pred.id }}', '{{ pred.image_base64 }}', '{{ pred.model }}')" title="Submit for training">
+                    🔍
+                </button>
+            </div>
+            {% endfor %}
         </div>
-        {% endfor %}
+        <div class="images-row arrows-row">
+            {% for pred in predictions if pred.model == 'arrows' %}
+            <div class="image-card {% if pred.confidence >= 0.95 %}confidence-high{% elif pred.confidence >= 0.80 %}confidence-medium{% else %}confidence-low{% endif %}">
+                <div class="id">ANA {{ loop.index }} (×0.{{ '0' * (loop.index - 1) }}1)</div>
+                <img src="data:image/jpeg;base64,{{ pred.image_base64 }}" alt="{{ pred.id }}" class="thumbnail">
+                <div class="prediction">{{ pred.class }}</div>
+                <div class="confidence">{{ "%.1f%%"|format(pred.confidence * 100) }}</div>
+                <button class="submit-btn" onclick="submitForTraining('{{ pred.id }}', '{{ pred.image_base64 }}', '{{ pred.model }}')" title="Submit for training">
+                    🔍
+                </button>
+            </div>
+            {% endfor %}
+        </div>
     </div>
 </div>
 {% endif %}
