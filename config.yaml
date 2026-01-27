@@ -9,6 +9,7 @@ aiote:
 
 # Image IDs
 images:
+  src: "http://192.168.5.136/img_tmp/alg.jpg"
   digits:
     - "main_dig1"  # x100
     - "main_dig2"  # x10
@@ -23,7 +24,7 @@ images:
 mqtt:
   broker: "192.168.4.11"
   port: 1883
-  client_id: "watermeter-ai-service"
+  client_id: "watermeter-ai-service-debug"
   keepalive: 60
 
   # Topics
@@ -33,7 +34,7 @@ mqtt:
 
 # Home Assistant Integration
 homeassistant:
-  enabled: true  # Set to false to disable MQTT publishing during testing
+  enabled: false  # Set to false to disable MQTT publishing during testing
   discovery_prefix: "homeassistant"
   publish_topic: "homeassistant/sensor/watermeter/state"
 

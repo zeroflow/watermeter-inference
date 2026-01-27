@@ -618,6 +618,10 @@ class WatermeterService:
         if not self.mqtt_client or not self.mqtt_client.is_connected():
             logger.warning("MQTT client not connected - skipping discovery")
             return
+        
+        if not self.ha_publish_enabled:
+            logger.warning("Home Assistant publishing not enabled - skipping discovery")
+            return
 
         ha_config = self.config['homeassistant']
 
