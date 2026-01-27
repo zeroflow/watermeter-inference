@@ -75,9 +75,6 @@
                                 <span class="marker-label">Marker 1</span>
                                 <button class="btn btn-small btn-secondary" onclick="selectMarkerInPicture(0)">Select in Picture</button>
                             </div>
-                            <div class="marker-preview" id="marker-1-preview">
-                                <span class="no-selection">No selection</span>
-                            </div>
                             <div class="marker-inputs">
                                 <div class="input-row">
                                     <label>X:</label>
@@ -92,6 +89,9 @@
                                     <input type="number" id="marker-1-h" min="0" max="1" step="0.005" value="0.1" onchange="updateMarkerFromInput(0)">
                                 </div>
                             </div>
+                            <div class="marker-preview" id="marker-1-preview">
+                                <span class="no-selection">No selection</span>
+                            </div>
                         </div>
 
                         <!-- Marker 2 -->
@@ -99,9 +99,6 @@
                             <div class="marker-header">
                                 <span class="marker-label">Marker 2</span>
                                 <button class="btn btn-small btn-secondary" onclick="selectMarkerInPicture(1)">Select in Picture</button>
-                            </div>
-                            <div class="marker-preview" id="marker-2-preview">
-                                <span class="no-selection">No selection</span>
                             </div>
                             <div class="marker-inputs">
                                 <div class="input-row">
@@ -116,6 +113,9 @@
                                     <label>H:</label>
                                     <input type="number" id="marker-2-h" min="0" max="1" step="0.005" value="0.1" onchange="updateMarkerFromInput(1)">
                                 </div>
+                            </div>
+                            <div class="marker-preview" id="marker-2-preview">
+                                <span class="no-selection">No selection</span>
                             </div>
                         </div>
                     </div>
@@ -338,51 +338,87 @@
             const width = x2 - x1;
             const height = y2 - y1;
 
+            let currentMode = overlays.mode;
+            let currentIdx = null;
+
             // Only accept if box is larger than 10px
             if (width > 10 && height > 10) {
+                // Calculate and round normalized coordinates
+                const normX = roundToStep(x1 / canvas.width);
+                const normY = roundToStep(y1 / canvas.height);
+                const normW = roundToStep(width / canvas.width);
+                const normH = roundToStep(height / canvas.height);
+
                 if (overlays.mode === 'marker_select') {
-                    const idx = overlays.selectingMarkerIndex;
-                    overlays.markers[idx] = {
-                        x: x1 / canvas.width,
-                        y: y1 / canvas.height,
-                        width: width / canvas.width,
-                        height: height / canvas.height,
+                    currentIdx = overlays.selectingMarkerIndex;
+                    overlays.markers[currentIdx] = {
+                        x: normX,
+                        y: normY,
+                        width: normW,
+                        height: normH,
                         defined: true
                     };
-                    updateMarkerInputs(idx);
-                    updateMarkerPreview(idx);
+                    updateMarkerInputs(currentIdx);
+                    updateMarkerPreview(currentIdx);
                     overlays.selectingMarkerIndex = null;
                 } else if (overlays.mode === 'digit_select') {
-                    const idx = overlays.selectingDigitIndex;
-                    overlays.digits[idx] = {
-                        ...overlays.digits[idx],
-                        x: x1 / canvas.width,
-                        y: y1 / canvas.height,
-                        width: width / canvas.width,
-                        height: height / canvas.height,
+                    currentIdx = overlays.selectingDigitIndex;
+                    overlays.digits[currentIdx] = {
+                        ...overlays.digits[currentIdx],
+                        x: normX,
+                        y: normY,
+                        width: normW,
+                        height: normH,
                         defined: true
                     };
-                    updateDigitInputs(idx);
-                    runDigitInference(idx);
+                    updateDigitInputs(currentIdx);
+                    runDigitInference(currentIdx);
                     overlays.selectingDigitIndex = null;
                 } else if (overlays.mode === 'analog_select') {
-                    const idx = overlays.selectingAnalogIndex;
-                    overlays.analogs[idx] = {
-                        ...overlays.analogs[idx],
-                        x: x1 / canvas.width,
-                        y: y1 / canvas.height,
-                        width: width / canvas.width,
-                        height: height / canvas.height,
+                    currentIdx = overlays.selectingAnalogIndex;
+                    overlays.analogs[currentIdx] = {
+                        ...overlays.analogs[currentIdx],
+                        x: normX,
+                        y: normY,
+                        width: normW,
+                        height: normH,
                         defined: true
                     };
-                    updateAnalogInputs(idx);
-                    runAnalogInference(idx);
+                    updateAnalogInputs(currentIdx);
+                    runAnalogInference(currentIdx);
                     overlays.selectingAnalogIndex = null;
                 }
             }
 
             overlays.dragStart = null;
             overlays.dragEnd = null;
+
+            // Auto-advance to next undefined ROI
+            if (currentIdx !== null) {
+                if (currentMode === 'marker_select') {
+                    // Find next undefined marker
+                    const nextIdx = overlays.markers.findIndex((m, i) => i > currentIdx && !m.defined);
+                    if (nextIdx !== -1) {
+                        selectMarkerInPicture(nextIdx);
+                        return;
+                    }
+                } else if (currentMode === 'digit_select') {
+                    // Find next undefined digit
+                    const nextIdx = overlays.digits.findIndex((d, i) => i > currentIdx && !d.defined);
+                    if (nextIdx !== -1) {
+                        selectDigitInPicture(nextIdx);
+                        return;
+                    }
+                } else if (currentMode === 'analog_select') {
+                    // Find next undefined analog
+                    const nextIdx = overlays.analogs.findIndex((a, i) => i > currentIdx && !a.defined);
+                    if (nextIdx !== -1) {
+                        selectAnalogInPicture(nextIdx);
+                        return;
+                    }
+                }
+            }
+
             setOverlayMode(null);
         });
 
@@ -397,7 +433,7 @@
         // ============================================================
         // Drawing Functions
         // ============================================================
-        function drawCrosshair(x, y, color, lineWidth, dashed) {
+        function drawCrosshair(x, y, color, lineWidth, dashed, showCircle = true) {
             ctx.save();
             ctx.strokeStyle = color;
             ctx.lineWidth = lineWidth;
@@ -413,14 +449,16 @@
             ctx.lineTo(x, canvas.height);
             ctx.stroke();
 
-            ctx.beginPath();
-            ctx.arc(x, y, 10, 0, 2 * Math.PI);
-            ctx.stroke();
+            if (showCircle) {
+                ctx.beginPath();
+                ctx.arc(x, y, 10, 0, 2 * Math.PI);
+                ctx.stroke();
+            }
 
             ctx.restore();
         }
 
-        function drawBox(x, y, w, h, color, lineWidth, label) {
+        function drawBox(x, y, w, h, color, lineWidth, label, drawAlignmentHelpers = false) {
             ctx.save();
             ctx.strokeStyle = color;
             ctx.lineWidth = lineWidth;
@@ -430,6 +468,32 @@
                 ctx.fillStyle = color;
                 ctx.font = 'bold 14px sans-serif';
                 ctx.fillText(label, x + 4, y + 16);
+            }
+
+            // Draw alignment helpers (circle + crosshair) for analog ROIs
+            if (drawAlignmentHelpers) {
+                const cx = x + w / 2;
+                const cy = y + h / 2;
+                const radius = Math.min(w, h) / 2 - 2;
+
+                ctx.setLineDash([3, 3]);
+                ctx.lineWidth = 1;
+
+                // Draw circle
+                ctx.beginPath();
+                ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
+                ctx.stroke();
+
+                // Draw crosshair inside box
+                ctx.beginPath();
+                ctx.moveTo(x + 2, cy);
+                ctx.lineTo(x + w - 2, cy);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(cx, y + 2);
+                ctx.lineTo(cx, y + h - 2);
+                ctx.stroke();
             }
 
             ctx.restore();
@@ -456,6 +520,11 @@
                 if (overlays.mouse.active) {
                     drawCrosshair(overlays.mouse.x, overlays.mouse.y, 'rgba(0, 255, 0, 0.5)', 1, true);
                 }
+            }
+
+            // Draw crosshair on mouseover in selection modes (no circle)
+            if ((overlays.mode === 'marker_select' || overlays.mode === 'digit_select' || overlays.mode === 'analog_select') && overlays.mouse.active && !overlays.dragStart) {
+                drawCrosshair(overlays.mouse.x, overlays.mouse.y, 'rgba(255, 255, 255, 0.6)', 1, true, false);
             }
 
             // Draw marker boxes
@@ -515,7 +584,7 @@
                 ctx.restore();
             }
 
-            // Draw analog boxes
+            // Draw analog boxes with alignment helpers (circle + crosshair)
             const analogColors = ['#f97316', '#ea580c', '#c2410c', '#9a3412', '#7c2d12', '#431407'];
             for (let i = 0; i < overlays.analogs.length; i++) {
                 const a = overlays.analogs[i];
@@ -525,7 +594,7 @@
                     const pw = a.width * canvas.width;
                     const ph = a.height * canvas.height;
                     const color = analogColors[i % analogColors.length];
-                    drawBox(px, py, pw, ph, color, 2, `A${i + 1}`);
+                    drawBox(px, py, pw, ph, color, 2, `A${i + 1}`, true);
                 }
             }
 
@@ -665,6 +734,25 @@
             }
         }
 
+        // Change function - keeps previous settings and enters edit mode
+        function changeMarkers() {
+            // Keep current marker values
+            document.getElementById('markers-edit').style.display = 'block';
+            document.getElementById('markers-saved').style.display = 'none';
+            document.getElementById('markers-disabled').style.display = 'none';
+            document.getElementById('step-markers').style.display = 'block';
+            document.getElementById('step-markers').classList.remove('roi-step-disabled');
+            // Update input fields with current marker values
+            for (let i = 0; i < 2; i++) {
+                if (overlays.markers[i].defined) {
+                    updateMarkerInputs(i);
+                    updateMarkerPreview(i);
+                }
+            }
+            updateCompletedSteps();
+            render();
+        }
+
         function showMarkersEditMode() {
             document.getElementById('markers-edit').style.display = 'block';
             document.getElementById('markers-saved').style.display = 'none';
@@ -672,6 +760,12 @@
             document.getElementById('step-markers').style.display = 'block';
             document.getElementById('step-markers').classList.remove('roi-step-disabled');
             updateCompletedSteps();
+
+            // Auto-activate selection for first undefined marker
+            const firstUndefined = overlays.markers.findIndex(m => !m.defined);
+            if (firstUndefined !== -1) {
+                setTimeout(() => selectMarkerInPicture(firstUndefined), 100);
+            }
         }
 
         function showMarkersSavedMode() {
@@ -723,13 +817,6 @@
                         <span class="digit-label">Digit ${i + 1} <small>(×${placeValue})</small></span>
                         <button class="btn btn-small btn-secondary" onclick="selectDigitInPicture(${i})">Select in Picture</button>
                     </div>
-                    <div class="digit-preview" id="digit-${i + 1}-preview">
-                        <span class="no-selection">No selection</span>
-                    </div>
-                    <div class="digit-result" id="digit-${i + 1}-result" style="display: none;">
-                        <span class="digit-prediction">?</span>
-                        <span class="digit-confidence">0%</span>
-                    </div>
                     <div class="digit-inputs">
                         <div class="input-row">
                             <label>X:</label>
@@ -744,6 +831,14 @@
                             <input type="number" id="digit-${i + 1}-h" min="0" max="1" step="0.005" value="0.1" onchange="updateDigitFromInput(${i})">
                         </div>
                     </div>
+                    <div class="digit-preview" id="digit-${i + 1}-preview">
+                        <span class="no-selection">No selection</span>
+                    </div>
+                    <div class="digit-result" id="digit-${i + 1}-result" style="display: none;">
+                        <span class="result-label">detected</span>
+                        <span class="digit-prediction">?</span>
+                        <span class="digit-confidence">0%</span>
+                    </div>
                 </div>`;
             }
             container.innerHTML = html;
@@ -757,6 +852,12 @@
             }
 
             render();
+
+            // Auto-activate selection for first undefined digit
+            const firstUndefined = overlays.digits.findIndex(d => !d.defined);
+            if (firstUndefined !== -1) {
+                setTimeout(() => selectDigitInPicture(firstUndefined), 100);
+            }
         }
 
         function selectDigitInPicture(index) {
@@ -867,11 +968,14 @@
 
                     result.querySelector('.digit-prediction').textContent = data.prediction;
                     const conf = (data.confidence * 100).toFixed(0);
+                    const confClass = data.confidence >= 0.8 ? 'high' : data.confidence >= 0.5 ? 'medium' : 'low';
                     result.querySelector('.digit-confidence').textContent = `${conf}%`;
-                    result.querySelector('.digit-confidence').className = `digit-confidence ${data.confidence >= 0.8 ? 'high' : data.confidence >= 0.5 ? 'medium' : 'low'}`;
+                    result.querySelector('.digit-confidence').className = `digit-confidence ${confClass}`;
+                    result.className = `digit-result ${confClass}`;
                 } else {
                     result.querySelector('.digit-prediction').textContent = '!';
                     result.querySelector('.digit-confidence').textContent = 'Error';
+                    result.className = 'digit-result low';
                 }
             } catch (error) {
                 console.error('Inference error:', error);
@@ -938,6 +1042,21 @@
             }
         }
 
+        // Change function - keeps previous settings and enters edit mode
+        function changeDigits() {
+            // Keep current digit values
+            document.getElementById('digits-edit').style.display = 'block';
+            document.getElementById('digits-saved').style.display = 'none';
+            document.getElementById('digits-disabled').style.display = 'none';
+            document.getElementById('step-digits').style.display = 'block';
+            document.getElementById('step-digits').classList.remove('roi-step-disabled');
+            // Set the count selector to match current digits
+            document.getElementById('digits-count').value = overlays.digits.length;
+            updateDigitBoxes();
+            updateCompletedSteps();
+            render();
+        }
+
         function showDigitsEditMode() {
             document.getElementById('digits-edit').style.display = 'block';
             document.getElementById('digits-saved').style.display = 'none';
@@ -982,7 +1101,7 @@
                 <div class="completed-step">
                     <div class="completed-step-header">
                         <span class="completed-step-title">Step 1: Rotation</span>
-                        <button class="btn btn-small btn-secondary" onclick="restartRotation()">Restart</button>
+                        <button class="btn btn-small btn-secondary" onclick="changeRotation()">Change</button>
                     </div>
                     <div class="completed-step-data">
                         <span class="completed-value">${savedRotation.toFixed(1)}°</span>
@@ -999,7 +1118,7 @@
                 <div class="completed-step">
                     <div class="completed-step-header">
                         <span class="completed-step-title">Step 2: Markers</span>
-                        <button class="btn btn-small btn-secondary" onclick="restartMarkers()">Restart</button>
+                        <button class="btn btn-small btn-secondary" onclick="changeMarkers()">Change</button>
                     </div>
                     <div class="completed-step-data completed-step-images">
                         <img src="/api/roi/marker-image/1?t=${t}" alt="M1">
@@ -1028,7 +1147,7 @@
                 <div class="completed-step">
                     <div class="completed-step-header">
                         <span class="completed-step-title">Step 3: Digits</span>
-                        <button class="btn btn-small btn-secondary" onclick="restartDigits()">Restart</button>
+                        <button class="btn btn-small btn-secondary" onclick="changeDigits()">Change</button>
                     </div>
                     <div class="completed-step-data completed-step-digits">
                         ${digitsHtml}
@@ -1056,7 +1175,7 @@
                 <div class="completed-step completed-step-analog">
                     <div class="completed-step-header">
                         <span class="completed-step-title">Step 4: Analogs</span>
-                        <button class="btn btn-small btn-secondary" onclick="restartAnalogs()">Restart</button>
+                        <button class="btn btn-small btn-secondary" onclick="changeAnalogs()">Change</button>
                     </div>
                     <div class="completed-step-data completed-step-analogs">
                         ${analogsHtml}
@@ -1096,13 +1215,6 @@
                         <span class="analog-label">Analog ${i + 1} <small>(${placeLabel})</small></span>
                         <button class="btn btn-small btn-secondary" onclick="selectAnalogInPicture(${i})">Select in Picture</button>
                     </div>
-                    <div class="analog-preview" id="analog-${i + 1}-preview">
-                        <span class="no-selection">No selection</span>
-                    </div>
-                    <div class="analog-result" id="analog-${i + 1}-result" style="display: none;">
-                        <span class="analog-prediction">?</span>
-                        <span class="analog-confidence">0%</span>
-                    </div>
                     <div class="analog-inputs">
                         <div class="input-row">
                             <label>X:</label>
@@ -1117,6 +1229,14 @@
                             <input type="number" id="analog-${i + 1}-h" min="0" max="1" step="0.005" value="0.1" onchange="updateAnalogFromInput(${i})">
                         </div>
                     </div>
+                    <div class="analog-preview" id="analog-${i + 1}-preview">
+                        <span class="no-selection">No selection</span>
+                    </div>
+                    <div class="analog-result" id="analog-${i + 1}-result" style="display: none;">
+                        <span class="result-label">detected</span>
+                        <span class="analog-prediction">?</span>
+                        <span class="analog-confidence">0%</span>
+                    </div>
                 </div>`;
             }
             container.innerHTML = html;
@@ -1130,6 +1250,12 @@
             }
 
             render();
+
+            // Auto-activate selection for first undefined analog
+            const firstUndefined = overlays.analogs.findIndex(a => !a.defined);
+            if (firstUndefined !== -1) {
+                setTimeout(() => selectAnalogInPicture(firstUndefined), 100);
+            }
         }
 
         function selectAnalogInPicture(index) {
@@ -1240,11 +1366,14 @@
 
                     result.querySelector('.analog-prediction').textContent = data.prediction;
                     const conf = (data.confidence * 100).toFixed(0);
+                    const confClass = data.confidence >= 0.8 ? 'high' : data.confidence >= 0.5 ? 'medium' : 'low';
                     result.querySelector('.analog-confidence').textContent = `${conf}%`;
-                    result.querySelector('.analog-confidence').className = `analog-confidence ${data.confidence >= 0.8 ? 'high' : data.confidence >= 0.5 ? 'medium' : 'low'}`;
+                    result.querySelector('.analog-confidence').className = `analog-confidence ${confClass}`;
+                    result.className = `analog-result ${confClass}`;
                 } else {
                     result.querySelector('.analog-prediction').textContent = '!';
                     result.querySelector('.analog-confidence').textContent = 'Error';
+                    result.className = 'analog-result low';
                 }
             } catch (error) {
                 console.error('Inference error:', error);
@@ -1309,6 +1438,21 @@
             } catch (error) {
                 alert('Error: ' + error.message);
             }
+        }
+
+        // Change function - keeps previous settings and enters edit mode
+        function changeAnalogs() {
+            // Keep current analog values
+            document.getElementById('analogs-edit').style.display = 'block';
+            document.getElementById('analogs-saved').style.display = 'none';
+            document.getElementById('analogs-disabled').style.display = 'none';
+            document.getElementById('step-analogs').style.display = 'block';
+            document.getElementById('step-analogs').classList.remove('roi-step-disabled');
+            // Set the count selector to match current analogs
+            document.getElementById('analogs-count').value = overlays.analogs.length;
+            updateAnalogBoxes();
+            updateCompletedSteps();
+            render();
         }
 
         function showAnalogsEditMode() {
@@ -1432,6 +1576,21 @@
             } catch (error) {
                 alert('Error: ' + error.message);
             }
+        }
+
+        // Change function - keeps previous settings and enters edit mode
+        function changeRotation() {
+            const total = savedRotation || 0;
+            rotationCoarse.value = Math.trunc(total);
+            rotationFine.value = (total - Math.trunc(total)).toFixed(1);
+            savedRotation = null;
+            updateTotalRotation();
+            rotationEdit.style.display = 'block';
+            rotationSaved.style.display = 'none';
+            document.getElementById('step-rotation').style.display = 'block';
+            setOverlayMode('rotation');
+            // Keep markers/digits/analogs visible but will need to re-save rotation first
+            updateCompletedSteps();
         }
 
         rotationCoarse.addEventListener('input', updateTotalRotation);

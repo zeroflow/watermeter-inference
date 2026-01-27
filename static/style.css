@@ -645,6 +645,7 @@ main {
     display: flex;
     flex-direction: column;
     gap: 8px;
+    margin-bottom: 10px;
 }
 
 .input-row {
@@ -726,7 +727,7 @@ main {
     min-width: 200px;
     max-width: 280px;
     background: white;
-    border: 2px solid #22c55e;
+    border: 2px solid var(--border);
     border-radius: 8px;
     padding: 12px;
 }
@@ -778,15 +779,42 @@ main {
     justify-content: center;
     gap: 12px;
     padding: 8px;
-    background: #f0fdf4;
     border-radius: 6px;
     margin-bottom: 8px;
+    position: relative;
+}
+
+.digit-result.high,
+.analog-result.high {
+    background: #f0fdf4;
+}
+
+.digit-result.medium,
+.analog-result.medium {
+    background: #fffbeb;
+}
+
+.digit-result.low,
+.analog-result.low {
+    background: #fef2f2;
+}
+
+.digit-result .result-label,
+.analog-result .result-label {
+    position: absolute;
+    top: 2px;
+    left: 6px;
+    font-size: 9px;
+    font-weight: 600;
+    color: var(--text-light);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 .digit-prediction {
     font-size: 28px;
     font-weight: 700;
-    color: #166534;
+    color: var(--text-dark);
 }
 
 .digit-confidence {
@@ -815,6 +843,7 @@ main {
     display: flex;
     flex-direction: column;
     gap: 6px;
+    margin-bottom: 10px;
 }
 
 .digit-inputs .input-row {
@@ -840,7 +869,7 @@ main {
     flex-direction: column;
     align-items: center;
     background: white;
-    border: 2px solid #22c55e;
+    border: 2px solid var(--border);
     border-radius: 8px;
     padding: 8px;
 }
@@ -867,7 +896,7 @@ main {
 .saved-digit-value {
     font-size: 20px;
     font-weight: 700;
-    color: #166534;
+    color: var(--text-dark);
 }
 
 /* Completed Steps Container */
@@ -947,12 +976,12 @@ main {
 .completed-digit-value {
     font-size: 14px;
     font-weight: 700;
-    color: #166534;
+    color: var(--text-dark);
 }
 
 /* Completed Analog in collapsed view */
 .completed-step-analog {
-    border-color: #f97316;
+    /* neutral border like other steps */
 }
 
 .completed-step-analogs {
@@ -977,7 +1006,7 @@ main {
 .completed-analog-value {
     font-size: 14px;
     font-weight: 700;
-    color: #c2410c;
+    color: var(--text-dark);
 }
 
 /* Analog ROI Styles */
@@ -1019,7 +1048,7 @@ main {
     min-width: 200px;
     max-width: 280px;
     background: white;
-    border: 2px solid #f97316;
+    border: 2px solid var(--border);
     border-radius: 8px;
     padding: 12px;
 }
@@ -1071,15 +1100,15 @@ main {
     justify-content: center;
     gap: 12px;
     padding: 8px;
-    background: #fff7ed;
     border-radius: 6px;
     margin-bottom: 8px;
+    position: relative;
 }
 
 .analog-prediction {
     font-size: 28px;
     font-weight: 700;
-    color: #c2410c;
+    color: var(--text-dark);
 }
 
 .analog-confidence {
@@ -1108,6 +1137,7 @@ main {
     display: flex;
     flex-direction: column;
     gap: 6px;
+    margin-bottom: 10px;
 }
 
 .analog-inputs .input-row {
@@ -1133,7 +1163,7 @@ main {
     flex-direction: column;
     align-items: center;
     background: white;
-    border: 2px solid #f97316;
+    border: 2px solid var(--border);
     border-radius: 8px;
     padding: 8px;
 }
@@ -1160,5 +1190,5 @@ main {
 .saved-analog-value {
     font-size: 20px;
     font-weight: 700;
-    color: #c2410c;
+    color: var(--text-dark);
 }
