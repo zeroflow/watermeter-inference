@@ -22,6 +22,7 @@ import logging
 
 from watermeter_service import get_service
 from inference import digits_classifier, arrows_classifier
+import config_utils
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +100,12 @@ class AnalogsSubmission(BaseModel):
     """Request model for analog ROIs config."""
     count: int
     rois: list[AnalogRoi]
+
+
+class ConfigSaveSubmission(BaseModel):
+    """Request model for config save."""
+    content: str
+    save_option: str = "saveonly"  # "saveonly" or "restart"
 
 
 @asynccontextmanager
@@ -260,6 +267,90 @@ async def label_page(request: Request):
 async def roi_config_page(request: Request):
     """Render the ROI configuration page."""
     return templates.TemplateResponse("roi_config.html", {"request": request})
+
+
+@app.get("/config-editor", response_class=HTMLResponse)
+async def config_editor_page(request: Request):
+    """Render the config editor page with Monaco editor."""
+    return templates.TemplateResponse("config_editor.html", {"request": request})
+
+
+@app.get("/api/config")
+async def get_config():
+    """Get the current config as YAML string (with comments preserved)."""
+    try:
+        config_path = Path("config.yaml")
+        if not config_path.exists():
+            return JSONResponse({
+                "success": False,
+                "message": "Config file not found"
+            }, status_code=404)
+
+        # Read raw file to preserve comments
+        content = config_path.read_text(encoding='utf-8')
+
+        return JSONResponse({
+            "success": True,
+            "content": content
+        })
+
+    except Exception as e:
+        logger.error(f"Error reading config: {e}")
+        return JSONResponse({
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }, status_code=500)
+
+
+@app.post("/api/config/save")
+async def save_config(submission: ConfigSaveSubmission):
+    """
+    Save config with comment preservation.
+
+    Args:
+        submission: Contains 'content' (YAML string) and 'save_option' ("saveonly" or "restart")
+    """
+    try:
+        # Validate the YAML first
+        validation = config_utils.validate_config(submission.content)
+        if not validation['valid']:
+            return JSONResponse({
+                "success": False,
+                "message": f"Invalid config: {validation['error']}"
+            }, status_code=400)
+
+        # Parse to verify it's valid YAML (ruamel.yaml preserves comments)
+        config = config_utils.load_config_string(submission.content)
+
+        # Save to file
+        config_path = Path("config.yaml")
+        config_utils.save_config(config, config_path)
+
+        logger.info(f"Config saved (option: {submission.save_option})")
+
+        # If restart requested, we'd need to trigger a service reload
+        # For now, just inform the user they need to restart manually
+        message = "Config saved successfully"
+        if submission.save_option == "restart":
+            message += ". Please restart the service to apply changes."
+
+        return JSONResponse({
+            "success": True,
+            "message": message
+        })
+
+    except Exception as e:
+        logger.error(f"Error saving config: {e}")
+        return JSONResponse({
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }, status_code=500)
+
+
+@app.get("/api/config/schema.json")
+async def get_config_schema():
+    """Get JSON schema for config validation (used by Monaco editor)."""
+    return JSONResponse(config_utils.get_config_schema())
 
 
 @app.post("/api/roi/fetch-image")

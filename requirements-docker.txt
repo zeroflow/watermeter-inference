@@ -1,0 +1,21 @@
+# Runtime dependencies for Docker container
+# (Training packages like torch, onnx are not needed at runtime)
+
+# FastAPI & Web
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+jinja2>=3.1.0
+python-multipart>=0.0.6
+
+# Computer Vision (headless for Docker)
+opencv-python-headless>=4.8.0
+
+# MQTT
+paho-mqtt>=1.6.0
+
+# HTTP Client
+httpx>=0.25.0
+
+# Configuration
+pyyaml>=6.0.0
+ruamel.yaml>=0.18.0

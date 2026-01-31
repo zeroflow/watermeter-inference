@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Config Editor - AI Water Meter</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .editor-container {
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 180px);
+            min-height: 500px;
+        }
+
+        .editor-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            background: var(--bg-light);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .editor-toolbar-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .editor-toolbar-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .editor-status {
+            font-size: 14px;
+            color: var(--text-light);
+        }
+
+        .editor-status.unsaved {
+            color: #f59e0b;
+            font-weight: 600;
+        }
+
+        .editor-status.saved {
+            color: var(--success);
+        }
+
+        .editor-status.error {
+            color: var(--error);
+        }
+
+        #editor {
+            flex: 1;
+            border: 1px solid var(--border);
+            border-radius: 0 0 8px 8px;
+        }
+
+        .save-btn {
+            padding: 8px 20px;
+            font-size: 14px;
+            font-weight: 600;
+            color: white;
+            background: var(--primary);
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .save-btn:hover {
+            background: var(--primary-dark);
+        }
+
+        .save-btn:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+
+        .save-btn.saving {
+            background: #6b7280;
+        }
+
+        .reload-btn {
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-dark);
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .reload-btn:hover {
+            background: var(--bg-light);
+        }
+
+        .back-link {
+            color: white;
+            text-decoration: none;
+            font-size: 14px;
+            opacity: 0.9;
+            transition: opacity 0.2s;
+        }
+
+        .back-link:hover {
+            opacity: 1;
+        }
+
+        .editor-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--text-light);
+        }
+
+        .editor-info kbd {
+            padding: 2px 6px;
+            background: #e5e7eb;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        .message-toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-weight: 500;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1000;
+            display: none;
+            animation: slideUp 0.3s ease;
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .message-toast.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+            display: block;
+        }
+
+        .message-toast.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+            display: block;
+        }
+
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+        }
+
+        .loading-overlay.hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AI Water Meter Dashboard</h1>
+            <div class="header-actions">
+                <a href="/" class="back-link">Back to Dashboard</a>
+            </div>
+        </header>
+
+        <main style="padding: 24px;">
+            <div class="editor-container">
+                <div class="editor-toolbar">
+                    <div class="editor-toolbar-left">
+                        <h2 style="margin: 0; font-size: 18px;">Config Editor</h2>
+                        <span id="editor-status" class="editor-status">Loading...</span>
+                    </div>
+                    <div class="editor-toolbar-right">
+                        <div class="editor-info">
+                            <kbd>Ctrl+S</kbd> Save
+                        </div>
+                        <button class="reload-btn" onclick="loadConfig()" title="Reload config from file">
+                            Reload
+                        </button>
+                        <button id="save-btn" class="save-btn" onclick="saveConfig()" disabled>
+                            Save Config
+                        </button>
+                    </div>
+                </div>
+                <div id="editor" style="position: relative;">
+                    <div id="loading-overlay" class="loading-overlay">
+                        Loading editor...
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="message-toast" class="message-toast"></div>
+
+    <!-- Monaco Editor from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+    <script>
+        let editor = null;
+        let originalContent = '';
+        let hasUnsavedChanges = false;
+
+        // Configure Monaco loader
+        require.config({
+            paths: {
+                'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs'
+            }
+        });
+
+        // Load Monaco and initialize
+        require(['vs/editor/editor.main'], function() {
+            initEditor();
+        });
+
+        function initEditor() {
+            // Register YAML language configuration
+            monaco.languages.register({ id: 'yaml' });
+
+            // Create editor
+            editor = monaco.editor.create(document.getElementById('editor'), {
+                value: '# Loading config...',
+                language: 'yaml',
+                theme: 'vs',  // Use 'vs-dark' for dark theme
+                automaticLayout: true,
+                minimap: { enabled: true },
+                fontSize: 14,
+                lineNumbers: 'on',
+                renderWhitespace: 'selection',
+                scrollBeyondLastLine: false,
+                wordWrap: 'on',
+                tabSize: 2,
+                insertSpaces: true,
+                formatOnPaste: false,  // Don't auto-format to preserve comments
+                formatOnType: false,
+            });
+
+            // Track changes
+            editor.onDidChangeModelContent(() => {
+                const currentContent = editor.getValue();
+                hasUnsavedChanges = currentContent !== originalContent;
+                updateStatus();
+            });
+
+            // Keyboard shortcuts
+            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+                saveConfig();
+            });
+
+            // Hide loading overlay
+            document.getElementById('loading-overlay').classList.add('hidden');
+
+            // Load config
+            loadConfig();
+        }
+
+        function updateStatus() {
+            const statusEl = document.getElementById('editor-status');
+            const saveBtn = document.getElementById('save-btn');
+
+            if (hasUnsavedChanges) {
+                statusEl.textContent = 'Unsaved changes';
+                statusEl.className = 'editor-status unsaved';
+                saveBtn.disabled = false;
+            } else {
+                statusEl.textContent = 'Saved';
+                statusEl.className = 'editor-status saved';
+                saveBtn.disabled = true;
+            }
+        }
+
+        async function loadConfig() {
+            try {
+                const statusEl = document.getElementById('editor-status');
+                statusEl.textContent = 'Loading...';
+                statusEl.className = 'editor-status';
+
+                const response = await fetch('/api/config');
+                const data = await response.json();
+
+                if (data.success) {
+                    originalContent = data.content;
+                    editor.setValue(data.content);
+                    hasUnsavedChanges = false;
+                    updateStatus();
+                } else {
+                    showMessage('Error loading config: ' + data.message, 'error');
+                    statusEl.textContent = 'Error loading';
+                    statusEl.className = 'editor-status error';
+                }
+            } catch (error) {
+                console.error('Error loading config:', error);
+                showMessage('Error loading config: ' + error.message, 'error');
+            }
+        }
+
+        async function saveConfig() {
+            if (!hasUnsavedChanges) return;
+
+            const saveBtn = document.getElementById('save-btn');
+            const statusEl = document.getElementById('editor-status');
+
+            try {
+                saveBtn.disabled = true;
+                saveBtn.textContent = 'Saving...';
+                saveBtn.classList.add('saving');
+                statusEl.textContent = 'Saving...';
+                statusEl.className = 'editor-status';
+
+                const content = editor.getValue();
+
+                const response = await fetch('/api/config/save', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        content: content,
+                        save_option: 'saveonly'
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    originalContent = content;
+                    hasUnsavedChanges = false;
+                    updateStatus();
+                    showMessage(data.message, 'success');
+                } else {
+                    showMessage('Error: ' + data.message, 'error');
+                    statusEl.textContent = 'Save failed';
+                    statusEl.className = 'editor-status error';
+                }
+            } catch (error) {
+                console.error('Error saving config:', error);
+                showMessage('Error saving config: ' + error.message, 'error');
+                statusEl.textContent = 'Save failed';
+                statusEl.className = 'editor-status error';
+            } finally {
+                saveBtn.textContent = 'Save Config';
+                saveBtn.classList.remove('saving');
+                if (hasUnsavedChanges) {
+                    saveBtn.disabled = false;
+                }
+            }
+        }
+
+        function showMessage(text, type) {
+            const toast = document.getElementById('message-toast');
+            toast.textContent = text;
+            toast.className = 'message-toast ' + type;
+
+            // Auto-hide after 4 seconds
+            setTimeout(() => {
+                toast.className = 'message-toast';
+            }, 4000);
+        }
+
+        // Warn before leaving with unsaved changes
+        window.addEventListener('beforeunload', (e) => {
+            if (hasUnsavedChanges) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
+    </script>
+</body>
+</html>

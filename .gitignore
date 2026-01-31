@@ -15,3 +15,5 @@ venv
 # Files from inside the running container
 data/*
 config/*
+data_debug/*
+config_debug/*

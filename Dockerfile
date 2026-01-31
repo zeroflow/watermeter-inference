@@ -12,15 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
-RUN pip install --no-cache-dir \
-    fastapi \
-    uvicorn[standard] \
-    opencv-python-headless \
-    python-multipart \
-    httpx \
-    pyyaml \
-    paho-mqtt \
-    jinja2
+COPY requirements-docker.txt /tmp/requirements-docker.txt
+RUN pip install --no-cache-dir -r /tmp/requirements-docker.txt && rm /tmp/requirements-docker.txt
 
 # Set up directory structure
 WORKDIR /app
@@ -31,7 +24,7 @@ RUN mkdir -p /config /config_default /data \
     /training/digits/ground_truth
 
 # Copy application files
-COPY app.py watermeter_service.py persistence.py inference.py /app/
+COPY app.py watermeter_service.py persistence.py inference.py config_utils.py /app/
 COPY templates/ /app/templates/
 COPY static/ /app/static/
 
