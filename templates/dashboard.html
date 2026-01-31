@@ -103,17 +103,22 @@
         });
 
         // Submit image for training
-        function submitForTraining(id, imageBase64, model) {
+        function submitForTraining(id, imageBase64, model, nextImageBase64 = null) {
+            const payload = {
+                id: id,
+                image_base64: imageBase64,
+                model: model
+            };
+            // Include next dial image for arrows (helps with annotation)
+            if (nextImageBase64) {
+                payload.next_image_base64 = nextImageBase64;
+            }
             fetch('/api/submit-training', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                    id: id,
-                    image_base64: imageBase64,
-                    model: model
-                })
+                body: JSON.stringify(payload)
             })
             .then(response => response.json())
             .then(data => {

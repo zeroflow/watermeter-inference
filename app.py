@@ -31,6 +31,7 @@ class TrainingSubmission(BaseModel):
     id: str
     image_base64: str
     model: str
+    next_image_base64: str = None  # Optional: next dial image for annotation help
 
 
 class LabelSubmission(BaseModel):
@@ -225,6 +226,15 @@ async def submit_for_training(submission: TrainingSubmission):
             f.write(image_data)
 
         logger.info(f"Training image saved: {filepath}")
+
+        # Save next dial reference image if provided (for annotation help)
+        if submission.next_image_base64:
+            next_image_data = base64.b64decode(submission.next_image_base64)
+            next_filename = f"{submission.id}_{timestamp}_next.jpg"
+            next_filepath = model_dir / next_filename
+            with open(next_filepath, 'wb') as f:
+                f.write(next_image_data)
+            logger.info(f"Next dial reference image saved: {next_filepath}")
 
         return JSONResponse({
             "success": True,
@@ -1006,9 +1016,11 @@ async def get_next_unlabeled_image():
     service = get_service()
     training_path = Path(service.config.get('low_confidence', {}).get('save_path', '/training'))
 
-    # Collect all unlabeled images
-    digits_images = list((training_path / 'digits' / 'input').glob('*.jpg'))
-    arrows_images = list((training_path / 'arrows' / 'input').glob('*.jpg'))
+    # Collect all unlabeled images, excluding _next.jpg helper images
+    digits_images = [p for p in (training_path / 'digits' / 'input').glob('*.jpg')
+                     if not p.name.endswith('_next.jpg')]
+    arrows_images = [p for p in (training_path / 'arrows' / 'input').glob('*.jpg')
+                     if not p.name.endswith('_next.jpg')]
 
     # Prioritize digits, then arrows; randomize within each category
     if digits_images:
@@ -1029,11 +1041,18 @@ async def get_next_unlabeled_image():
     image_data = image_path.read_bytes()
     image_base64 = base64.b64encode(image_data).decode('utf-8')
 
+    # Check for corresponding _next.jpg helper image
+    next_image_base64 = None
+    next_image_path = image_path.with_name(image_path.stem + '_next.jpg')
+    if next_image_path.exists():
+        next_image_data = next_image_path.read_bytes()
+        next_image_base64 = base64.b64encode(next_image_data).decode('utf-8')
+
     # Count remaining images
     remaining_digits = len(digits_images)
     remaining_arrows = len(arrows_images)
 
-    return JSONResponse({
+    response_data = {
         "has_images": True,
         "filename": image_path.name,
         "model_type": model_type,
@@ -1043,7 +1062,12 @@ async def get_next_unlabeled_image():
             "arrows": remaining_arrows,
             "total": remaining_digits + remaining_arrows
         }
-    })
+    }
+
+    if next_image_base64:
+        response_data["next_image_base64"] = next_image_base64
+
+    return JSONResponse(response_data)
 
 
 @app.post("/api/label/submit")
@@ -1112,6 +1136,12 @@ async def submit_label(submission: LabelSubmission):
 
         logger.info(f"Labeled image moved: {source_path} -> {dest_path}")
 
+        # Delete corresponding _next.jpg helper image if it exists
+        next_image_path = source_path.with_name(source_path.stem + '_next.jpg')
+        if next_image_path.exists():
+            next_image_path.unlink()
+            logger.info(f"Deleted helper image: {next_image_path}")
+
         return JSONResponse({
             "success": True,
             "message": f"Image labeled as {label_folder}",
@@ -1146,6 +1176,12 @@ async def delete_image(submission: DeleteSubmission):
         source_path.unlink()
 
         logger.info(f"Deleted garbage image: {source_path}")
+
+        # Delete corresponding _next.jpg helper image if it exists
+        next_image_path = source_path.with_name(source_path.stem + '_next.jpg')
+        if next_image_path.exists():
+            next_image_path.unlink()
+            logger.info(f"Deleted helper image: {next_image_path}")
 
         return JSONResponse({
             "success": True,

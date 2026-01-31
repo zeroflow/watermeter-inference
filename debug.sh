@@ -43,8 +43,8 @@ echo "Building watermeter-dashboard..."
 docker build . -t wmi_full
 
 echo "Creating local directories for volumes..."
-rm -rf ./config
-mkdir -p ./config ./data
+rm -rf ./config_debug
+mkdir -p ./config_debug ./data_debug
 
 echo "Starting container..."
 
@@ -62,8 +62,8 @@ docker run -it --rm \
   --name wmi_full \
   $DRI_FLAGS \
   -p 8002:8001 \
-  -v $(pwd)/config:/config \
-  -v $(pwd)/data:/data \
+  -v $(pwd)/config_debug:/config \
+  -v $(pwd)/data_debug:/data \
   -v ./arrows/:/training/arrows \
   -v ./digits/:/training/digits \
   wmi_full

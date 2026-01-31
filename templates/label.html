@@ -81,13 +81,48 @@
             gap: 20px;
         }
 
+        .image-row {
+            display: flex;
+            align-items: flex-end;
+            gap: 24px;
+        }
+
+        .main-image-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .next-image-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .next-image-container .image-label {
+            font-size: 12px;
+            color: var(--text-light);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
         .image-display img {
-            height: 500px;
-            width: auto;
             border: 3px solid var(--border);
             border-radius: 8px;
             box-shadow: 0 4px 16px rgba(0,0,0,0.1);
             image-rendering: pixelated;
+        }
+
+        .image-display img.main-image {
+            height: 500px;
+            width: auto;
+        }
+
+        .image-display img.next-image {
+            height: 200px;
+            width: auto;
+            opacity: 0.9;
         }
 
         .model-type-badge {
@@ -278,7 +313,15 @@
                 <span id="model-type-badge" class="model-type-badge"></span>
 
                 <div class="image-display">
-                    <img id="current-image" src="" alt="Image to label">
+                    <div class="image-row">
+                        <div class="main-image-container">
+                            <img id="current-image" class="main-image" src="" alt="Image to label">
+                        </div>
+                        <div class="next-image-container" id="next-image-container" style="display: none;">
+                            <span class="image-label">Next Dial</span>
+                            <img id="next-image" class="next-image" src="" alt="Next dial reference">
+                        </div>
+                    </div>
                 </div>
 
                 <div class="instructions" id="instructions">
@@ -344,6 +387,16 @@
                 // Display image
                 document.getElementById('current-image').src = 'data:image/jpeg;base64,' + data.image_base64;
 
+                // Display next dial reference image if available
+                const nextImageContainer = document.getElementById('next-image-container');
+                const nextImage = document.getElementById('next-image');
+                if (data.next_image_base64) {
+                    nextImage.src = 'data:image/jpeg;base64,' + data.next_image_base64;
+                    nextImageContainer.style.display = 'flex';
+                } else {
+                    nextImageContainer.style.display = 'none';
+                }
+
                 // Update model type badge
                 const badge = document.getElementById('model-type-badge');
                 const instructions = document.getElementById('instructions');
@@ -357,7 +410,7 @@
                 } else {
                     badge.textContent = 'ARROW';
                     badge.className = 'model-type-badge model-type-arrows';
-                    instructions.innerHTML = '<strong>Arrows:</strong> Enter value 0,0 to 9,9 (e.g., 1,2 or 6,9 or 3,3 or just 3 for 3,0)';
+                    instructions.innerHTML = '<strong>Arrows:</strong> Enter value 0,0 to 9,9 (e.g., 1,2 or 6,9 or 3,3 or just 3 for 3,0). Next dial shows the smaller position for reference.';
                     input.placeholder = 'e.g. 3,3 or 6,9';
                 }
 
