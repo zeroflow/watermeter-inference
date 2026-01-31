@@ -89,7 +89,7 @@ def parse_model_filename(filepath: Path) -> Optional[Dict[str, any]]:
     Returns:
         Dict with keys: model_name, num_classes, resolution, filepath, is_onnx
     """
-    pattern = r'model_(.+?)_c(\d+)_r(\d+)\.(xml|onnx)'
+    pattern = r'model_(.+?)_c(\d+)_r(\d+)_s(\d+)\.(xml|onnx)'
     match = re.match(pattern, filepath.name)
 
     if not match:
@@ -99,8 +99,9 @@ def parse_model_filename(filepath: Path) -> Optional[Dict[str, any]]:
         'model_name': match.group(1),
         'num_classes': int(match.group(2)),
         'resolution': int(match.group(3)),
+        'seed': int(match.group(4)),
         'filepath': str(filepath),
-        'is_onnx': match.group(4) == 'onnx'
+        'is_onnx': match.group(5) == 'onnx'
     }
 
 
@@ -250,7 +251,7 @@ def main():
 
     print(f"  ✓ Found {len(model_metadata)} model(s) [{backend}]:")
     for meta in model_metadata:
-        print(f"    - {meta['model_name']} ({meta['num_classes']} classes, {meta['resolution']}px)")
+        print(f"    - {meta['model_name']} ({meta['num_classes']} classes, {meta['resolution']}px), seed:{meta['seed']}")
 
     # Load models
     print("\n[2/5] Loading models...")
@@ -267,9 +268,9 @@ def main():
             models.append({
                 'classifier': model,
                 'metadata': meta,
-                'label': f"{meta['model_name']}_c{meta['num_classes']}_r{meta['resolution']}"
+                'label': f"{meta['model_name']}_c{meta['num_classes']}_r{meta['resolution']}_s{meta['seed']}"
             })
-            print(f"  ✓ {meta['model_name']} ({meta['num_classes']} classes, {meta['resolution']}px)")
+            print(f"  ✓ {meta['model_name']} ({meta['num_classes']} classes, {meta['resolution']}px), seed:{meta['seed']}")
         except Exception as e:
             print(f"  ✗ Failed to load {meta['model_name']}: {e}")
 

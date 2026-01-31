@@ -26,27 +26,27 @@ from torch.utils.data import DataLoader, Subset
 from sklearn.utils.class_weight import compute_class_weight
 
 
-# Configuration
-# RESOLUTIONS = [96, 128] #[96, 128, 144, 160, 192]
-# STEPS_LIST = [1.0] #[1.0, 0.5, 0.2, 0.1]  # 1.0 = 10 classes, 0.5 = 20 classes, 0.2 = 50 classes, 0.1 = 100 classes
-# MODEL_NAMES = [
-# #   'densenet121',
-# #   'densenet169',
-# #   'densenet201',
-#    'efficientnet_b2',
-# #   'efficientnet_b3',
-# #   'efficientnet_b4',
-# #   'efficientnet_b5',
-# #   'efficientnet_lite0',
-# #   'efficientnetv2_rw_m',
-#    'efficientnetv2_rw_s',
-#    'mobilenetv3_large_100',
-# #   'mobilenetv3_small_100',
-# #   'resnet50',
-# #   'resnext101_64x4d',
-# #   'resnext50_32x4d',
-# ]
+def set_all_seeds(seed=42):
+    """Set all random seeds for reproducibility."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    # Set deterministic behavior for reproducibility
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
+
+def worker_init_fn(worker_id):
+    """Initialize worker with unique but reproducible seed."""
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
+
+
+# Configuration
+SEEDS = [42, 67, 69, 666, 80085]
 RESOLUTIONS = [128] #[96, 128, 144, 160, 192]
 STEPS_LIST = [1.0] #[1.0, 0.5, 0.2, 0.1]  # 1.0 = 10 classes, 0.5 = 20 classes, 0.2 = 50 classes, 0.1 = 100 classes
 MODEL_NAMES = [
@@ -143,65 +143,6 @@ def create_subsampled_dataset(ground_truth_dir: Path, dataset_dir: Path, step: f
 
     return dataset_dir
 
-
-# def create_dataset_from_annotations(export_file: str, dataset_dir: Path, resolution: int):
-#     """Create dataset directory structure from Label Studio annotations."""
-#     print("\n" + "="*80)
-#     print("CREATING DATASET")
-#     print("="*80)
-
-#     with open(export_file) as f:
-#         data = json.load(f)
-
-#     print(f"Total annotations: {len(data)}")
-
-#     # Purge existing data
-#     if dataset_dir.exists():
-#         shutil.rmtree(dataset_dir)
-#     dataset_dir.mkdir(exist_ok=True)
-
-#     for item in data:
-#         # Extract label
-#         annotations = item.get('annotations', [])
-#         if not annotations:
-#             continue
-
-#         result = annotations[0]['result']
-#         if not result:
-#             continue
-
-#         label_float = result[0]['value']['number']
-#         #label = f"{label_float:.1f}" # 0.1 steps
-#         #label = f"{round(label_float * 5) / 5:.1f}" # 0.2 steps
-#         label = f"{round(label_float * 2) / 2:.1f}" # 0.5 steps
-#         #label = f"{label_float:.0f}" # 1 steps
-#         #label = str(int(label_float)) # 1 steps, round down
-
-#         if label == "10.0":
-#             label = "0.0"
-
-#         # Create class directory
-#         class_dir = dataset_dir / label
-#         class_dir.mkdir(exist_ok=True)
-
-#         # Extract and copy image
-#         img_path = item['data']['image']
-#         if '?d=' in img_path:
-#             img_path = img_path.split('?d=')[1]
-#             img_path = os.path.join("/import", img_path)
-
-#         # fix path outside docker
-#         img_path = img_path.replace("/import/", "/var/ml/label-studio-data/import/")
-
-#         src_file = Path(img_path)
-#         if src_file.exists():
-#             shutil.copy(src_file, class_dir / src_file.name)
-#         else:
-#             print(f"✗ Not found: {img_path}")
-
-#     print(f"✓ Dataset structure created in: {dataset_dir}")
-
-
 def analyze_dataset(dataset_dir: Path):
     """Analyze dataset class distribution."""
     print("\n" + "="*80)
@@ -263,7 +204,6 @@ def create_data_loaders(dataset_dir: Path, resolution: int, batch_size: int):
 
     train_idx = []
     val_idx = []
-    random.seed(42)
     for label, indices in indices_by_class.items():
         random.shuffle(indices)
         split_point = int(0.8 * len(indices))
@@ -277,9 +217,9 @@ def create_data_loaders(dataset_dir: Path, resolution: int, batch_size: int):
     val_dataset = ImageFolder(str(dataset_dir), transform=val_transform)
     val_ds = Subset(val_dataset, val_idx)
 
-    # DataLoaders
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=2)
-    val_loader = DataLoader(val_ds, batch_size=batch_size, num_workers=2)
+    # DataLoaders with reproducible workers
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=2, worker_init_fn=worker_init_fn)
+    val_loader = DataLoader(val_ds, batch_size=batch_size, num_workers=2, worker_init_fn=worker_init_fn)
 
     print(f"\n✓ Train samples: {len(train_ds)}")
     print(f"✓ Val samples: {len(val_ds)}")
@@ -322,14 +262,14 @@ def compute_class_weights(dataset, train_idx, device):
 
 
 def train_model(model_name: str, resolution: int, epochs: int, train_loader, val_loader,
-                dataset, class_weights_tensor, device, ov_model_dir: Path):
+                dataset, class_weights_tensor, device, ov_model_dir: Path, seed: int):
     """Train a single model and export to ONNX/OpenVINO."""
     print("\n" + "="*80)
     print(f"TRAINING: {model_name}")
     print("="*80)
 
     num_classes = len(dataset.classes)
-    model_filename = f'model_arrows_{model_name}_c{num_classes}_r{resolution}'
+    model_filename = f'model_arrows_{model_name}_c{num_classes}_r{resolution}_s{seed}'
 
     # Validate inputs
     print(f"\nValidating training setup...")
@@ -586,8 +526,9 @@ def main():
     print("ARROW DETECTION MODEL TRAINING")
     print("="*80)
 
-    total_configs = len(STEPS_LIST) * len(RESOLUTIONS) * len(MODEL_NAMES)
+    total_configs = len(SEEDS) * len(STEPS_LIST) * len(RESOLUTIONS) * len(MODEL_NAMES)
     print(f"\nConfigurations to train: {total_configs}")
+    print(f"  Seeds: {SEEDS}")
     print(f"  Steps: {STEPS_LIST}")
     print(f"  Resolutions: {RESOLUTIONS}")
     print(f"  Models: {len(MODEL_NAMES)}")
@@ -602,64 +543,75 @@ def main():
     all_results = []
     config_idx = 0
 
-    # Outer loop: steps (dataset needs to be recreated for each step)
-    for step_idx, step in enumerate(STEPS_LIST, 1):
-        print("\n" + "#"*80)
-        print(f"# STEP {step_idx}/{len(STEPS_LIST)}: {step} ({int(10/step)} classes)")
-        print("#"*80)
+    # Outermost loop: seeds (set seed before everything)
+    for seed_idx, seed in enumerate(SEEDS, 1):
+        print("\n" + "*"*80)
+        print(f"* SEED {seed_idx}/{len(SEEDS)}: {seed}")
+        print("*"*80)
 
-        # Create subsampled dataset from ground_truth
-        create_subsampled_dataset(GROUND_TRUTH_DIR, DATASET_DIR, step)
+        # Set all random seeds for reproducibility
+        set_all_seeds(seed)
+        print(f"✓ All random seeds set to {seed}")
 
-        # Analyze dataset
-        analyze_dataset(DATASET_DIR)
+        # Outer loop: steps (dataset needs to be recreated for each step)
+        for step_idx, step in enumerate(STEPS_LIST, 1):
+            print("\n" + "#"*80)
+            print(f"# STEP {step_idx}/{len(STEPS_LIST)}: {step} ({int(10/step)} classes)")
+            print("#"*80)
 
-        # Middle loop: resolutions
-        for res_idx, resolution in enumerate(RESOLUTIONS, 1):
-            print("\n" + "+"*80)
-            print(f"+ RESOLUTION {res_idx}/{len(RESOLUTIONS)}: {resolution}px (step={step})")
-            print("+"*80)
+            # Create subsampled dataset from ground_truth
+            create_subsampled_dataset(GROUND_TRUTH_DIR, DATASET_DIR, step)
 
-            # Create data loaders for this resolution
-            print("\n" + "="*80)
-            print("CREATING DATA LOADERS")
-            print("="*80)
-            train_loader, val_loader, dataset, train_idx = create_data_loaders(
-                DATASET_DIR, resolution, BATCH_SIZE
-            )
+            # Analyze dataset
+            analyze_dataset(DATASET_DIR)
 
-            # Compute class weights
-            class_weights_tensor = compute_class_weights(dataset, train_idx, device)
+            # Middle loop: resolutions
+            for res_idx, resolution in enumerate(RESOLUTIONS, 1):
+                print("\n" + "+"*80)
+                print(f"+ RESOLUTION {res_idx}/{len(RESOLUTIONS)}: {resolution}px (step={step})")
+                print("+"*80)
 
-            # Inner loop: models
-            for model_idx, model_name in enumerate(MODEL_NAMES, 1):
-                config_idx += 1
-                print(f"\n{'='*80}")
-                print(f"CONFIG {config_idx}/{total_configs}: {model_name} (step={step}, res={resolution})")
-                print(f"{'='*80}")
+                # Create data loaders for this resolution
+                print("\n" + "="*80)
+                print("CREATING DATA LOADERS")
+                print("="*80)
+                train_loader, val_loader, dataset, train_idx = create_data_loaders(
+                    DATASET_DIR, resolution, BATCH_SIZE
+                )
 
-                try:
-                    result = train_model(
-                        model_name, resolution, EPOCHS, train_loader, val_loader,
-                        dataset, class_weights_tensor, device, OV_MODEL_DIR
-                    )
-                    result['step'] = step
-                    result['resolution'] = resolution
-                    all_results.append(result)
-                except Exception as e:
-                    print(f"\n✗ Error training {model_name}: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    continue
+                # Compute class weights
+                class_weights_tensor = compute_class_weights(dataset, train_idx, device)
+
+                # Inner loop: models
+                for model_idx, model_name in enumerate(MODEL_NAMES, 1):
+                    config_idx += 1
+                    print(f"\n{'='*80}")
+                    print(f"CONFIG {config_idx}/{total_configs}: {model_name} (seed={seed}, step={step}, res={resolution})")
+                    print(f"{'='*80}")
+
+                    try:
+                        result = train_model(
+                            model_name, resolution, EPOCHS, train_loader, val_loader,
+                            dataset, class_weights_tensor, device, OV_MODEL_DIR, seed
+                        )
+                        result['step'] = step
+                        result['resolution'] = resolution
+                        result['seed'] = seed
+                        all_results.append(result)
+                    except Exception as e:
+                        print(f"\n✗ Error training {model_name}: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        continue
 
     # Summary
     print("\n" + "="*80)
     print("TRAINING SUMMARY")
     print("="*80)
-    print(f"\n{'Model':<30} {'Step':<6} {'Res':<6} {'Params':<12} {'Val Acc':<12} {'Val Loss':<12} {'Time':<10}")
-    print("-"*90)
+    print(f"\n{'Model':<30} {'Seed':<6} {'Step':<6} {'Res':<6} {'Params':<12} {'Val Acc':<12} {'Val Loss':<12} {'Time':<10}")
+    print("-"*100)
     for r in all_results:
-        print(f"{r['model_name']:<30} {r['step']:<6} {r['resolution']:<6} {r['num_params']:>11,} {r['best_val_acc']:>10.2f}% "
+        print(f"{r['model_name']:<30} {r['seed']:<6} {r['step']:<6} {r['resolution']:<6} {r['num_params']:>11,} {r['best_val_acc']:>10.2f}% "
               f"{r['best_val_loss']:>11.4f} {r['training_time']:>8.1f}s")
 
     # Best model
@@ -667,6 +619,7 @@ def main():
         best = max(all_results, key=lambda x: x['best_val_acc'])
         print("\n" + "="*80)
         print(f"✓ BEST MODEL: {best['model_name']}")
+        print(f"  Seed: {best['seed']}")
         print(f"  Step: {best['step']} ({int(10/best['step'])} classes)")
         print(f"  Resolution: {best['resolution']}px")
         print(f"  Validation Accuracy: {best['best_val_acc']:.2f}%")
