@@ -555,7 +555,8 @@ class WatermeterService:
         return rate_per_hour
 
     async def save_low_confidence(self, image_id: str, image_bytes: bytes,
-                                  prediction: Dict) -> None:
+                                  prediction: Dict,
+                                  next_image_bytes: bytes = None) -> None:
         """
         Save low confidence images for later training.
 
@@ -563,6 +564,7 @@ class WatermeterService:
             image_id: Image identifier
             image_bytes: Image data
             prediction: Prediction result
+            next_image_bytes: Optional image of the next smaller dial (for annotation help)
         """
         config = self.config['low_confidence']
 
@@ -589,6 +591,12 @@ class WatermeterService:
         # Save image
         save_path.write_bytes(image_bytes)
         logger.info(f"Saved low confidence image: {save_path}")
+
+        # Save next image if provided (helps with annotation)
+        if next_image_bytes:
+            next_save_path = save_dir / f"{image_id}_{timestamp}_next.jpg"
+            next_save_path.write_bytes(next_image_bytes)
+            logger.info(f"Saved next dial reference image: {next_save_path}")
 
         # Update rate limit
         self.last_save_times[image_id] = now
@@ -651,14 +659,36 @@ class WatermeterService:
                 # 6. Handle low confidence images
                 threshold = self.config['inference']['confidence_threshold']
                 low_conf_config = self.config['low_confidence']
+
+                # Get arrow IDs list for finding "next" arrow
+                process_separate = self.config['images'].get('process_separate', False)
+                if process_separate:
+                    arrow_ids = self.config['images']['arrows']
+                else:
+                    detection = self.config.get('detection', {})
+                    analog_count = detection.get('analogs', {}).get('count', 0)
+                    arrow_ids = [f"analog_{i + 1}" for i in range(analog_count)]
+
                 for pred in predictions.values():
                     if pred['confidence'] < threshold:
                         logger.warning(f"Low confidence: {pred['id']} = {pred['class']} ({pred['confidence']:.3f})")
+
+                        # For arrows, try to get the next smaller dial's image
+                        next_image_bytes = None
+                        if pred['model'] == 'arrows' and pred['id'] in arrow_ids:
+                            idx = arrow_ids.index(pred['id'])
+                            if idx + 1 < len(arrow_ids):
+                                next_arrow_id = arrow_ids[idx + 1]
+                                if next_arrow_id in predictions:
+                                    next_image_bytes = predictions[next_arrow_id]['image_bytes']
+                                    logger.debug(f"Including next dial {next_arrow_id} for annotation help")
+
                         # Save low confidence images if enabled
                         await self.save_low_confidence(
                             pred['id'],
                             pred['image_bytes'],
-                            pred
+                            pred,
+                            next_image_bytes
                         )
                         # Add warning if enabled
                         if low_conf_config.get('warn_enabled', True):

@@ -51,7 +51,7 @@
         <div class="images-row digits-row">
             {% for pred in predictions if pred.model == 'digits' %}
             <div class="image-card {% if pred.confidence >= 0.95 %}confidence-high{% elif pred.confidence >= 0.80 %}confidence-medium{% else %}confidence-low{% endif %}">
-                <div class="id">DIG {{ loop.index }} (×{{ 10 ** (ns.digit_count - loop.index) }})</div>
+                <div class="id">D{{ loop.index }} (×{{ 10 ** (ns.digit_count - loop.index) }})</div>
                 <img src="data:image/jpeg;base64,{{ pred.image_base64 }}" alt="{{ pred.id }}" class="thumbnail">
                 <div class="prediction">{{ pred.class }}</div>
                 <div class="confidence">{{ "%.1f%%"|format(pred.confidence * 100) }}</div>
@@ -66,7 +66,7 @@
             {% for pred in arrow_preds %}
             {% set next_image_b64 = arrow_preds[loop.index].image_base64 if loop.index < arrow_preds|length else '' %}
             <div class="image-card {% if pred.confidence >= 0.95 %}confidence-high{% elif pred.confidence >= 0.80 %}confidence-medium{% else %}confidence-low{% endif %}">
-                <div class="id">ANA {{ loop.index }} (×0.{{ '0' * (loop.index - 1) }}1)</div>
+                <div class="id">A{{ loop.index }} (×0.{{ '0' * (loop.index - 1) }}1)</div>
                 <img src="data:image/jpeg;base64,{{ pred.image_base64 }}" alt="{{ pred.id }}" class="thumbnail">
                 <div class="prediction">{{ pred.class }}</div>
                 <div class="confidence">{{ "%.1f%%"|format(pred.confidence * 100) }}</div>
