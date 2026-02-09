@@ -14,9 +14,10 @@ services:
       - ./config:/config
       # Data persistence (state.json)
       - ./data:/data
-      # Training images & GT
-      - ./arrows/:/training/arrows
-      - ./digits/:/training/digits
+      # Trained models (will be auto-populated with defaults if empty)
+      - ./models:/app/models
+      # Training data: input images and ground truth
+      - ./training:/training
 
     devices:
       # Intel GPU for OpenVINO acceleration

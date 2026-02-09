@@ -12,6 +12,7 @@ import yaml
 import re
 import sys
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,8 @@ class Classifier:
         self.classes = classes
         self.resolution = resolution
         self.label_config_tag = label_config_tag
-    
+        self.model_path = model_path
+
     def preprocess(self, image_path):
         img = cv2.imread(str(image_path))
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -31,7 +33,7 @@ class Classifier:
         img = img.astype(np.float32) / 255.0
         img = (img - [0.485, 0.456, 0.406]) / [0.229, 0.224, 0.225]
         return img.transpose(2, 0, 1)[np.newaxis, ...]
-    
+
     def predict(self, image_path):
         img = self.preprocess(image_path)
         result = self.compiled([img])[self.compiled.output(0)][0]
@@ -43,6 +45,153 @@ class Classifier:
             'class': self.classes[idx],
             'confidence': float(probs[idx])
         }
+
+
+class InferenceService:
+    """Thread-safe inference service with hot-reload support."""
+
+    def __init__(self):
+        self._lock = threading.RLock()
+        self._digits_classifier = None
+        self._arrows_classifier = None
+        self._reloading = False
+
+    def initialize(self, config: dict):
+        """Initialize classifiers from config."""
+        with self._lock:
+            inference_config = config['inference']
+
+            # Validate models
+            validate_model_config(
+                inference_config['digits_model'],
+                'digits',
+                inference_config['digits_classes'],
+                inference_config['digits_resolution']
+            )
+            validate_model_config(
+                inference_config['arrows_model'],
+                'arrows',
+                inference_config['arrows_classes'],
+                inference_config['arrows_resolution']
+            )
+
+            # Create classifiers
+            self._digits_classifier = Classifier(
+                inference_config['digits_model'],
+                inference_config['digits_classes'],
+                inference_config['digits_resolution'],
+                'digit',
+                device=inference_config.get('device', 'GPU')
+            )
+
+            self._arrows_classifier = Classifier(
+                inference_config['arrows_model'],
+                inference_config['arrows_classes'],
+                inference_config['arrows_resolution'],
+                'arrow_value',
+                device=inference_config.get('device', 'GPU')
+            )
+
+            logger.info("Inference service initialized")
+
+    def reload_models(self, config: dict):
+        """
+        Hot-reload models from updated config.
+        Blocks inference during reload.
+        """
+        with self._lock:
+            self._reloading = True
+            try:
+                logger.info("Starting model hot-reload...")
+
+                inference_config = config['inference']
+
+                # Validate new models
+                validate_model_config(
+                    inference_config['digits_model'],
+                    'digits',
+                    inference_config['digits_classes'],
+                    inference_config['digits_resolution']
+                )
+                validate_model_config(
+                    inference_config['arrows_model'],
+                    'arrows',
+                    inference_config['arrows_classes'],
+                    inference_config['arrows_resolution']
+                )
+
+                # Create new classifiers
+                new_digits = Classifier(
+                    inference_config['digits_model'],
+                    inference_config['digits_classes'],
+                    inference_config['digits_resolution'],
+                    'digit',
+                    device=inference_config.get('device', 'GPU')
+                )
+
+                new_arrows = Classifier(
+                    inference_config['arrows_model'],
+                    inference_config['arrows_classes'],
+                    inference_config['arrows_resolution'],
+                    'arrow_value',
+                    device=inference_config.get('device', 'GPU')
+                )
+
+                # Atomic swap
+                self._digits_classifier = new_digits
+                self._arrows_classifier = new_arrows
+
+                logger.info("Model hot-reload completed successfully")
+                return True
+
+            except Exception as e:
+                logger.error(f"Model hot-reload failed: {e}")
+                raise
+            finally:
+                self._reloading = False
+
+    def predict(self, model_type: str, image_path: str) -> dict:
+        """
+        Run inference. Waits if model is being reloaded.
+
+        Args:
+            model_type: "digits" or "arrows"
+            image_path: Path to image file
+
+        Returns:
+            Prediction dict with 'class' and 'confidence'
+        """
+        with self._lock:
+            if model_type == 'digits':
+                return self._digits_classifier.predict(image_path)
+            elif model_type == 'arrows':
+                return self._arrows_classifier.predict(image_path)
+            else:
+                raise ValueError(f"Unknown model type: {model_type}")
+
+    def get_classifier(self, model_type: str) -> Classifier:
+        """Get classifier (for backward compatibility)."""
+        with self._lock:
+            if model_type == 'digits':
+                return self._digits_classifier
+            elif model_type == 'arrows':
+                return self._arrows_classifier
+            else:
+                raise ValueError(f"Unknown model type: {model_type}")
+
+    def is_reloading(self) -> bool:
+        """Check if models are currently being reloaded."""
+        return self._reloading
+
+    @property
+    def digits_classifier(self) -> Classifier:
+        """Get digits classifier."""
+        return self._digits_classifier
+
+    @property
+    def arrows_classifier(self) -> Classifier:
+        """Get arrows classifier."""
+        return self._arrows_classifier
 
 def validate_model_config(model_path: str, model_type: str, classes: list, resolution: int) -> None:
     """
@@ -93,43 +242,25 @@ def validate_model_config(model_path: str, model_type: str, classes: list, resol
             logger.info(f"Digits model validated: {filename} (resolution={resolution})")
 
 
-# Load configuration
+# Load configuration and initialize service
 with open('config.yaml', 'r') as f:
     config = yaml.safe_load(f)
 
-inference_config = config['inference']
-
-# Validate model configurations
-validate_model_config(
-    inference_config['digits_model'],
-    'digits',
-    inference_config['digits_classes'],
-    inference_config['digits_resolution']
-)
-validate_model_config(
-    inference_config['arrows_model'],
-    'arrows',
-    inference_config['arrows_classes'],
-    inference_config['arrows_resolution']
-)
-
 app = FastAPI()
 
-digits_classifier = Classifier(
-    inference_config['digits_model'],
-    inference_config['digits_classes'],
-    inference_config['digits_resolution'],
-    'digit',
-    device=inference_config.get('device', 'GPU')
-)
+# Create global inference service
+_inference_service = InferenceService()
+_inference_service.initialize(config)
 
-arrows_classifier = Classifier(
-    inference_config['arrows_model'],
-    inference_config['arrows_classes'],
-    inference_config['arrows_resolution'],
-    'arrow_value',
-    device=inference_config.get('device', 'GPU')
-)
+
+def get_inference_service() -> InferenceService:
+    """Get the global InferenceService instance."""
+    return _inference_service
+
+
+# Backward compatibility: expose classifiers
+digits_classifier = _inference_service.digits_classifier
+arrows_classifier = _inference_service.arrows_classifier
 
 classifiers = {
     'digits': digits_classifier,

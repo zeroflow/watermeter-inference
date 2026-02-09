@@ -24,7 +24,7 @@ RUN mkdir -p /config /config_default /data \
     /training/digits/ground_truth
 
 # Copy application files
-COPY app.py watermeter_service.py persistence.py inference.py config_utils.py /app/
+COPY app.py watermeter_service.py persistence.py inference.py config_utils.py model_manager.py training_manager.py /app/
 COPY templates/ /app/templates/
 COPY static/ /app/static/
 

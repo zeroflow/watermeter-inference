@@ -18,10 +18,13 @@ from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+from typing import List
 import logging
 
 from watermeter_service import get_service
-from inference import digits_classifier, arrows_classifier
+from inference import digits_classifier, arrows_classifier, get_inference_service
+from model_manager import get_model_manager
+from training_manager import get_training_manager
 import config_utils
 
 logger = logging.getLogger(__name__)
@@ -1297,6 +1300,373 @@ def health():
         "last_update": service.current_state.get('last_update'),
         "processing": service.current_state['processing']
     }
+
+
+# ============================================================================
+# Training API Endpoints
+# ============================================================================
+
+class TrainingConfig(BaseModel):
+    """Request model for training configuration."""
+    model_type: str  # "digits" or "arrows"
+    architecture: str  # e.g., "resnext50_32x4d"
+    resolution: int  # e.g., 128
+    seeds: List[int]  # e.g., [42, 67, 69]
+    epochs: int = 20
+    batch_size: int = 16
+    step_size: float = 1.0  # For arrows only
+    notes: str = ""
+
+
+@app.get("/api/training/status")
+async def get_training_status():
+    """Get the status of the active training job."""
+    training_mgr = get_training_manager()
+    training_status = training_mgr.get_training_status()
+    benchmark_status = training_mgr.get_benchmark_status()
+
+    return JSONResponse({
+        "training": training_status,
+        "benchmark": benchmark_status
+    })
+
+
+@app.post("/api/training/start")
+async def start_training(config: TrainingConfig):
+    """Start a new training job."""
+    try:
+        training_mgr = get_training_manager()
+        job_id = training_mgr.start_training(config.dict())
+
+        return JSONResponse({
+            "success": True,
+            "job_id": job_id,
+            "message": "Training started successfully"
+        })
+
+    except RuntimeError as e:
+        return JSONResponse({
+            "success": False,
+            "message": str(e)
+        }, status_code=409)
+    except Exception as e:
+        logger.error(f"Error starting training: {e}")
+        return JSONResponse({
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }, status_code=500)
+
+
+@app.post("/api/training/cancel")
+async def cancel_training(job_id: str):
+    """Cancel a running training job."""
+    try:
+        training_mgr = get_training_manager()
+        success = training_mgr.cancel_training(job_id)
+
+        if success:
+            return JSONResponse({
+                "success": True,
+                "message": "Training cancellation requested"
+            })
+        else:
+            return JSONResponse({
+                "success": False,
+                "message": "Training job not found or already completed"
+            }, status_code=404)
+
+    except Exception as e:
+        logger.error(f"Error cancelling training: {e}")
+        return JSONResponse({
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }, status_code=500)
+
+
+@app.get("/api/training/logs/{job_id}")
+async def get_training_logs(job_id: str):
+    """Get logs for a specific training job."""
+    try:
+        training_mgr = get_training_manager()
+        logs = training_mgr.get_job_logs(job_id)
+
+        return JSONResponse({
+            "success": True,
+            "logs": logs
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting training logs: {e}")
+        return JSONResponse({
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }, status_code=500)
+
+
+@app.get("/api/training/progress/{job_id}")
+async def get_training_progress(job_id: str):
+    """Get progress for a specific training job."""
+    try:
+        training_mgr = get_training_manager()
+        status = training_mgr.get_training_status()
+
+        if status and status['job_id'] == job_id:
+            return JSONResponse({
+                "success": True,
+                "progress": status['progress']
+            })
+        else:
+            return JSONResponse({
+                "success": False,
+                "message": "Training job not found"
+            }, status_code=404)
+
+    except Exception as e:
+        logger.error(f"Error getting training progress: {e}")
+        return JSONResponse({
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }, status_code=500)
+
+
+# ============================================================================
+# Model Management API Endpoints
+# ============================================================================
+
+@app.get("/api/models")
+async def list_models(model_type: str = None):
+    """
+    List all models, optionally filtered by type.
+
+    Query params:
+        model_type: "digits" or "arrows" (optional)
+    """
+    try:
+        model_mgr = get_model_manager()
+
+        if model_type:
+            models = model_mgr.list_models(model_type)
+            return JSONResponse({
+                "success": True,
+                "models": models
+            })
+        else:
+            # Get both types
+            digits_models = model_mgr.list_models("digits")
+            arrows_models = model_mgr.list_models("arrows")
+
+            return JSONResponse({
+                "success": True,
+                "models": {
+                    "digits": digits_models,
+                    "arrows": arrows_models
+                }
+            })
+
+    except Exception as e:
+        logger.error(f"Error listing models: {e}")
+        return JSONResponse({
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }, status_code=500)
+
+
+@app.get("/api/models/{model_type}/{model_id}")
+async def get_model_details(model_type: str, model_id: str):
+    """Get detailed information about a specific model."""
+    try:
+        model_mgr = get_model_manager()
+        model = model_mgr.get_model(model_type, model_id)
+
+        if model:
+            return JSONResponse({
+                "success": True,
+                "model": model
+            })
+        else:
+            return JSONResponse({
+                "success": False,
+                "message": "Model not found"
+            }, status_code=404)
+
+    except Exception as e:
+        logger.error(f"Error getting model details: {e}")
+        return JSONResponse({
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }, status_code=500)
+
+
+@app.post("/api/models/{model_type}/{model_id}/activate")
+async def activate_model(model_type: str, model_id: str):
+    """Activate a model (set it as the active model in config and reload)."""
+    try:
+        model_mgr = get_model_manager()
+        config_path = Path("config.yaml")
+
+        # Activate in config
+        success = model_mgr.activate_model(model_type, model_id, config_path)
+
+        if not success:
+            return JSONResponse({
+                "success": False,
+                "message": "Failed to activate model"
+            }, status_code=500)
+
+        # Reload config
+        with open(config_path, 'r') as f:
+            new_config = yaml.safe_load(f)
+
+        # Hot-reload inference service
+        inference_svc = get_inference_service()
+        inference_svc.reload_models(new_config)
+
+        # Update watermeter service config
+        service = get_service()
+        service.config = new_config
+
+        logger.info(f"Model activated and reloaded: {model_type}/{model_id}")
+
+        return JSONResponse({
+            "success": True,
+            "message": f"Model {model_id} activated successfully"
+        })
+
+    except Exception as e:
+        logger.error(f"Error activating model: {e}")
+        return JSONResponse({
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }, status_code=500)
+
+
+@app.post("/api/models/{model_type}/{model_id}/archive")
+async def archive_model(model_type: str, model_id: str):
+    """Archive a model (mark as archived in metadata)."""
+    try:
+        model_mgr = get_model_manager()
+        success = model_mgr.archive_model(model_type, model_id)
+
+        if success:
+            return JSONResponse({
+                "success": True,
+                "message": f"Model {model_id} archived successfully"
+            })
+        else:
+            return JSONResponse({
+                "success": False,
+                "message": "Model not found"
+            }, status_code=404)
+
+    except Exception as e:
+        logger.error(f"Error archiving model: {e}")
+        return JSONResponse({
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }, status_code=500)
+
+
+@app.delete("/api/models/{model_type}/{model_id}")
+async def delete_model(model_type: str, model_id: str):
+    """Delete a model and all its files."""
+    try:
+        model_mgr = get_model_manager()
+        success = model_mgr.delete_model(model_type, model_id)
+
+        if success:
+            return JSONResponse({
+                "success": True,
+                "message": f"Model {model_id} deleted successfully"
+            })
+        else:
+            return JSONResponse({
+                "success": False,
+                "message": "Model not found"
+            }, status_code=404)
+
+    except Exception as e:
+        logger.error(f"Error deleting model: {e}")
+        return JSONResponse({
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }, status_code=500)
+
+
+@app.post("/api/models/{model_type}/{model_id}/benchmark")
+async def start_benchmark(model_type: str, model_id: str):
+    """Start a benchmark job for a specific model."""
+    try:
+        training_mgr = get_training_manager()
+        job_id = training_mgr.start_benchmark(model_type, model_id)
+
+        return JSONResponse({
+            "success": True,
+            "job_id": job_id,
+            "message": "Benchmark started successfully"
+        })
+
+    except RuntimeError as e:
+        return JSONResponse({
+            "success": False,
+            "message": str(e)
+        }, status_code=409)
+    except Exception as e:
+        logger.error(f"Error starting benchmark: {e}")
+        return JSONResponse({
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }, status_code=500)
+
+
+@app.get("/api/training-data/stats")
+async def get_training_data_stats():
+    """Get statistics about available training data."""
+    try:
+        service = get_service()
+        training_path = Path(service.config.get('low_confidence', {}).get('save_path', '/training'))
+
+        stats = {
+            "digits": {},
+            "arrows": {}
+        }
+
+        # Count images per class for digits
+        digits_gt_path = training_path / 'digits' / 'ground_truth'
+        if digits_gt_path.exists():
+            for class_dir in digits_gt_path.iterdir():
+                if class_dir.is_dir():
+                    count = len(list(class_dir.glob('*.jpg')))
+                    stats["digits"][class_dir.name] = count
+
+        # Count images per class for arrows
+        arrows_gt_path = training_path / 'arrows' / 'ground_truth'
+        if arrows_gt_path.exists():
+            for class_dir in arrows_gt_path.iterdir():
+                if class_dir.is_dir():
+                    count = len(list(class_dir.glob('*.jpg')))
+                    stats["arrows"][class_dir.name] = count
+
+        # Count unlabeled images
+        digits_input = training_path / 'digits' / 'input'
+        arrows_input = training_path / 'arrows' / 'input'
+
+        unlabeled = {
+            "digits": len(list(digits_input.glob('*.jpg'))) if digits_input.exists() else 0,
+            "arrows": len(list(arrows_input.glob('*.jpg'))) if arrows_input.exists() else 0
+        }
+
+        return JSONResponse({
+            "success": True,
+            "ground_truth": stats,
+            "unlabeled": unlabeled
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting training data stats: {e}")
+        return JSONResponse({
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }, status_code=500)
 
 
 if __name__ == "__main__":
