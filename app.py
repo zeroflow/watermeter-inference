@@ -278,6 +278,12 @@ async def config_editor_page(request: Request):
     return templates.TemplateResponse("config_editor.html", {"request": request})
 
 
+@app.get("/training", response_class=HTMLResponse)
+async def training_page(request: Request):
+    """Render the training management page."""
+    return templates.TemplateResponse("training.html", {"request": request})
+
+
 @app.get("/api/config")
 async def get_config():
     """Get the current config as YAML string (with comments preserved)."""

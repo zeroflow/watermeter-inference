@@ -42,16 +42,8 @@ detection:
       x: 0.23500000000000001
       y: 0.685
   digits:
-    count: 5
+    count: 3
     rois:
-    - height: 0.1
-      width: 0.05
-      x: 0.29
-      y: 0.3
-    - height: 0.105
-      width: 0.055
-      x: 0.355
-      y: 0.295
     - height: 0.095
       width: 0.055
       x: 0.42

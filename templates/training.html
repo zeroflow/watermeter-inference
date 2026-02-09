@@ -1,0 +1,1272 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Training - AI Water Meter</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .back-button {
+            color: white;
+            text-decoration: none;
+            font-size: 14px;
+            opacity: 0.9;
+            transition: opacity 0.2s;
+        }
+        .back-button:hover {
+            opacity: 1;
+        }
+
+        .training-content {
+            padding: 24px 32px;
+            display: grid;
+            gap: 24px;
+        }
+
+        .section {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+
+        .section h2 {
+            margin: 0 0 16px 0;
+            font-size: 18px;
+            color: var(--text-dark);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .section h2 .badge {
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+
+        .badge-running {
+            background: var(--warning);
+            color: white;
+        }
+
+        .badge-idle {
+            background: var(--bg-light);
+            color: var(--text-light);
+        }
+
+        /* Training Data Stats */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+
+        .stats-column h3 {
+            margin: 0 0 12px 0;
+            font-size: 14px;
+            color: var(--text-light);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .class-bars {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .class-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .class-bar .label {
+            width: 40px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-dark);
+            text-align: right;
+        }
+
+        .class-bar .bar-container {
+            flex: 1;
+            height: 20px;
+            background: var(--bg-light);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .class-bar .bar-fill {
+            height: 100%;
+            background: var(--primary);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+            min-width: 2px;
+        }
+
+        .class-bar .bar-fill.digits {
+            background: var(--success);
+        }
+
+        .class-bar .bar-fill.arrows {
+            background: var(--primary);
+        }
+
+        .class-bar .count {
+            width: 50px;
+            font-size: 13px;
+            color: var(--text-light);
+        }
+
+        /* Collapsible arrow groups */
+        .arrow-group {
+            margin-bottom: 4px;
+        }
+
+        .arrow-group summary {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            list-style: none;
+            padding: 4px 0;
+        }
+
+        .arrow-group summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .arrow-group summary .expand-icon {
+            width: 16px;
+            font-size: 10px;
+            color: var(--text-light);
+            transition: transform 0.2s;
+        }
+
+        .arrow-group[open] summary .expand-icon {
+            transform: rotate(90deg);
+        }
+
+        .arrow-group summary .label {
+            width: 30px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-dark);
+            text-align: right;
+        }
+
+        .arrow-group summary .bar-container {
+            flex: 1;
+            height: 20px;
+            background: var(--bg-light);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .arrow-group summary .bar-fill {
+            height: 100%;
+            background: var(--primary);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+            min-width: 2px;
+        }
+
+        .arrow-group summary .count {
+            width: 50px;
+            font-size: 13px;
+            color: var(--text-light);
+        }
+
+        .arrow-group .sub-bars {
+            margin-left: 24px;
+            padding: 4px 0 8px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .arrow-group .sub-bars .class-bar {
+            opacity: 0.8;
+        }
+
+        .arrow-group .sub-bars .class-bar .bar-container {
+            height: 14px;
+        }
+
+        .arrow-group .sub-bars .class-bar .label {
+            font-size: 11px;
+            width: 30px;
+        }
+
+        .arrow-group .sub-bars .class-bar .count {
+            font-size: 11px;
+        }
+
+        .stats-summary {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            gap: 24px;
+            font-size: 14px;
+        }
+
+        .stats-summary .stat {
+            display: flex;
+            gap: 6px;
+        }
+
+        .stats-summary .stat-label {
+            color: var(--text-light);
+        }
+
+        .stats-summary .stat-value {
+            font-weight: 600;
+            color: var(--text-dark);
+        }
+
+        /* Training Form */
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .form-group label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-dark);
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            padding: 10px 12px;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 60px;
+        }
+
+        .form-group.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .form-group .hint {
+            font-size: 12px;
+            color: var(--text-light);
+        }
+
+        .form-actions {
+            margin-top: 16px;
+            display: flex;
+            gap: 12px;
+        }
+
+        /* Training Progress */
+        .progress-section {
+            display: none;
+        }
+
+        .progress-section.visible {
+            display: block;
+        }
+
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .progress-status {
+            font-size: 14px;
+            color: var(--text-light);
+        }
+
+        .progress-status strong {
+            color: var(--text-dark);
+        }
+
+        .progress-bars {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .progress-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .progress-item .progress-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+        }
+
+        .progress-item .progress-label .name {
+            color: var(--text-dark);
+            font-weight: 500;
+        }
+
+        .progress-item .progress-label .value {
+            color: var(--text-light);
+        }
+
+        .progress-bar-container {
+            height: 8px;
+            background: var(--bg-light);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: var(--primary);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+
+        .progress-metrics {
+            display: flex;
+            gap: 24px;
+            margin-bottom: 16px;
+            padding: 12px;
+            background: var(--bg-light);
+            border-radius: 8px;
+        }
+
+        .metric {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .metric .metric-label {
+            font-size: 12px;
+            color: var(--text-light);
+            text-transform: uppercase;
+        }
+
+        .metric .metric-value {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-dark);
+        }
+
+        .log-viewer {
+            background: #1e293b;
+            border-radius: 8px;
+            padding: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            color: #e2e8f0;
+        }
+
+        .log-viewer .log-line {
+            padding: 2px 0;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        /* Model List */
+        .model-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .model-table th,
+        .model-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .model-table th {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-light);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .model-table td {
+            font-size: 14px;
+            color: var(--text-dark);
+        }
+
+        .model-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .model-table .model-name {
+            font-weight: 600;
+        }
+
+        .model-table .model-type {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .model-table .model-type.digits {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .model-table .model-type.arrows {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .model-table .status-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .model-table .status-badge.active {
+            background: var(--success);
+            color: white;
+        }
+
+        .model-table .status-badge.archived {
+            background: var(--bg-light);
+            color: var(--text-light);
+        }
+
+        .model-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .model-actions button {
+            padding: 6px 12px;
+            font-size: 12px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+
+        .model-actions .btn-activate {
+            background: var(--primary);
+            color: white;
+        }
+
+        .model-actions .btn-activate:hover {
+            background: #1d4ed8;
+        }
+
+        .model-actions .btn-activate:disabled {
+            background: var(--bg-light);
+            color: var(--text-light);
+            cursor: not-allowed;
+        }
+
+        .model-actions .btn-delete {
+            background: #fee2e2;
+            color: var(--danger);
+        }
+
+        .model-actions .btn-delete:hover {
+            background: #fecaca;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 32px;
+            color: var(--text-light);
+        }
+
+        .empty-state p {
+            margin: 0;
+        }
+
+        /* Message Toast */
+        .message {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 16px 24px;
+            border-radius: 8px;
+            font-weight: 500;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1000;
+            display: none;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .message.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+            display: block;
+        }
+
+        .message.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+            display: block;
+        }
+
+        /* Tabs for model types */
+        .tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 16px;
+            border-bottom: 2px solid var(--border);
+        }
+
+        .tab {
+            padding: 10px 20px;
+            background: none;
+            border: none;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-light);
+            cursor: pointer;
+            margin-bottom: -2px;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .tab:hover {
+            color: var(--text-dark);
+        }
+
+        .tab.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .progress-metrics {
+                flex-wrap: wrap;
+            }
+
+            .model-table {
+                font-size: 12px;
+            }
+
+            .model-actions {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AI Water Meter Dashboard</h1>
+            <div class="header-actions">
+                <a href="/" class="back-button">Back to Dashboard</a>
+                <span id="training-status-badge" class="badge badge-idle">Training: Idle</span>
+            </div>
+        </header>
+
+        <div id="message" class="message"></div>
+
+        <main class="training-content">
+            <!-- Training Data Stats -->
+            <section class="section" id="stats-section">
+                <h2>Training Data</h2>
+                <div class="stats-grid">
+                    <div class="stats-column">
+                        <h3>Digits (0-9, NAN)</h3>
+                        <div id="digits-stats" class="class-bars">
+                            <div class="empty-state"><p>Loading...</p></div>
+                        </div>
+                    </div>
+                    <div class="stats-column">
+                        <h3>Arrows (0.0-9.9)</h3>
+                        <div id="arrows-stats" class="class-bars">
+                            <div class="empty-state"><p>Loading...</p></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="stats-summary">
+                    <div class="stat">
+                        <span class="stat-label">Total Labeled:</span>
+                        <span class="stat-value" id="total-labeled">-</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Unlabeled:</span>
+                        <span class="stat-value" id="total-unlabeled">-</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Training Configuration -->
+            <section class="section" id="training-form-section">
+                <h2>Start Training</h2>
+                <form id="training-form" onsubmit="startTraining(event)">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="model-type">Model Type</label>
+                            <select id="model-type" required onchange="onModelTypeChange()">
+                                <option value="digits">Digits</option>
+                                <option value="arrows">Arrows</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="architecture">Architecture</label>
+                            <select id="architecture" required>
+                                <option value="resnext50_32x4d">ResNeXt50 32x4d</option>
+                                <option value="efficientnetv2_rw_s">EfficientNetV2-S</option>
+                                <option value="convnext_tiny">ConvNeXt Tiny</option>
+                                <option value="resnet34">ResNet34</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="resolution">Resolution</label>
+                            <select id="resolution" required>
+                                <option value="96">96px</option>
+                                <option value="128" selected>128px</option>
+                                <option value="144">144px</option>
+                                <option value="160">160px</option>
+                                <option value="192">192px</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="seeds">Seeds</label>
+                            <input type="text" id="seeds" value="42" required placeholder="42, 67, 69">
+                            <span class="hint">Comma-separated (e.g., 42, 67, 69)</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="epochs">Epochs</label>
+                            <input type="number" id="epochs" value="20" min="1" max="100" required>
+                        </div>
+                        <div class="form-group" id="step-size-group" style="display: none;">
+                            <label for="step-size">Step Size</label>
+                            <select id="step-size">
+                                <option value="1.0">1.0</option>
+                                <option value="0.5">0.5</option>
+                                <option value="0.2">0.2</option>
+                                <option value="0.1">0.1</option>
+                            </select>
+                        </div>
+                        <div class="form-group full-width">
+                            <label for="notes">Notes (optional)</label>
+                            <textarea id="notes" placeholder="Training notes..."></textarea>
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" id="start-training-btn" class="btn btn-primary">
+                            Start Training
+                        </button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- Training Progress -->
+            <section class="section progress-section" id="progress-section">
+                <h2>
+                    Training Progress
+                    <span id="progress-status-badge" class="badge badge-running">Running</span>
+                </h2>
+                <div class="progress-header">
+                    <div class="progress-status">
+                        <span id="progress-message">Initializing...</span>
+                    </div>
+                    <button id="cancel-training-btn" class="btn btn-secondary" onclick="cancelTraining()">
+                        Cancel
+                    </button>
+                </div>
+                <div class="progress-bars">
+                    <div class="progress-item">
+                        <div class="progress-label">
+                            <span class="name">Epoch</span>
+                            <span class="value" id="epoch-progress-text">0 / 20</span>
+                        </div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar-fill" id="epoch-progress-bar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="progress-item">
+                        <div class="progress-label">
+                            <span class="name">Configuration</span>
+                            <span class="value" id="config-progress-text">1 / 1</span>
+                        </div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar-fill" id="config-progress-bar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="progress-metrics">
+                    <div class="metric">
+                        <span class="metric-label">Train Loss</span>
+                        <span class="metric-value" id="metric-loss">-</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Val Accuracy</span>
+                        <span class="metric-value" id="metric-accuracy">-</span>
+                    </div>
+                </div>
+                <div class="log-viewer" id="log-viewer">
+                    <div class="log-line">Waiting for logs...</div>
+                </div>
+            </section>
+
+            <!-- Model List -->
+            <section class="section" id="models-section">
+                <h2>Trained Models</h2>
+                <div class="tabs">
+                    <button class="tab active" data-type="all" onclick="filterModels('all')">All</button>
+                    <button class="tab" data-type="digits" onclick="filterModels('digits')">Digits</button>
+                    <button class="tab" data-type="arrows" onclick="filterModels('arrows')">Arrows</button>
+                </div>
+                <div id="models-container">
+                    <div class="empty-state"><p>Loading models...</p></div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        // State
+        let currentJobId = null;
+        let pollingInterval = null;
+        let allModels = { digits: [], arrows: [] };
+        let activeModels = { digits: null, arrows: null };
+        let currentFilter = 'all';
+
+        // Initialize
+        window.addEventListener('load', function() {
+            loadTrainingStats();
+            loadModels();
+            pollTrainingStatus();
+
+            // Start polling
+            pollingInterval = setInterval(pollTrainingStatus, 2000);
+        });
+
+        // Show message
+        function showMessage(text, type) {
+            const message = document.getElementById('message');
+            message.textContent = text;
+            message.className = 'message ' + type;
+
+            setTimeout(() => {
+                message.className = 'message';
+            }, 5000);
+        }
+
+        // Model type change handler
+        function onModelTypeChange() {
+            const modelType = document.getElementById('model-type').value;
+            const stepSizeGroup = document.getElementById('step-size-group');
+            stepSizeGroup.style.display = modelType === 'arrows' ? 'block' : 'none';
+        }
+
+        // Load training data stats
+        async function loadTrainingStats() {
+            try {
+                const response = await fetch('/api/training-data/stats');
+                const data = await response.json();
+
+                if (!data.success) {
+                    throw new Error(data.message);
+                }
+
+                // Render digits stats
+                const digitsContainer = document.getElementById('digits-stats');
+                const digitsStats = data.ground_truth.digits || {};
+                const digitsClasses = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'NAN'];
+                const maxDigits = Math.max(...Object.values(digitsStats), 1);
+
+                let digitsHtml = '';
+                let totalDigits = 0;
+                for (const cls of digitsClasses) {
+                    const count = digitsStats[cls] || 0;
+                    totalDigits += count;
+                    const width = (count / maxDigits * 100).toFixed(1);
+                    digitsHtml += `
+                        <div class="class-bar">
+                            <span class="label">${cls}</span>
+                            <div class="bar-container">
+                                <div class="bar-fill digits" style="width: ${width}%"></div>
+                            </div>
+                            <span class="count">${count}</span>
+                        </div>
+                    `;
+                }
+                digitsContainer.innerHTML = digitsHtml || '<div class="empty-state"><p>No data</p></div>';
+
+                // Render arrows stats - grouped by integer (0.x, 1.x, ... 9.x)
+                const arrowsContainer = document.getElementById('arrows-stats');
+                const arrowsStats = data.ground_truth.arrows || {};
+
+                // Group by integer part
+                const arrowGroups = {};
+                let totalArrows = 0;
+                for (const [cls, count] of Object.entries(arrowsStats)) {
+                    const intPart = Math.floor(parseFloat(cls));
+                    if (!arrowGroups[intPart]) {
+                        arrowGroups[intPart] = { total: 0, classes: {} };
+                    }
+                    arrowGroups[intPart].total += count;
+                    arrowGroups[intPart].classes[cls] = count;
+                    totalArrows += count;
+                }
+
+                // Find max for bar scaling
+                const maxGroupTotal = Math.max(...Object.values(arrowGroups).map(g => g.total), 1);
+
+                let arrowsHtml = '';
+                for (let i = 0; i <= 9; i++) {
+                    const group = arrowGroups[i] || { total: 0, classes: {} };
+                    const groupTotal = group.total;
+                    const width = (groupTotal / maxGroupTotal * 100).toFixed(1);
+
+                    // Sort sub-classes
+                    const subClasses = Object.keys(group.classes).sort((a, b) => parseFloat(a) - parseFloat(b));
+                    const maxSubCount = Math.max(...Object.values(group.classes), 1);
+
+                    let subBarsHtml = '';
+                    for (const cls of subClasses) {
+                        const count = group.classes[cls];
+                        const subWidth = (count / maxSubCount * 100).toFixed(1);
+                        subBarsHtml += `
+                            <div class="class-bar">
+                                <span class="label">${cls}</span>
+                                <div class="bar-container">
+                                    <div class="bar-fill arrows" style="width: ${subWidth}%"></div>
+                                </div>
+                                <span class="count">${count}</span>
+                            </div>
+                        `;
+                    }
+
+                    arrowsHtml += `
+                        <details class="arrow-group">
+                            <summary>
+                                <span class="expand-icon">▶</span>
+                                <span class="label">${i}.x</span>
+                                <div class="bar-container">
+                                    <div class="bar-fill" style="width: ${width}%"></div>
+                                </div>
+                                <span class="count">${groupTotal}</span>
+                            </summary>
+                            <div class="sub-bars">
+                                ${subBarsHtml || '<div class="empty-state"><p>No data</p></div>'}
+                            </div>
+                        </details>
+                    `;
+                }
+                arrowsContainer.innerHTML = arrowsHtml || '<div class="empty-state"><p>No data</p></div>';
+
+                // Update summary
+                document.getElementById('total-labeled').textContent = totalDigits + totalArrows;
+                const unlabeled = (data.unlabeled.digits || 0) + (data.unlabeled.arrows || 0);
+                document.getElementById('total-unlabeled').textContent = unlabeled;
+
+            } catch (error) {
+                console.error('Error loading training stats:', error);
+            }
+        }
+
+        // Poll training status
+        async function pollTrainingStatus() {
+            try {
+                const response = await fetch('/api/training/status');
+                const data = await response.json();
+
+                const trainingStatus = data.training;
+                const progressSection = document.getElementById('progress-section');
+                const statusBadge = document.getElementById('training-status-badge');
+                const startBtn = document.getElementById('start-training-btn');
+
+                if (trainingStatus && trainingStatus.status === 'running') {
+                    // Training is running
+                    currentJobId = trainingStatus.job_id;
+                    progressSection.classList.add('visible');
+                    statusBadge.textContent = 'Training: Running';
+                    statusBadge.className = 'badge badge-running';
+                    startBtn.disabled = true;
+                    startBtn.textContent = 'Training in Progress...';
+
+                    // Update progress
+                    const progress = trainingStatus.progress || {};
+                    updateProgress(progress);
+
+                    // Load logs
+                    loadLogs(trainingStatus.job_id);
+
+                } else if (trainingStatus && (trainingStatus.status === 'completed' || trainingStatus.status === 'failed' || trainingStatus.status === 'cancelled')) {
+                    // Training just finished
+                    if (currentJobId) {
+                        const status = trainingStatus.status;
+                        if (status === 'completed') {
+                            showMessage('Training completed successfully!', 'success');
+                        } else if (status === 'cancelled') {
+                            showMessage('Training was cancelled.', 'error');
+                        } else {
+                            showMessage('Training failed: ' + (trainingStatus.error || 'Unknown error'), 'error');
+                        }
+                        currentJobId = null;
+                        loadModels(); // Refresh model list
+                    }
+                    progressSection.classList.remove('visible');
+                    statusBadge.textContent = 'Training: Idle';
+                    statusBadge.className = 'badge badge-idle';
+                    startBtn.disabled = false;
+                    startBtn.textContent = 'Start Training';
+
+                } else {
+                    // No training
+                    progressSection.classList.remove('visible');
+                    statusBadge.textContent = 'Training: Idle';
+                    statusBadge.className = 'badge badge-idle';
+                    startBtn.disabled = false;
+                    startBtn.textContent = 'Start Training';
+                }
+
+            } catch (error) {
+                console.error('Error polling training status:', error);
+            }
+        }
+
+        // Update progress display
+        function updateProgress(progress) {
+            const currentEpoch = progress.current_epoch || 0;
+            const totalEpochs = progress.total_epochs || 20;
+            const currentConfig = progress.current_config || 1;
+            const totalConfigs = progress.total_configs || 1;
+
+            // Epoch progress
+            const epochPercent = (currentEpoch / totalEpochs * 100).toFixed(0);
+            document.getElementById('epoch-progress-text').textContent = `${currentEpoch} / ${totalEpochs}`;
+            document.getElementById('epoch-progress-bar').style.width = epochPercent + '%';
+
+            // Config progress
+            const configPercent = (currentConfig / totalConfigs * 100).toFixed(0);
+            document.getElementById('config-progress-text').textContent = `${currentConfig} / ${totalConfigs}`;
+            document.getElementById('config-progress-bar').style.width = configPercent + '%';
+
+            // Metrics
+            const loss = progress.train_loss;
+            const accuracy = progress.val_accuracy;
+            document.getElementById('metric-loss').textContent = loss !== null && loss !== undefined ? loss.toFixed(4) : '-';
+            document.getElementById('metric-accuracy').textContent = accuracy !== null && accuracy !== undefined ? accuracy.toFixed(2) + '%' : '-';
+
+            // Message
+            document.getElementById('progress-message').textContent = progress.message || 'Training...';
+        }
+
+        // Load logs
+        async function loadLogs(jobId) {
+            try {
+                const response = await fetch(`/api/training/logs/${jobId}`);
+                const data = await response.json();
+
+                if (data.success && data.logs) {
+                    const logViewer = document.getElementById('log-viewer');
+                    const wasAtBottom = logViewer.scrollHeight - logViewer.scrollTop <= logViewer.clientHeight + 50;
+
+                    logViewer.innerHTML = data.logs.map(log => `<div class="log-line">${log}</div>`).join('');
+
+                    // Auto-scroll if was at bottom
+                    if (wasAtBottom) {
+                        logViewer.scrollTop = logViewer.scrollHeight;
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading logs:', error);
+            }
+        }
+
+        // Start training
+        async function startTraining(event) {
+            event.preventDefault();
+
+            const modelType = document.getElementById('model-type').value;
+            const architecture = document.getElementById('architecture').value;
+            const resolution = parseInt(document.getElementById('resolution').value);
+            const seedsStr = document.getElementById('seeds').value;
+            const epochs = parseInt(document.getElementById('epochs').value);
+            const stepSize = parseFloat(document.getElementById('step-size').value);
+            const notes = document.getElementById('notes').value;
+
+            // Parse seeds
+            const seeds = seedsStr.split(',').map(s => parseInt(s.trim())).filter(s => !isNaN(s));
+            if (seeds.length === 0) {
+                showMessage('Please enter at least one valid seed.', 'error');
+                return;
+            }
+
+            const config = {
+                model_type: modelType,
+                architecture: architecture,
+                resolution: resolution,
+                seeds: seeds,
+                epochs: epochs,
+                batch_size: 16,
+                notes: notes
+            };
+
+            if (modelType === 'arrows') {
+                config.step_size = stepSize;
+            }
+
+            try {
+                const response = await fetch('/api/training/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showMessage('Training started!', 'success');
+                    currentJobId = data.job_id;
+                } else {
+                    showMessage('Failed to start training: ' + data.message, 'error');
+                }
+
+            } catch (error) {
+                console.error('Error starting training:', error);
+                showMessage('Error starting training: ' + error.message, 'error');
+            }
+        }
+
+        // Cancel training
+        async function cancelTraining() {
+            if (!currentJobId) return;
+
+            if (!confirm('Are you sure you want to cancel the training?')) return;
+
+            try {
+                const response = await fetch(`/api/training/cancel?job_id=${currentJobId}`, {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showMessage('Training cancellation requested.', 'success');
+                } else {
+                    showMessage('Failed to cancel: ' + data.message, 'error');
+                }
+
+            } catch (error) {
+                console.error('Error cancelling training:', error);
+                showMessage('Error cancelling: ' + error.message, 'error');
+            }
+        }
+
+        // Load models
+        async function loadModels() {
+            try {
+                const response = await fetch('/api/models');
+                const data = await response.json();
+
+                if (!data.success) {
+                    throw new Error(data.message);
+                }
+
+                allModels = data.models;
+
+                // Get active models from config
+                const statusResponse = await fetch('/api/status');
+                const statusData = await statusResponse.json();
+                // Note: We'd need to add active model info to the API
+                // For now, we'll check based on config path in model metadata
+
+                renderModels();
+
+            } catch (error) {
+                console.error('Error loading models:', error);
+                document.getElementById('models-container').innerHTML =
+                    '<div class="empty-state"><p>Error loading models</p></div>';
+            }
+        }
+
+        // Filter models
+        function filterModels(type) {
+            currentFilter = type;
+
+            // Update tab styles
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.toggle('active', tab.dataset.type === type);
+            });
+
+            renderModels();
+        }
+
+        // Render models table
+        function renderModels() {
+            const container = document.getElementById('models-container');
+            let models = [];
+
+            if (currentFilter === 'all') {
+                models = [
+                    ...allModels.digits.map(m => ({ ...m, model_type: 'digits' })),
+                    ...allModels.arrows.map(m => ({ ...m, model_type: 'arrows' }))
+                ];
+            } else if (currentFilter === 'digits') {
+                models = allModels.digits.map(m => ({ ...m, model_type: 'digits' }));
+            } else {
+                models = allModels.arrows.map(m => ({ ...m, model_type: 'arrows' }));
+            }
+
+            if (models.length === 0) {
+                container.innerHTML = '<div class="empty-state"><p>No models found</p></div>';
+                return;
+            }
+
+            // Sort by created_at descending
+            models.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+
+            let html = `
+                <table class="model-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Architecture</th>
+                            <th>Resolution</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            for (const model of models) {
+                const modelType = model.model_type;
+                const isActive = model.status === 'active';
+                const isArchived = model.status === 'archived';
+                const createdAt = model.created_at ? new Date(model.created_at).toLocaleDateString() : '-';
+
+                html += `
+                    <tr>
+                        <td class="model-name">${model.id}</td>
+                        <td><span class="model-type ${modelType}">${modelType}</span></td>
+                        <td>${model.architecture || '-'}</td>
+                        <td>${model.resolution || '-'}px</td>
+                        <td>
+                            ${isActive ? '<span class="status-badge active">Active</span>' : ''}
+                            ${isArchived ? '<span class="status-badge archived">Archived</span>' : ''}
+                        </td>
+                        <td>${createdAt}</td>
+                        <td class="model-actions">
+                            <button class="btn-activate" onclick="activateModel('${modelType}', '${model.id}')" ${isActive ? 'disabled' : ''}>
+                                ${isActive ? 'Active' : 'Activate'}
+                            </button>
+                            <button class="btn-delete" onclick="deleteModel('${modelType}', '${model.id}')">
+                                Delete
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }
+
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        // Activate model
+        async function activateModel(modelType, modelId) {
+            try {
+                const response = await fetch(`/api/models/${modelType}/${modelId}/activate`, {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showMessage(`Model ${modelId} activated!`, 'success');
+                    loadModels();
+                } else {
+                    showMessage('Failed to activate: ' + data.message, 'error');
+                }
+
+            } catch (error) {
+                console.error('Error activating model:', error);
+                showMessage('Error: ' + error.message, 'error');
+            }
+        }
+
+        // Delete model
+        async function deleteModel(modelType, modelId) {
+            if (!confirm(`Are you sure you want to delete model "${modelId}"? This cannot be undone.`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/models/${modelType}/${modelId}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showMessage(`Model ${modelId} deleted.`, 'success');
+                    loadModels();
+                } else {
+                    showMessage('Failed to delete: ' + data.message, 'error');
+                }
+
+            } catch (error) {
+                console.error('Error deleting model:', error);
+                showMessage('Error: ' + error.message, 'error');
+            }
+        }
+    </script>
+</body>
+</html>
