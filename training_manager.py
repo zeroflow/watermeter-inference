@@ -421,17 +421,204 @@ class TrainingManager:
         """
         Execute the actual benchmark process.
 
-        This is a placeholder that will call the existing benchmark_*.py logic.
+        Uses logic from benchmark_digits.py and benchmark_arrows.py.
         """
-        job.add_log("Benchmark execution placeholder - actual benchmark will be implemented")
+        import openvino as ov
+        import cv2
+        import numpy as np
+        from collections import defaultdict
+        import math
 
-        # Return mock result for now
-        return {
-            'accuracy': 94.5,
-            'mean_confidence': 96.0,
-            'low_confidence_pct': 2.5,
-            'inference_time_ms': 15.0
+        model_type = job.model_type
+
+        # Determine ground truth path and classes
+        if model_type == 'digits':
+            gt_path = Path("/training/digits/ground_truth")
+            classes = [str(i) for i in range(10)] + ['NAN']
+        else:  # arrows
+            gt_path = Path("/training/arrows/ground_truth")
+            # Determine num_classes from model metadata
+            metadata = self.model_manager.get_model_metadata(model_type, job.model_id)
+            num_classes = metadata.get('training_info', {}).get('num_classes', 10)
+            classes = self._generate_arrow_classes(num_classes)
+
+        job.add_log(f"Ground truth path: {gt_path}")
+        job.add_log(f"Number of classes: {len(classes)}")
+
+        # Check if ground truth exists
+        if not gt_path.exists():
+            raise ValueError(f"Ground truth path not found: {gt_path}")
+
+        # Get model resolution from metadata
+        metadata = self.model_manager.get_model_metadata(model_type, job.model_id)
+        resolution = metadata.get('training_info', {}).get('resolution', 128)
+        job.add_log(f"Model resolution: {resolution}px")
+
+        # Load model with OpenVINO
+        job.add_log("Loading model with OpenVINO...")
+        core = ov.Core()
+        model = core.read_model(str(model_path))
+        compiled = core.compile_model(model, 'AUTO')
+        job.add_log("Model loaded successfully")
+
+        # Collect test images
+        job.add_log("Collecting test images...")
+        images_by_class = self._collect_benchmark_images(gt_path, model_type)
+        total_images = sum(len(imgs) for imgs in images_by_class.values())
+        total_classes = len(images_by_class)
+        job.add_log(f"Found {total_images} images across {total_classes} classes")
+
+        job.update_progress(
+            total_classes=total_classes,
+            total_images=total_images,
+            message=f"Running inference on {total_images} images..."
+        )
+
+        # Run inference
+        all_predictions = []
+        all_confidences = []
+        all_times = []
+        correct = 0
+        processed = 0
+
+        for class_idx, (ground_truth, image_paths) in enumerate(sorted(images_by_class.items())):
+            if self._cancel_flag.is_set():
+                job.add_log("Benchmark cancelled by user")
+                raise RuntimeError("Benchmark cancelled")
+
+            job.update_progress(
+                current_class=class_idx + 1,
+                message=f"Processing class {ground_truth} ({class_idx + 1}/{total_classes})"
+            )
+
+            # Determine expected label for arrows
+            if model_type == 'arrows':
+                expected_label = self._round_to_arrow_class(float(ground_truth), len(classes))
+            else:
+                expected_label = ground_truth
+
+            for img_path in image_paths:
+                # Preprocess
+                img = cv2.imread(str(img_path))
+                if img is None:
+                    continue
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                img = cv2.resize(img, (resolution, resolution))
+                img = img.astype(np.float32) / 255.0
+                img = (img - [0.485, 0.456, 0.406]) / [0.229, 0.224, 0.225]
+                img = img.transpose(2, 0, 1)[np.newaxis, ...].astype(np.float32)
+
+                # Inference
+                start_time = time.perf_counter()
+                result = compiled([img])[compiled.output(0)][0]
+                inference_time = time.perf_counter() - start_time
+
+                # Softmax
+                result = result - result.max()
+                probs = np.exp(result) / np.exp(result).sum()
+                pred_idx = probs.argmax()
+                confidence = float(probs[pred_idx])
+                pred_label = classes[pred_idx]
+
+                all_predictions.append((pred_label, expected_label))
+                all_confidences.append(confidence)
+                all_times.append(inference_time)
+
+                if pred_label == expected_label:
+                    correct += 1
+
+                processed += 1
+                job.update_progress(processed_images=processed)
+
+        # Calculate results
+        accuracy = correct / processed if processed > 0 else 0
+        mean_confidence = np.mean(all_confidences) if all_confidences else 0
+        low_conf_count = sum(1 for c in all_confidences if c < 0.8)
+        low_conf_pct = low_conf_count / len(all_confidences) * 100 if all_confidences else 0
+        mean_inference_time = np.mean(all_times) * 1000 if all_times else 0  # in ms
+
+        # Per-class accuracy
+        class_accuracy = defaultdict(lambda: {'correct': 0, 'total': 0})
+        for pred, expected in all_predictions:
+            class_accuracy[expected]['total'] += 1
+            if pred == expected:
+                class_accuracy[expected]['correct'] += 1
+
+        per_class = {}
+        for cls, data in class_accuracy.items():
+            per_class[cls] = {
+                'accuracy': data['correct'] / data['total'] if data['total'] > 0 else 0,
+                'count': data['total']
+            }
+
+        result = {
+            'accuracy': round(accuracy * 100, 2),
+            'mean_confidence': round(mean_confidence * 100, 2),
+            'low_confidence_pct': round(low_conf_pct, 2),
+            'inference_time_ms': round(mean_inference_time, 2),
+            'total_images': processed,
+            'correct_predictions': correct,
+            'per_class_accuracy': per_class
         }
+
+        job.add_log(f"Benchmark complete: {accuracy*100:.1f}% accuracy, {mean_confidence*100:.1f}% mean confidence")
+        return result
+
+    def _generate_arrow_classes(self, num_classes: int) -> List[str]:
+        """Generate class labels for arrows based on number of classes."""
+        if num_classes == 10:
+            return [str(i) for i in range(10)]
+        elif num_classes == 20:
+            return [f"{i/2:.1f}" for i in range(20)]
+        elif num_classes == 50:
+            return [f"{i/5:.1f}" for i in range(50)]
+        elif num_classes == 100:
+            return [f"{i/10:.1f}" for i in range(100)]
+        else:
+            raise ValueError(f"Unsupported num_classes for arrows: {num_classes}")
+
+    def _round_to_arrow_class(self, value: float, num_classes: int) -> str:
+        """Round ground truth value to nearest arrow class label."""
+        import math
+        if num_classes == 10:
+            rounded = math.floor(value)
+            if rounded >= 10:
+                rounded = 0
+            return str(int(rounded))
+        elif num_classes == 20:
+            rounded = math.floor(value * 2) / 2
+            if rounded >= 10.0:
+                rounded = 0.0
+            return f"{rounded:.1f}"
+        elif num_classes == 50:
+            rounded = math.floor(value * 5) / 5
+            if rounded >= 10.0:
+                rounded = 0.0
+            return f"{rounded:.1f}"
+        elif num_classes == 100:
+            rounded = math.floor(value * 10) / 10
+            if rounded >= 10.0:
+                rounded = 0.0
+            return f"{rounded:.1f}"
+        else:
+            raise ValueError(f"Unsupported num_classes: {num_classes}")
+
+    def _collect_benchmark_images(self, gt_path: Path, model_type: str) -> Dict[str, List[Path]]:
+        """Collect benchmark images organized by ground truth label."""
+        from collections import defaultdict
+
+        images_by_class = defaultdict(list)
+
+        for class_dir in sorted(gt_path.iterdir()):
+            if not class_dir.is_dir():
+                continue
+
+            label = class_dir.name
+
+            for img_path in class_dir.glob("*.jpg"):
+                images_by_class[label].append(img_path)
+
+        return dict(images_by_class)
 
 
 # Singleton instance

@@ -1389,6 +1389,32 @@ async def cancel_training(job_id: str):
         }, status_code=500)
 
 
+@app.post("/api/benchmark/cancel")
+async def cancel_benchmark(job_id: str):
+    """Cancel a running benchmark job."""
+    try:
+        training_mgr = get_training_manager()
+        success = training_mgr.cancel_benchmark(job_id)
+
+        if success:
+            return JSONResponse({
+                "success": True,
+                "message": "Benchmark cancellation requested"
+            })
+        else:
+            return JSONResponse({
+                "success": False,
+                "message": "Benchmark job not found or already completed"
+            }, status_code=404)
+
+    except Exception as e:
+        logger.error(f"Error cancelling benchmark: {e}")
+        return JSONResponse({
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }, status_code=500)
+
+
 @app.get("/api/training/logs/{job_id}")
 async def get_training_logs(job_id: str):
     """Get logs for a specific training job."""

@@ -504,6 +504,108 @@
             background: #fecaca;
         }
 
+        .model-actions .btn-benchmark {
+            background: var(--warning);
+            color: white;
+        }
+
+        .model-actions .btn-benchmark:hover {
+            background: #b45309;
+        }
+
+        .model-actions .btn-benchmark:disabled {
+            background: var(--bg-light);
+            color: var(--text-light);
+            cursor: not-allowed;
+        }
+
+        /* Benchmark Progress */
+        .benchmark-section {
+            display: none;
+        }
+
+        .benchmark-section.visible {
+            display: block;
+        }
+
+        .benchmark-results {
+            margin-top: 16px;
+            padding: 16px;
+            background: var(--bg-light);
+            border-radius: 8px;
+        }
+
+        .benchmark-results h4 {
+            margin: 0 0 12px 0;
+            font-size: 14px;
+            color: var(--text-dark);
+        }
+
+        .benchmark-metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .benchmark-metric {
+            text-align: center;
+            padding: 12px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .benchmark-metric .value {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .benchmark-metric .label {
+            font-size: 12px;
+            color: var(--text-light);
+            margin-top: 4px;
+        }
+
+        .benchmark-metric.good .value {
+            color: var(--success);
+        }
+
+        .benchmark-metric.warning .value {
+            color: var(--warning);
+        }
+
+        .per-class-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .per-class-table th,
+        .per-class-table td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .per-class-table th {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: var(--text-light);
+        }
+
+        .per-class-details {
+            margin-top: 12px;
+        }
+
+        .per-class-details summary {
+            cursor: pointer;
+            font-size: 13px;
+            color: var(--primary);
+            padding: 4px 0;
+        }
+
         .empty-state {
             text-align: center;
             padding: 32px;
@@ -760,6 +862,51 @@
                 </div>
             </section>
 
+            <!-- Benchmark Progress -->
+            <section class="section benchmark-section" id="benchmark-section">
+                <h2>
+                    Benchmark Progress
+                    <span id="benchmark-status-badge" class="badge badge-running">Running</span>
+                </h2>
+                <div class="progress-header">
+                    <div class="progress-status">
+                        <span id="benchmark-message">Initializing...</span>
+                    </div>
+                    <button id="cancel-benchmark-btn" class="btn btn-secondary" onclick="cancelBenchmark()">
+                        Cancel
+                    </button>
+                </div>
+                <div class="progress-bars">
+                    <div class="progress-item">
+                        <div class="progress-label">
+                            <span class="name">Class</span>
+                            <span class="value" id="benchmark-class-text">0 / 0</span>
+                        </div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar-fill" id="benchmark-class-bar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="progress-item">
+                        <div class="progress-label">
+                            <span class="name">Images</span>
+                            <span class="value" id="benchmark-images-text">0 / 0</span>
+                        </div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar-fill" id="benchmark-images-bar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="log-viewer" id="benchmark-log-viewer">
+                    <div class="log-line">Waiting for logs...</div>
+                </div>
+            </section>
+
+            <!-- Benchmark Results -->
+            <section class="section benchmark-results" id="benchmark-results-section" style="display: none;">
+                <h2>Benchmark Results</h2>
+                <div id="benchmark-results-content"></div>
+            </section>
+
             <!-- Model List -->
             <section class="section" id="models-section">
                 <h2>Trained Models</h2>
@@ -778,10 +925,12 @@
     <script>
         // State
         let currentJobId = null;
+        let currentBenchmarkJobId = null;
         let pollingInterval = null;
         let allModels = { digits: [], arrows: [] };
         let activeModels = { digits: null, arrows: null };
         let currentFilter = 'all';
+        let lastBenchmarkResult = null;
 
         // Initialize
         window.addEventListener('load', function() {
@@ -918,12 +1067,13 @@
             }
         }
 
-        // Poll training status
+        // Poll training and benchmark status
         async function pollTrainingStatus() {
             try {
                 const response = await fetch('/api/training/status');
                 const data = await response.json();
 
+                // Handle training status
                 const trainingStatus = data.training;
                 const progressSection = document.getElementById('progress-section');
                 const statusBadge = document.getElementById('training-status-badge');
@@ -974,8 +1124,215 @@
                     startBtn.textContent = 'Start Training';
                 }
 
+                // Handle benchmark status
+                const benchmarkStatus = data.benchmark;
+                const benchmarkSection = document.getElementById('benchmark-section');
+
+                if (benchmarkStatus && benchmarkStatus.status === 'running') {
+                    currentBenchmarkJobId = benchmarkStatus.job_id;
+                    benchmarkSection.classList.add('visible');
+                    updateBenchmarkProgress(benchmarkStatus.progress || {});
+                    loadBenchmarkLogs(benchmarkStatus.job_id);
+                    // Disable benchmark buttons
+                    document.querySelectorAll('.btn-benchmark').forEach(btn => btn.disabled = true);
+
+                } else if (benchmarkStatus && (benchmarkStatus.status === 'completed' || benchmarkStatus.status === 'failed' || benchmarkStatus.status === 'cancelled')) {
+                    if (currentBenchmarkJobId) {
+                        const status = benchmarkStatus.status;
+                        if (status === 'completed') {
+                            showMessage('Benchmark completed!', 'success');
+                            lastBenchmarkResult = benchmarkStatus.result;
+                            displayBenchmarkResults(benchmarkStatus.result, benchmarkStatus.model_type, benchmarkStatus.model_id);
+                        } else if (status === 'cancelled') {
+                            showMessage('Benchmark was cancelled.', 'error');
+                        } else {
+                            showMessage('Benchmark failed: ' + (benchmarkStatus.error || 'Unknown error'), 'error');
+                        }
+                        currentBenchmarkJobId = null;
+                    }
+                    benchmarkSection.classList.remove('visible');
+                    document.querySelectorAll('.btn-benchmark').forEach(btn => btn.disabled = false);
+
+                } else {
+                    benchmarkSection.classList.remove('visible');
+                    document.querySelectorAll('.btn-benchmark').forEach(btn => btn.disabled = false);
+                }
+
             } catch (error) {
-                console.error('Error polling training status:', error);
+                console.error('Error polling status:', error);
+            }
+        }
+
+        // Update benchmark progress display
+        function updateBenchmarkProgress(progress) {
+            const currentClass = progress.current_class || 0;
+            const totalClasses = progress.total_classes || 1;
+            const processedImages = progress.processed_images || 0;
+            const totalImages = progress.total_images || 1;
+
+            const classPercent = (currentClass / totalClasses * 100).toFixed(0);
+            document.getElementById('benchmark-class-text').textContent = `${currentClass} / ${totalClasses}`;
+            document.getElementById('benchmark-class-bar').style.width = classPercent + '%';
+
+            const imagesPercent = (processedImages / totalImages * 100).toFixed(0);
+            document.getElementById('benchmark-images-text').textContent = `${processedImages} / ${totalImages}`;
+            document.getElementById('benchmark-images-bar').style.width = imagesPercent + '%';
+
+            document.getElementById('benchmark-message').textContent = progress.message || 'Running benchmark...';
+        }
+
+        // Load benchmark logs
+        async function loadBenchmarkLogs(jobId) {
+            try {
+                const response = await fetch(`/api/training/logs/${jobId}`);
+                const data = await response.json();
+
+                if (data.success && data.logs) {
+                    const logViewer = document.getElementById('benchmark-log-viewer');
+                    const wasAtBottom = logViewer.scrollHeight - logViewer.scrollTop <= logViewer.clientHeight + 50;
+
+                    logViewer.innerHTML = data.logs.map(log => `<div class="log-line">${log}</div>`).join('');
+
+                    if (wasAtBottom) {
+                        logViewer.scrollTop = logViewer.scrollHeight;
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading benchmark logs:', error);
+            }
+        }
+
+        // Display benchmark results
+        function displayBenchmarkResults(result, modelType, modelId) {
+            const section = document.getElementById('benchmark-results-section');
+            const content = document.getElementById('benchmark-results-content');
+
+            const accuracyClass = result.accuracy >= 90 ? 'good' : result.accuracy >= 70 ? 'warning' : '';
+            const confClass = result.mean_confidence >= 90 ? 'good' : result.mean_confidence >= 70 ? 'warning' : '';
+
+            let html = `
+                <p style="margin-bottom: 16px; color: var(--text-light);">
+                    Model: <strong>${modelId}</strong> (${modelType})
+                </p>
+                <div class="benchmark-metrics-grid">
+                    <div class="benchmark-metric ${accuracyClass}">
+                        <div class="value">${result.accuracy}%</div>
+                        <div class="label">Accuracy</div>
+                    </div>
+                    <div class="benchmark-metric ${confClass}">
+                        <div class="value">${result.mean_confidence}%</div>
+                        <div class="label">Mean Confidence</div>
+                    </div>
+                    <div class="benchmark-metric">
+                        <div class="value">${result.low_confidence_pct}%</div>
+                        <div class="label">Low Confidence</div>
+                    </div>
+                    <div class="benchmark-metric">
+                        <div class="value">${result.inference_time_ms}ms</div>
+                        <div class="label">Inference Time</div>
+                    </div>
+                    <div class="benchmark-metric">
+                        <div class="value">${result.total_images}</div>
+                        <div class="label">Total Images</div>
+                    </div>
+                    <div class="benchmark-metric">
+                        <div class="value">${result.correct_predictions}</div>
+                        <div class="label">Correct</div>
+                    </div>
+                </div>
+            `;
+
+            // Per-class accuracy details
+            if (result.per_class_accuracy && Object.keys(result.per_class_accuracy).length > 0) {
+                html += `
+                    <details class="per-class-details">
+                        <summary>Per-Class Accuracy</summary>
+                        <table class="per-class-table">
+                            <thead>
+                                <tr>
+                                    <th>Class</th>
+                                    <th>Accuracy</th>
+                                    <th>Images</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+
+                const sortedClasses = Object.keys(result.per_class_accuracy).sort((a, b) => {
+                    const numA = parseFloat(a) || 0;
+                    const numB = parseFloat(b) || 0;
+                    return numA - numB;
+                });
+
+                for (const cls of sortedClasses) {
+                    const data = result.per_class_accuracy[cls];
+                    const acc = (data.accuracy * 100).toFixed(1);
+                    html += `
+                        <tr>
+                            <td>${cls}</td>
+                            <td>${acc}%</td>
+                            <td>${data.count}</td>
+                        </tr>
+                    `;
+                }
+
+                html += `
+                            </tbody>
+                        </table>
+                    </details>
+                `;
+            }
+
+            content.innerHTML = html;
+            section.style.display = 'block';
+        }
+
+        // Start benchmark
+        async function startBenchmark(modelType, modelId) {
+            try {
+                const response = await fetch(`/api/models/${modelType}/${modelId}/benchmark`, {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showMessage('Benchmark started!', 'success');
+                    currentBenchmarkJobId = data.job_id;
+                    // Hide previous results
+                    document.getElementById('benchmark-results-section').style.display = 'none';
+                } else {
+                    showMessage('Failed to start benchmark: ' + data.message, 'error');
+                }
+
+            } catch (error) {
+                console.error('Error starting benchmark:', error);
+                showMessage('Error: ' + error.message, 'error');
+            }
+        }
+
+        // Cancel benchmark
+        async function cancelBenchmark() {
+            if (!currentBenchmarkJobId) return;
+
+            if (!confirm('Are you sure you want to cancel the benchmark?')) return;
+
+            try {
+                const response = await fetch(`/api/benchmark/cancel?job_id=${currentBenchmarkJobId}`, {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showMessage('Benchmark cancellation requested.', 'success');
+                } else {
+                    showMessage('Failed to cancel: ' + data.message, 'error');
+                }
+
+            } catch (error) {
+                console.error('Error cancelling benchmark:', error);
+                showMessage('Error: ' + error.message, 'error');
             }
         }
 
@@ -1207,6 +1564,9 @@
                         <td class="model-actions">
                             <button class="btn-activate" onclick="activateModel('${modelType}', '${model.id}')" ${isActive ? 'disabled' : ''}>
                                 ${isActive ? 'Active' : 'Activate'}
+                            </button>
+                            <button class="btn-benchmark" onclick="startBenchmark('${modelType}', '${model.id}')">
+                                Benchmark
                             </button>
                             <button class="btn-delete" onclick="deleteModel('${modelType}', '${model.id}')">
                                 Delete
