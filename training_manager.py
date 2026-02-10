@@ -622,6 +622,7 @@ class TrainingManager:
                     total_epochs=epochs,
                     train_loss=round(avg_loss, 4),
                     val_accuracy=round(val_acc, 2),
+                    epoch_duration=round(epoch_time, 1),
                     message=f"Epoch {epoch+1}/{epochs}: Loss={avg_loss:.4f}, Val Acc={val_acc:.2f}%"
                 )
                 job.add_log(f"Epoch {epoch+1}/{epochs} - Loss: {avg_loss:.4f} - Val Acc: {val_acc:.2f}% - Time: {epoch_time:.1f}s")

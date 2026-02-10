@@ -647,6 +647,7 @@
             transition: background 0.2s;
             text-align: center;
             white-space: nowrap;
+            flex: 1;
         }
 
         .model-actions .btn-activate {
@@ -669,8 +670,14 @@
             color: var(--danger);
         }
 
-        .model-actions .btn-delete:hover {
+        .model-actions .btn-delete:hover:not(:disabled) {
             background: #fecaca;
+        }
+
+        .model-actions .btn-delete:disabled {
+            background: var(--bg-light);
+            color: var(--text-light);
+            cursor: not-allowed;
         }
 
         .model-actions .btn-benchmark {
@@ -1133,6 +1140,14 @@
                         <span class="metric-label">Val Accuracy</span>
                         <span class="metric-value" id="metric-accuracy">-</span>
                     </div>
+                    <div class="metric">
+                        <span class="metric-label">Epoch Duration</span>
+                        <span class="metric-value" id="metric-epoch-duration">-</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">ETA</span>
+                        <span class="metric-value" id="metric-eta">-</span>
+                    </div>
                 </div>
             </section>
 
@@ -1225,8 +1240,18 @@
             loadModels();
             pollTrainingStatus();
 
-            // Start polling
+            // Start polling (only when tab is visible)
             pollingInterval = setInterval(pollTrainingStatus, 2000);
+
+            document.addEventListener('visibilitychange', function() {
+                if (document.hidden) {
+                    clearInterval(pollingInterval);
+                    pollingInterval = null;
+                } else {
+                    pollTrainingStatus();
+                    pollingInterval = setInterval(pollTrainingStatus, 2000);
+                }
+            });
         });
 
         // Show message
@@ -1577,6 +1602,37 @@
             document.getElementById('metric-loss').textContent = loss !== null && loss !== undefined ? loss.toFixed(4) : '-';
             document.getElementById('metric-accuracy').textContent = accuracy !== null && accuracy !== undefined ? accuracy.toFixed(2) + '%' : '-';
 
+            // Epoch duration & ETA (from backend)
+            const durationEl = document.getElementById('metric-epoch-duration');
+            const etaEl = document.getElementById('metric-eta');
+            const epochDur = progress.epoch_duration;
+
+            if (epochDur) {
+                const epochMs = epochDur * 1000;
+                durationEl.textContent = formatDuration(epochMs);
+
+                const epochsLeftThisConfig = totalEpochs - currentEpoch;
+                const configsLeft = totalConfigs - currentConfig;
+                const totalEpochsLeft = epochsLeftThisConfig + configsLeft * totalEpochs;
+                const remainingMs = epochMs * totalEpochsLeft;
+
+                const etaDate = new Date(Date.now() + remainingMs);
+                const etaTime = etaDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                etaEl.textContent = `${formatDuration(remainingMs)} (${etaTime})`;
+            } else {
+                durationEl.textContent = '-';
+                etaEl.textContent = '-';
+            }
+        }
+
+        function formatDuration(ms) {
+            const totalSec = Math.round(ms / 1000);
+            if (totalSec < 60) return `${totalSec}s`;
+            const min = Math.floor(totalSec / 60);
+            const sec = totalSec % 60;
+            if (min < 60) return `${min}m ${sec}s`;
+            const hr = Math.floor(min / 60);
+            return `${hr}h ${min % 60}m`;
         }
 
         // Hide log section when neither training nor benchmark is active
@@ -1939,7 +1995,7 @@
                             ${isActive ? 'Active' : 'Activate'}
                         </button>
                         ${benchBtnHtml}
-                        <button class="btn-delete" onclick="deleteModel('${modelType}', '${model.id}')">Delete</button>
+                        <button class="btn-delete" onclick="deleteModel('${modelType}', '${model.id}')" ${isActive ? 'disabled' : ''}>Delete</button>
                     `;
                 }
 
