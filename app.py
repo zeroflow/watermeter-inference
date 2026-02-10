@@ -606,6 +606,10 @@ async def delete_markers():
     try:
         config_path = Path('config.yaml')
 
+        # Read marker count before deleting (for image cleanup)
+        existing = config_utils.load_config(config_path)
+        marker_count = len(existing.get('detection', {}).get('markers', []))
+
         def _update(config):
             if 'detection' in config and 'markers' in config['detection']:
                 del config['detection']['markers']
@@ -616,7 +620,7 @@ async def delete_markers():
         service.config = config
 
         # Delete marker images
-        for i in range(1, 3):
+        for i in range(1, marker_count + 1):
             marker_path = Path(f'/data/marker_{i}.jpg')
             if marker_path.exists():
                 marker_path.unlink()
