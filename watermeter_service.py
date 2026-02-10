@@ -18,7 +18,7 @@ import numpy as np
 import httpx
 import yaml
 import paho.mqtt.client as mqtt
-from inference import digits_classifier, arrows_classifier
+from inference import get_inference_service
 from persistence import StateStore
 
 # Configure logging
@@ -303,12 +303,9 @@ class WatermeterService:
                 temp_path = temp_dir / f"{image_id}.jpg"
                 temp_path.write_bytes(image_bytes)
 
-                # Select classifier
-                classifier = digits_classifier if image_class == 'digits' else arrows_classifier
-
-                # Run prediction
+                # Run prediction via inference service (supports hot-reload)
                 try:
-                    result = classifier.predict(str(temp_path))
+                    result = get_inference_service().predict(image_class, str(temp_path))
                     predictions[image_id] = {
                         'id': image_id,
                         'class': result['class'],

@@ -258,14 +258,7 @@ def get_inference_service() -> InferenceService:
     return _inference_service
 
 
-# Backward compatibility: expose classifiers
-digits_classifier = _inference_service.digits_classifier
-arrows_classifier = _inference_service.arrows_classifier
-
-classifiers = {
-    'digits': digits_classifier,
-    'arrows': arrows_classifier
-}
+classifiers = None  # Deprecated: use get_inference_service().predict() instead
 
 # Label Studio ML Backend models
 

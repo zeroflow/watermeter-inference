@@ -22,7 +22,7 @@ from typing import List
 import logging
 
 from watermeter_service import get_service
-from inference import digits_classifier, arrows_classifier, get_inference_service
+from inference import get_inference_service
 from model_manager import get_model_manager
 from training_manager import get_training_manager
 import config_utils
@@ -868,7 +868,7 @@ async def preview_digit_inference(submission: SingleRoiSubmission):
             cv2.imwrite(temp_path, roi_img)
 
         try:
-            result = digits_classifier.predict(temp_path)
+            result = get_inference_service().predict('digits', temp_path)
             prediction = result['class']
             confidence = result['confidence']
         finally:
@@ -1093,7 +1093,7 @@ async def preview_analog_inference(submission: SingleRoiSubmission):
             cv2.imwrite(temp_path, roi_img)
 
         try:
-            result = arrows_classifier.predict(temp_path)
+            result = get_inference_service().predict('arrows', temp_path)
             prediction = result['class']
             confidence = result['confidence']
         finally:
