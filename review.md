@@ -47,7 +47,7 @@ The review is organized into 6 increments by logical domain. Each increment revi
 
 #### SECURITY
 
-**S1. Path traversal in training/label endpoints** (High)
+**S1. Path traversal in training/label endpoints** (High) ✅ FIXED
 - `submit_for_training` (line 223): `submission.model` is used directly in `Path(save_path) / submission.model / 'input'`. A crafted value like `../../etc` would escape the intended directory.
 - `submit_label` (line 1181): `submission.filename` is used in path construction. A filename like `../../../etc/passwd` would traverse.
 - `delete_image` (line 1267): Same issue with `submission.filename`.
@@ -62,15 +62,15 @@ The review is organized into 6 increments by logical domain. Each increment revi
 
 #### BUGS / CORRECTNESS
 
-**B1. `delete_markers` hardcodes `range(1, 3)`** (line 625)
+**B1. `delete_markers` hardcodes `range(1, 3)`** (line 625) ✅ FIXED
 - Only deletes `marker_1.jpg` and `marker_2.jpg`. If a user configured 3+ markers, their image files are orphaned on disk.
 - **Fix**: Count actual markers from config before deletion (like `delete_digits` and `delete_analogs` already do correctly).
 
-**B2. `asyncio.create_task` without storing reference** (lines 125, 191)
+**B2. `asyncio.create_task` without storing reference** (lines 125, 191) ✅ FIXED
 - Fire-and-forget tasks can be garbage-collected before completion in CPython. The asyncio docs explicitly warn about this.
 - **Fix**: Store references in a set, e.g. `background_tasks = set(); t = asyncio.create_task(...); background_tasks.add(t); t.add_done_callback(background_tasks.discard)`.
 
-**B3. Config save destroys YAML comments** (9 endpoints)
+**B3. Config save destroys YAML comments** (9 endpoints) ✅ FIXED
 - The ROI endpoints (rotation, markers, digits, analogs — save and delete) use `yaml.safe_load` + `yaml.dump` (lines 449–962), which strips all comments from `config.yaml`.
 - Meanwhile, the config editor endpoint (line 336) correctly uses `config_utils` with ruamel.yaml to preserve comments.
 - **Fix**: All config-writing endpoints should use `config_utils` for consistency.
@@ -89,7 +89,7 @@ The review is organized into 6 increments by logical domain. Each increment revi
 - `MarkerBox`, `DigitRoi`, `AnalogRoi`, `SingleRoiSubmission` all have the same 4 fields: `x`, `y`, `width`, `height`.
 - **Fix**: Single `RoiBox` base model, reuse or alias where needed.
 
-**D3. Config load-modify-save boilerplate** (~10 endpoints)
+**D3. Config load-modify-save boilerplate** (~10 endpoints) ✅ FIXED (update_config helper created)
 - Every ROI endpoint repeats: open config.yaml → safe_load → ensure 'detection' exists → modify → dump → reload service.config.
 - **Fix**: A helper like `update_config(path: str, updater: Callable[[dict], None])` would eliminate this.
 
@@ -112,7 +112,7 @@ The review is organized into 6 increments by logical domain. Each increment revi
 
 #### STYLE / MINOR
 
-**M1. Unused import: `numpy`** (line 14)
+**M1. Unused import: `numpy`** (line 14) ✅ FIXED
 - `import numpy as np` is never used in app.py.
 
 **M2. Redundant import in `__main__` block** (line 1769)
@@ -140,7 +140,7 @@ The review is organized into 6 increments by logical domain. Each increment revi
 - The method builds source points from marker coordinates, then returns the image unchanged. A comment says "for future use." The entire marker alignment pipeline is non-functional — markers are saved and extracted in app.py, but never used for alignment. Users configuring markers get no benefit.
 - **Fix**: Either implement alignment or remove the stub and the marker-related code from app.py to avoid misleading users.
 
-**B6. MQTT thread mutates shared state without locking** (`watermeter_service.py:900-918`)
+**B6. MQTT thread mutates shared state without locking** (`watermeter_service.py:900-918`) ✅ FIXED
 - `on_mqtt_message` runs in paho-mqtt's network thread. It calls `reset_previous_value()` which mutates `self.previous_value`, `self.rate_history`, `self.consecutive_rejections` — all of which are also accessed from the async `process_reading()` coroutine on the event loop thread.
 - `run_coroutine_threadsafe` is correctly used for `process_reading()` (line 913), but `reset_previous_value()` (line 918) is called directly from the MQTT thread.
 - **Fix**: Route `reset_previous_value` through `run_coroutine_threadsafe` as well, or protect the shared state with a threading lock.
@@ -153,7 +153,7 @@ The review is organized into 6 increments by logical domain. Each increment revi
 - `async with self.processing_lock` blocks indefinitely if a previous `process_reading()` hangs (e.g., on a network fetch that doesn't time out). All subsequent trigger requests would queue silently.
 - **Fix**: Use `asyncio.wait_for(self.processing_lock.acquire(), timeout=120)` or similar.
 
-**B9. Persistence writes are not atomic** (`persistence.py:29-30`)
+**B9. Persistence writes are not atomic** (`persistence.py:29-30`) ✅ FIXED
 - `json.dump()` writes directly to the target file. A crash mid-write (or disk full) corrupts the state file, losing the previous value permanently.
 - **Fix**: Write to a temporary file in the same directory, then `os.rename()` (atomic on POSIX).
 
@@ -198,7 +198,7 @@ The review is organized into 6 increments by logical domain. Each increment revi
 
 #### BUGS / CORRECTNESS
 
-**B12. Hot-reload is broken for backward-compat imports** (`inference.py:262-263`)
+**B12. Hot-reload is broken for backward-compat imports** (`inference.py:262-263`) ✅ FIXED
 - Module-level aliases are set at import time:
   ```python
   digits_classifier = _inference_service.digits_classifier
@@ -208,7 +208,7 @@ The review is organized into 6 increments by logical domain. Each increment revi
 - When `reload_models()` swaps the internal classifiers, these module-level references still point to the **old** classifiers. The hot-reload feature (used by "activate model" in app.py:1588) has no effect on inference done via these imports — which includes all ROI preview endpoints and the entire `watermeter_service.py` pipeline.
 - **Fix**: Remove the backward-compat aliases. Have callers use `get_inference_service().predict(model_type, path)` or access the property each time.
 
-**B13. `validate_model_config` calls `sys.exit(1)`** (`inference.py:227,240`)
+**B13. `validate_model_config` calls `sys.exit(1)`** (`inference.py:227,240`) ✅ FIXED
 - On filename/config mismatch, the function hard-kills the process. This runs during both startup (`initialize`) and hot-reload (`reload_models`). If a user activates a model whose filename doesn't match the naming convention, the **entire application crashes** instead of returning an error.
 - **Fix**: Raise a `ValueError` and let the caller handle it. `reload_models` already has a try/except that would propagate it correctly.
 
@@ -225,18 +225,18 @@ The review is organized into 6 increments by logical domain. Each increment revi
 - In `predict_direct`: same — if `predict()` fails, temp file persists on disk.
 - **Fix**: Use try/finally for cleanup, or use `NamedTemporaryFile` with context manager.
 
-**B17. `Classifier.preprocess` doesn't check for imread failure** (`inference.py:30`)
+**B17. `Classifier.preprocess` doesn't check for imread failure** (`inference.py:30`) ✅ FIXED
 - If `cv2.imread` returns `None` (corrupt file, wrong path), the next line `cv2.cvtColor(img, ...)` crashes with `error: (-206:BadFlag) parameter or structure field` — an opaque OpenCV error.
 - **Fix**: Check `if img is None: raise ValueError(f"Failed to read image: {image_path}")`.
 
 #### SECURITY
 
-**S4. Path traversal via `model_id` in ModelManager** (`model_manager.py:80`)
+**S4. Path traversal via `model_id` in ModelManager** (`model_manager.py:80`) ✅ FIXED
 - `model_id` comes from URL path parameters (e.g., `GET /api/models/{model_type}/{model_id}`). The value is used directly: `_get_model_types_dir(model_type) / model_id`. A `model_id` of `../../etc` would escape the models directory.
 - Affects: `get_model`, `save_metadata`, `delete_model`, `activate_model`, `get_model_path`, `archive_model`.
 - **Fix**: Validate `model_id` doesn't contain path separators or `..`, e.g. `if '/' in model_id or '..' in model_id: raise ValueError(...)`.
 
-**S5. Hardcoded server credentials** (`server_detect.py:8-10`)
+**S5. Hardcoded server credentials** (`server_detect.py:8-10`) ✅ FIXED (file deleted, see M22)
 - `SERVER_IP = "192.168.4.35"`, `SERVER_USER = "thomas"`, plus filesystem paths are hardcoded. Not a runtime security issue (this is a dev/sync script), but credentials in source code are a bad practice, especially if the repo becomes public.
 
 #### ARCHITECTURE / DESIGN
@@ -249,7 +249,7 @@ The review is organized into 6 increments by logical domain. Each increment revi
 **A9. Config loaded twice at import time** (`inference.py:246-247`)
 - `inference.py` reads `config.yaml` at module level during import. `watermeter_service.py` reads it again in `WatermeterService.__init__()`. Two independent config loads mean the system has two potentially different config snapshots.
 
-**A10. `activate_model` uses `yaml.dump` — same as B3** (`model_manager.py:206-222`)
+**A10. `activate_model` uses `yaml.dump` — same as B3** (`model_manager.py:206-222`) ✅ FIXED
 - Yet another config write path that destroys YAML comments. This is the third distinct code path for config writes (also: ROI endpoints in app.py, config editor via config_utils).
 
 #### STYLE / MINOR
@@ -272,16 +272,16 @@ The review is organized into 6 increments by logical domain. Each increment revi
 
 #### BUGS / CORRECTNESS
 
-**B18. Digits benchmark uses class `'N'` instead of `'NAN'`** (`benchmark_digits.py:149`)
+**B18. Digits benchmark uses class `'N'` instead of `'NAN'`** (`benchmark_digits.py:149`) ✅ FIXED
 - `generate_classes()` returns `[..., 'N']` but the ground truth folder is named `NAN/`. Every NAN image will show 0% accuracy because the predicted label can never match the expected label.
 - The training manager's version (`training_manager.py:953`) correctly uses `'NAN'`.
 - **Fix**: Change `['N']` to `['NAN']` in `benchmark_digits.py:149`.
 
-**B19. `check_cuda_available` always returns False** (`benchmark_arrows.py:22-23`)
+**B19. `check_cuda_available` always returns False** (`benchmark_arrows.py:22-23`) ✅ FIXED
 - `return False` is placed before the docstring — the function unconditionally returns False. All code below it is unreachable dead code. Compare with `benchmark_digits.py` which has a proper 30-line CUDA check.
 - **Fix**: Move `return False` below the docstring, or remove it if CUDA testing is desired.
 
-**B20. Softmax without numerical stability in test inference** (`train_digits.py:397`, `train_arrows.py:498`)
+**B20. Softmax without numerical stability in test inference** (`train_digits.py:397`, `train_arrows.py:498`) ✅ FIXED
 - Both standalone training scripts' OpenVINO validation step does:
   ```python
   result_softmax = np.exp(result[0]) / np.exp(result[0]).sum()
@@ -296,7 +296,7 @@ The review is organized into 6 increments by logical domain. Each increment revi
 - Only `training_queue` is protected by `_queue_lock`. `_auto_benchmark_pending` has no synchronization.
 - **Fix**: Protect with `_queue_lock` or a separate lock.
 
-**B22. Benchmark cancellation sets FAILED instead of CANCELLED** (`training_manager.py:1003`)
+**B22. Benchmark cancellation sets FAILED instead of CANCELLED** (`training_manager.py:1003`) ✅ FIXED
 - When cancelled, `_execute_benchmark` raises `RuntimeError("Benchmark cancelled")`, caught by the outer handler which sets `job.status = JobStatus.FAILED`. Compare with `_run_training` which explicitly sets `JobStatus.CANCELLED` (line 306). Users see "failed" instead of "cancelled."
 - **Fix**: Catch cancellation separately in `_run_benchmark`, set `JobStatus.CANCELLED`.
 
@@ -305,7 +305,7 @@ The review is organized into 6 increments by logical domain. Each increment revi
 - Same limitation exists in standalone `benchmark_arrows.py:108-127`.
 - **Fix**: Compute class labels dynamically from `step_size` instead of hardcoding 4 options.
 
-**B24. `_process_next_in_queue` can recurse unboundedly** (`training_manager.py:386`)
+**B24. `_process_next_in_queue` can recurse unboundedly** (`training_manager.py:386`) ✅ FIXED
 - If starting a queued job fails, the catch block recursively calls `_process_next_in_queue()`. A queue full of bad configs would cause a stack overflow.
 - **Fix**: Use a loop instead of recursion.
 
@@ -360,7 +360,7 @@ The review is organized into 6 increments by logical domain. Each increment revi
 
 #### SECURITY / XSS
 
-**S6. Log output rendered via `innerHTML` without escaping** (Medium)
+**S6. Log output rendered via `innerHTML` without escaping** (Medium) ✅ FIXED
 - `training.html:1523,1663`: Training logs are inserted via `innerHTML`:
   ```js
   logViewer.innerHTML = data.logs.map(log => `<div class="log-line">${log}</div>`).join('');
@@ -370,7 +370,7 @@ The review is organized into 6 increments by logical domain. Each increment revi
 - Also affected: `training.html:1409` — training config info (`cfg.architecture`, `cfg.model_type`) rendered via innerHTML.
 - **Fix**: Use `textContent` instead of `innerHTML`, or escape HTML entities before insertion.
 
-**S7. Dashboard injects server messages as HTML** (`dashboard.html:87,133,135`)
+**S7. Dashboard injects server messages as HTML** (`dashboard.html:87,133,135`) ✅ FIXED
 - `msg.innerHTML = data.message` and `` msg.innerHTML = `✅ ${data.message}` `` — server-returned messages are rendered as raw HTML. If the API ever echoes user input in the message, this becomes an XSS vector.
 - **Fix**: Use `textContent` for the message text.
 
@@ -381,7 +381,7 @@ The review is organized into 6 increments by logical domain. Each increment revi
 
 #### BUGS / CORRECTNESS
 
-**B25. Warning/error status badge is always hidden** (`style.css:219-223`)
+**B25. Warning/error status badge is always hidden** (`style.css:219-223`) ✅ FIXED
 - The CSS defines:
   ```css
   .status.warning { background: rgba(217, 119, 6, 0.3); }
@@ -473,7 +473,7 @@ The review is organized into 6 increments by logical domain. Each increment revi
 
 #### SECURITY
 
-**S9. Hardcoded server credentials in `server_detect.py`** (Low — commented out, dev tool)
+**S9. Hardcoded server credentials in `server_detect.py`** (Low — commented out, dev tool) ✅ FIXED (file deleted, see M22)
 - `server_detect.py:8-11`: Hardcodes `SERVER_IP = "192.168.4.35"`, `SERVER_USER = "thomas"`, and absolute paths. This file is committed to git.
 - Currently commented out in `train_arrows.py:5-6` and `train_digits.py:4-5`, so no runtime risk. But it exposes internal network topology and usernames.
 - **Fix**: Add to `.gitignore` or move credentials to an env file/`.env`.
@@ -488,12 +488,12 @@ The review is organized into 6 increments by logical domain. Each increment revi
 
 #### BUGS / CORRECTNESS
 
-**B29. Healthcheck uses `curl` but `curl` is not installed** (`docker-compose.yml:42`, `Dockerfile`)
+**B29. Healthcheck uses `curl` but `curl` is not installed** (`docker-compose.yml:42`, `Dockerfile`) ✅ FIXED
 - The healthcheck command is `["CMD", "curl", "-f", "http://localhost:8001/health"]`, but the Dockerfile installs only `libxcb-*` libraries. The `openvino/ubuntu22_runtime` base image is a minimal runtime and likely doesn't include `curl`.
 - If `curl` is missing, the healthcheck will always fail, causing Docker to report the container as "unhealthy" after `start_period + retries * interval`.
 - **Fix**: Either install `curl` in the Dockerfile, or use a Python-based healthcheck: `["CMD", "python3", "-c", "import httpx; httpx.get('http://localhost:8001/health').raise_for_status()"]`.
 
-**B30. `docker-compose.yml` version key is deprecated** (line 1)
+**B30. `docker-compose.yml` version key is deprecated** (line 1) ✅ FIXED
 - `version: '3.8'` — Docker Compose V2 (the current standard) ignores the `version` key entirely. It's harmless but generates deprecation warnings.
 - **Fix**: Remove the `version` line.
 
@@ -575,7 +575,7 @@ The review is organized into 6 increments by logical domain. Each increment revi
 
 #### STYLE / MINOR
 
-**M22. `server_detect.py` is a dead file**
+**M22. `server_detect.py` is a dead file** ✅ FIXED (deleted)
 - Imported nowhere (commented out in `train_arrows.py:5` and `train_digits.py:4`). Not copied into Docker image. Contains hardcoded IPs and paths specific to one development setup.
 - **Fix**: Delete or move to a `tools/` directory.
 
@@ -587,7 +587,7 @@ The review is organized into 6 increments by logical domain. Each increment revi
 - All 5 volumes are host bind mounts (`./config:/config`, `./data:/data`, etc.). This works for single-machine deployment but makes the setup non-portable. Named volumes would be more Docker-idiomatic for `data` and `models`.
 - Minor: acceptable for a personal/home automation project.
 
-**M25. Floating point artifacts in config** (`config.yaml:38,42,63`)
+**M25. Floating point artifacts in config** (`config.yaml:38,42,63`) ✅ FIXED
 - `x: 0.41000000000000003`, `x: 0.23500000000000001`, `y: 0.5750000000000001` — These are floating point representation artifacts from Python, saved to YAML. Functionally harmless but visually distracting.
 - **Fix**: Round to reasonable precision (e.g., 4 decimal places) when saving ROI coordinates.
 
@@ -597,20 +597,22 @@ The review is organized into 6 increments by logical domain. Each increment revi
 
 ### By the Numbers
 
-| Category | Count | Breakdown |
-|----------|-------|-----------|
-| Security | 11 | 2 High (path traversal), 3 Medium, 6 Low |
-| Bugs / Correctness | 35 | ~10 could cause wrong results or crashes |
-| Code Duplication | 12 | ~2,000 lines of near-identical code |
-| Architecture / Design | 23 | Config handling, threading, dead code |
-| Style / Minor | 25 | Imports, naming, dead CSS |
-| **Total** | **106** | |
+| Category | Count | Fixed | Remaining |
+|----------|-------|-------|-----------|
+| Security | 11 | 6 (S1,S4,S5,S6,S7,S9) | 5 |
+| Bugs / Correctness | 35 | 14 (B1,B2,B3,B6,B9,B12,B13,B17,B18,B19,B20,B22,B24,B25) | 21 |
+| Code Duplication | 12 | 1 (D3) | 11 |
+| Architecture / Design | 23 | 1 (A10) | 22 |
+| Style / Minor | 25 | 3 (M1,M22,M25) | 22 |
+| **Total** | **106** | **25** | **81** |
+
+> All 6 Critical Path items and all 16 Quick Wins are done. Remaining items are refactoring waves and lower-priority findings.
 
 ### Critical Path — Fix These First
 
 These have the highest impact-to-effort ratio and address real correctness or security risks.
 
-#### 1. Path Traversal (S1, S4) — **fix immediately**
+#### 1. ✅ Path Traversal (S1, S4) — **DONE**
 Both `app.py` training/label endpoints and `ModelManager` accept user-controlled strings used directly in filesystem paths. A single validation helper resolves both:
 ```python
 def safe_subpath(base: Path, untrusted: str) -> Path:
@@ -621,29 +623,29 @@ def safe_subpath(base: Path, untrusted: str) -> Path:
 ```
 Apply to: `submit_for_training`, `submit_label`, `delete_image`, and all `ModelManager` methods that take `model_id`.
 
-#### 2. Hot-Reload is Broken (B12) — **high user impact**
+#### 2. ✅ Hot-Reload is Broken (B12) — **DONE**
 Activating a new model via the UI has no effect on inference because `app.py` and `watermeter_service.py` hold stale references from import time. Fix by removing the module-level aliases in `inference.py` and having callers go through `get_inference_service()` each time.
 
-#### 3. `sys.exit(1)` in Model Validation (B13) — **crashes the server**
+#### 3. ✅ `sys.exit(1)` in Model Validation (B13) — **DONE**
 `validate_model_config` kills the entire process on a filename mismatch. Replace with `raise ValueError(...)`. This makes model activation safe.
 
-#### 4. Config Comments Destroyed on Save (B3, A10) — **9+ endpoints affected**
+#### 4. ✅ Config Comments Destroyed on Save (B3, A10) — **DONE**
 Every ROI save/delete endpoint and `model_manager.activate_model` use `yaml.safe_load` + `yaml.dump`, stripping user comments. Route all config writes through `config_utils` which already uses `ruamel.yaml`.
 
-#### 5. MQTT Thread Safety (B6) — **potential race condition**
+#### 5. ✅ MQTT Thread Safety (B6) — **DONE**
 `on_mqtt_message` directly mutates shared state from the MQTT thread. Route through `asyncio.run_coroutine_threadsafe` like the trigger handler already does.
 
-#### 6. XSS via innerHTML (S6, S7) — **straightforward fix**
+#### 6. ✅ XSS via innerHTML (S6, S7) — **DONE**
 Replace `innerHTML` with `textContent` in `training.html` (log viewer, config display) and `dashboard.html` (status messages). ~10 lines changed across 2 files.
 
 ### Recommended Refactoring Waves
 
 Grouped by effort and dependency. Each wave can be done independently.
 
-#### Wave A: Config Write Consolidation (B3, B4, A10, D3)
-- Create a single `update_config(key_path, value)` function in `config_utils.py` using `ruamel.yaml`
-- Replace all direct yaml.safe_load/dump patterns in app.py's 9 ROI endpoints and model_manager.py
-- Add an `asyncio.Lock` to prevent concurrent config writes
+#### Wave A: Config Write Consolidation (B3, B4, A10, D3) — mostly done
+- ✅ Create a single `update_config(key_path, value)` function in `config_utils.py` using `ruamel.yaml`
+- ✅ Replace all direct yaml.safe_load/dump patterns in app.py's 9 ROI endpoints and model_manager.py
+- ⬜ Add an `asyncio.Lock` to prevent concurrent config writes (B4 still open)
 - **Estimated scope**: ~200 lines changed across 3 files
 
 #### Wave B: Training/Benchmark Deduplication (D4, D5, D6)
@@ -664,13 +666,15 @@ Create `static/training.css` (separate concern, parallel loading)
 - Move base64 image data out of onclick attributes into JS data structures (S8)
 - **Estimated scope**: ~600 lines removed, ~150 lines new shared code
 
-#### Wave D: Docker & Infrastructure (B29, S10, A17, A19, D11)
-- Pin base image version (e.g., `openvino/ubuntu22_runtime:2024.6.0`)
-- Install `curl` for healthcheck (or switch to Python-based check)
-- Add non-root user
-- Extract entrypoint model-init into a function (D11)
-- Remove dead `LOG_LEVEL` env var (or wire it up)
-- Create `.env.example`
+#### Wave D: Docker & Infrastructure (B29, S10, A17, A19, D11) — partially done
+- ⬜ Pin base image version (e.g., `openvino/ubuntu22_runtime:2024.6.0`) (A17)
+- ✅ Switch to Python-based healthcheck (B29)
+- ⬜ Add non-root user (S10)
+- ⬜ Extract entrypoint model-init into a function (D11)
+- ⬜ Remove dead `LOG_LEVEL` env var (or wire it up) (A19)
+- ⬜ Create `.env.example` (A21)
+- ✅ Remove deprecated `version` key (B30)
+- ✅ Delete `server_detect.py` (M22, S5, S9)
 - **Estimated scope**: ~50 lines changed across 3 files
 
 ### Items to Defer or Ignore
@@ -688,24 +692,24 @@ These are real findings but low-priority for a personal/home-automation project:
 
 These are independent one-line to five-line fixes that can be done in any order:
 
-| ID | File | Fix |
-|----|------|-----|
-| B1 | `app.py:625` | Count markers from config instead of `range(1,3)` |
-| B2 | `app.py:125,191` | Store `asyncio.create_task` references |
-| B9 | `persistence.py:29` | Write-then-rename for atomic saves |
-| B13 | `inference.py:227,240` | Replace `sys.exit(1)` with `raise ValueError` |
-| B17 | `inference.py:30` | Check `cv2.imread` return value |
-| B18 | `benchmark_digits.py:149` | Change `'N'` to `'NAN'` |
-| B19 | `benchmark_arrows.py:22` | Move `return False` below docstring |
-| B20 | `train_digits.py:397`, `train_arrows.py:498` | Add `result = result - result.max()` before softmax |
-| B22 | `training_manager.py:1003` | Set `CANCELLED` instead of `FAILED` |
-| B24 | `training_manager.py:386` | Replace recursion with loop |
-| B25 | `style.css:219-223` | Fix `.status.error/.warning` display rule |
-| B29 | `Dockerfile` or `docker-compose.yml` | Install curl or use Python healthcheck |
-| B30 | `docker-compose.yml:1` | Remove `version: '3.8'` |
-| M1 | `app.py:14` | Remove unused `import numpy` |
-| M22 | `server_detect.py` | Delete file |
-| M25 | `config_utils.py` (ROI save) | Round floats to 4 decimal places |
+| ID | File | Fix | Status |
+|----|------|-----|--------|
+| B1 | `app.py:625` | Count markers from config instead of `range(1,3)` | ✅ |
+| B2 | `app.py:125,191` | Store `asyncio.create_task` references | ✅ |
+| B9 | `persistence.py:29` | Write-then-rename for atomic saves | ✅ |
+| B13 | `inference.py:227,240` | Replace `sys.exit(1)` with `raise ValueError` | ✅ |
+| B17 | `inference.py:30` | Check `cv2.imread` return value | ✅ |
+| B18 | `benchmark_digits.py:149` | Change `'N'` to `'NAN'` | ✅ |
+| B19 | `benchmark_arrows.py:22` | Move `return False` below docstring | ✅ |
+| B20 | `train_digits.py:397`, `train_arrows.py:498` | Add `result = result - result.max()` before softmax | ✅ |
+| B22 | `training_manager.py:1003` | Set `CANCELLED` instead of `FAILED` | ✅ |
+| B24 | `training_manager.py:386` | Replace recursion with loop | ✅ |
+| B25 | `style.css:219-223` | Fix `.status.error/.warning` display rule | ✅ |
+| B29 | `Dockerfile` or `docker-compose.yml` | Install curl or use Python healthcheck | ✅ |
+| B30 | `docker-compose.yml:1` | Remove `version: '3.8'` | ✅ |
+| M1 | `app.py:14` | Remove unused `import numpy` | ✅ |
+| M22 | `server_detect.py` | Delete file | ✅ |
+| M25 | `config_utils.py` (ROI save) | Round floats to 4 decimal places | ✅ |
 
 > **TODO: Decision needed** — Label Studio integration (`inference.py:249-378`, finding A8):
 Decision: **Remove** if all labeling is done through the built-in `/label` page.
