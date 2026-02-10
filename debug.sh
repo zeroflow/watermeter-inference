@@ -23,12 +23,12 @@ echo "Preparing selected models from config.yaml..."
 rm -rf digits/selected arrows/selected
 mkdir -p digits/selected arrows/selected
 
-# Extract model paths from config.yaml
-DIGITS_MODEL=$(grep 'digits_model:' "$CONFIG_FILE" | sed 's/.*\/app\/models\/digits\///' | tr -d '"' | tr -d "'" | xargs)
-ARROWS_MODEL=$(grep 'arrows_model:' "$CONFIG_FILE" | sed 's/.*\/app\/models\/arrows\///' | tr -d '"' | tr -d "'" | xargs)
+# Extract model basenames from config.yaml (handles both flat and subdirectory paths)
+DIGITS_PATH=$(grep 'digits_model:' "$CONFIG_FILE" | tr -d '"' | tr -d "'" | xargs)
+DIGITS_BASE=$(basename "${DIGITS_PATH}" .xml)
 
-DIGITS_BASE="${DIGITS_MODEL%.xml}"
-ARROWS_BASE="${ARROWS_MODEL%.xml}"
+ARROWS_PATH=$(grep 'arrows_model:' "$CONFIG_FILE" | tr -d '"' | tr -d "'" | xargs)
+ARROWS_BASE=$(basename "${ARROWS_PATH}" .xml)
 
 echo "  Digits: $DIGITS_BASE"
 echo "  Arrows: $ARROWS_BASE"
@@ -68,6 +68,14 @@ fi
 
 rm -rf ./config_debug/*
 
+CONTAINER_NAME="wmi_full"
+
+# Stop and remove existing container if it exists
+if docker container inspect "$CONTAINER_NAME" &>/dev/null; then
+  echo "Stopping and removing existing container '$CONTAINER_NAME'..."
+  docker rm -f "$CONTAINER_NAME"
+fi
+
 echo "Starting container..."
 
 # Check if GPU device exists
@@ -81,7 +89,7 @@ else
 fi
 
 docker run -it --rm \
-  --name wmi_full \
+  --name "$CONTAINER_NAME" \
   $DRI_FLAGS \
   -p 8002:8001 \
   -v $(pwd)/config_debug:/config \
