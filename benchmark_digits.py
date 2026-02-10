@@ -140,13 +140,13 @@ def generate_classes(num_classes: int = 11) -> List[str]:
     Generate class labels for digits.
 
     Args:
-        num_classes: Should be 11 (digits 0-9 plus "N" for no digit)
+        num_classes: Should be 11 (digits 0-9 plus "NAN" for no digit)
 
     Returns:
         List of class labels
     """
     if num_classes == 11:
-        return [str(i) for i in range(10)] + ['N']
+        return [str(i) for i in range(10)] + ['NAN']
     else:
         raise ValueError(f"Unsupported num_classes for digits: {num_classes}, expected 11")
 
