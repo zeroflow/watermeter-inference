@@ -1244,7 +1244,7 @@
         function onModelTypeChange() {
             const modelType = document.getElementById('model-type').value;
             const stepSizeGroup = document.getElementById('step-size-group');
-            stepSizeGroup.style.display = modelType === 'arrows' ? 'block' : 'none';
+            stepSizeGroup.style.display = modelType === 'arrows' ? '' : 'none';
         }
 
         // Load training data stats
