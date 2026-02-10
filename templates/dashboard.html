@@ -84,7 +84,7 @@
             .then(response => response.json())
             .then(data => {
                 const msg = document.getElementById('status-message');
-                msg.innerHTML = data.message;
+                msg.textContent = data.message;
                 hideStatusMessage();
                 console.log(data.message);
             })
@@ -97,7 +97,7 @@
         function hideStatusMessage() {
             setTimeout(() => {
                 const msg = document.getElementById('status-message');
-                if (msg) msg.innerHTML = '';
+                if (msg) msg.textContent = '';
             }, 5000);
         }
 
@@ -130,15 +130,15 @@
             .then(data => {
                 const msg = document.getElementById('status-message');
                 if (data.success) {
-                    msg.innerHTML = `✅ ${data.message}`;
+                    msg.textContent = `✅ ${data.message}`;
                 } else {
-                    msg.innerHTML = `⚠️ ${data.message}`;
+                    msg.textContent = `⚠️ ${data.message}`;
                 }
                 hideStatusMessage();
             })
             .catch(error => {
                 const msg = document.getElementById('status-message');
-                msg.innerHTML = `❌ Fehler beim Einreichen: ${error}`;
+                msg.textContent = `❌ Fehler beim Einreichen: ${error}`;
                 hideStatusMessage();
                 console.error('Error submitting for training:', error);
             });
