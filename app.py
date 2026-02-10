@@ -12,7 +12,6 @@ import shutil
 import httpx
 import yaml
 import cv2
-import numpy as np
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
