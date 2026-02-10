@@ -1152,24 +1152,11 @@ async def get_next_unlabeled_image():
     remaining_digits = len(digits_images)
     remaining_arrows = len(arrows_images)
 
-    # Run inference to get prediction
-    prediction = None
-    confidence = None
-    try:
-        inference_svc = get_inference_service()
-        result = inference_svc.predict(model_type, str(image_path))
-        prediction = result['class']
-        confidence = round(result['confidence'] * 100, 1)
-    except Exception as e:
-        logger.warning(f"Inference failed for label image: {e}")
-
     response_data = {
         "has_images": True,
         "filename": image_path.name,
         "model_type": model_type,
         "image_base64": image_base64,
-        "prediction": prediction,
-        "confidence": confidence,
         "remaining": {
             "digits": remaining_digits,
             "arrows": remaining_arrows,
