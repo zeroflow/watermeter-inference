@@ -1,0 +1,248 @@
+"""Unit tests for FastAPI API routes (app.py).
+
+These tests use mocked services so they can run without Docker.
+They test HTTP-level behavior: status codes, response structure, validation.
+"""
+
+import json
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+
+class TestConfigEndpoints:
+    """Tests for /api/config/* endpoints."""
+
+    def test_get_config(self, test_client):
+        resp = test_client.get("/api/config")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data['success'] is True
+        assert 'content' in data
+        assert 'mqtt' in data['content']
+
+    def test_get_config_schema(self, test_client):
+        resp = test_client.get("/api/config/schema.json")
+        assert resp.status_code == 200
+        schema = resp.json()
+        assert 'properties' in schema
+        assert 'images' in schema['properties']
+
+    def test_save_valid_config(self, test_client):
+        valid_yaml = (
+            "images:\n  digits: [d1]\n  arrows: [a1]\n"
+            "mqtt:\n  broker: x\n  port: 1883\n"
+            "inference:\n  confidence_threshold: 0.5\n"
+        )
+        resp = test_client.post("/api/config/save", json={
+            "content": valid_yaml,
+            "save_option": "saveonly"
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data['success'] is True
+
+    def test_save_invalid_yaml(self, test_client):
+        resp = test_client.post("/api/config/save", json={
+            "content": "{{invalid yaml",
+            "save_option": "saveonly"
+        })
+        assert resp.status_code == 400
+        data = resp.json()
+        assert data['success'] is False
+
+    def test_save_missing_required_sections(self, test_client):
+        resp = test_client.post("/api/config/save", json={
+            "content": "aiote:\n  host: x\n",
+            "save_option": "saveonly"
+        })
+        assert resp.status_code == 400
+        data = resp.json()
+        assert data['success'] is False
+        assert 'Missing required' in data['message']
+
+
+class TestTrainingStatus:
+    """Tests for /api/training/status endpoint."""
+
+    def test_training_status(self, test_client, monkeypatch):
+        mock_tm = MagicMock()
+        mock_tm.get_training_status.return_value = {"status": "idle"}
+        mock_tm.get_benchmark_status.return_value = {"status": "idle"}
+        mock_tm.get_queue.return_value = []
+
+        import app as app_module
+        monkeypatch.setattr(app_module, "get_training_manager", lambda: mock_tm)
+
+        resp = test_client.get("/api/training/status")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert 'training' in data
+        assert 'benchmark' in data
+        assert 'queue' in data
+
+
+class TestModelEndpoints:
+    """Tests for /api/models/* endpoints."""
+
+    def test_list_models_by_type(self, test_client, monkeypatch):
+        mock_mm = MagicMock()
+        mock_mm.list_models.return_value = [
+            {"id": "model_a", "created_at": "2025-01-01"}
+        ]
+
+        import app as app_module
+        monkeypatch.setattr(app_module, "get_model_manager", lambda: mock_mm)
+
+        resp = test_client.get("/api/models?model_type=digits")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data['success'] is True
+        assert len(data['models']) == 1
+
+    def test_get_model_details(self, test_client, monkeypatch):
+        mock_mm = MagicMock()
+        mock_mm.get_model.return_value = {"id": "model_a", "accuracy": 0.95}
+
+        import app as app_module
+        monkeypatch.setattr(app_module, "get_model_manager", lambda: mock_mm)
+
+        resp = test_client.get("/api/models/digits/model_a")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data['success'] is True
+        assert data['model']['accuracy'] == 0.95
+
+    def test_get_model_not_found(self, test_client, monkeypatch):
+        mock_mm = MagicMock()
+        mock_mm.get_model.return_value = None
+
+        import app as app_module
+        monkeypatch.setattr(app_module, "get_model_manager", lambda: mock_mm)
+
+        resp = test_client.get("/api/models/digits/nonexistent")
+        assert resp.status_code == 404
+
+    def test_delete_model(self, test_client, monkeypatch):
+        mock_mm = MagicMock()
+        mock_mm.delete_model.return_value = True
+
+        import app as app_module
+        monkeypatch.setattr(app_module, "get_model_manager", lambda: mock_mm)
+
+        resp = test_client.delete("/api/models/digits/model_a")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data['success'] is True
+
+
+class TestLabelValidation:
+    """Tests for label validation in /api/label/submit.
+
+    Since the endpoint requires a real file to exist, we test label validation
+    by examining the response for bad labels (which fails before file check)
+    and by creating temp files for the happy path.
+    """
+
+    def test_invalid_model_type(self, test_client, mock_service, tmp_path):
+        mock_service.config['low_confidence'] = {'save_path': str(tmp_path)}
+        # Create the file so we get past the "not found" check to the validation
+        input_dir = tmp_path / "invalid" / "input"
+        input_dir.mkdir(parents=True)
+        (input_dir / "test.jpg").write_bytes(b"\xff\xd8")
+
+        resp = test_client.post("/api/label/submit", json={
+            "filename": "test.jpg",
+            "model_type": "invalid",
+            "label": "5"
+        })
+        assert resp.status_code == 400
+
+    def test_digits_valid_labels(self, test_client, mock_service, tmp_path):
+        """Valid digit labels: 0-9 and NAN."""
+        mock_service.config['low_confidence'] = {'save_path': str(tmp_path)}
+
+        # Create a source image
+        input_dir = tmp_path / "digits" / "input"
+        input_dir.mkdir(parents=True)
+
+        for label in ['0', '5', '9', 'NAN']:
+            img_file = input_dir / f"test_{label}.jpg"
+            img_file.write_bytes(b"\xff\xd8")  # minimal JPEG header
+
+            resp = test_client.post("/api/label/submit", json={
+                "filename": f"test_{label}.jpg",
+                "model_type": "digits",
+                "label": label
+            })
+            assert resp.status_code == 200, f"Label '{label}' should be valid, got {resp.status_code}"
+
+    def test_digits_reject_invalid(self, test_client, mock_service, tmp_path):
+        mock_service.config['low_confidence'] = {'save_path': str(tmp_path)}
+        input_dir = tmp_path / "digits" / "input"
+        input_dir.mkdir(parents=True)
+        (input_dir / "test.jpg").write_bytes(b"\xff\xd8")
+
+        for bad_label in ['10', '-1', 'nan', 'N', 'abc', '']:
+            resp = test_client.post("/api/label/submit", json={
+                "filename": "test.jpg",
+                "model_type": "digits",
+                "label": bad_label
+            })
+            assert resp.status_code == 400, f"Label '{bad_label}' should be rejected"
+
+    def test_arrows_decimal_labels(self, test_client, mock_service, tmp_path):
+        mock_service.config['low_confidence'] = {'save_path': str(tmp_path)}
+        input_dir = tmp_path / "arrows" / "input"
+        input_dir.mkdir(parents=True)
+
+        for label in ['0.0', '1.5', '5.3', '9.9']:
+            img_file = input_dir / f"test_{label}.jpg"
+            img_file.write_bytes(b"\xff\xd8")
+
+            resp = test_client.post("/api/label/submit", json={
+                "filename": f"test_{label}.jpg",
+                "model_type": "arrows",
+                "label": label
+            })
+            assert resp.status_code == 200, f"Arrow label '{label}' should be valid"
+
+    def test_arrows_legacy_integer_labels(self, test_client, mock_service, tmp_path):
+        """Legacy format: integers 0-99 converted to decimal (12 -> 1.2)."""
+        mock_service.config['low_confidence'] = {'save_path': str(tmp_path)}
+        input_dir = tmp_path / "arrows" / "input"
+        input_dir.mkdir(parents=True)
+
+        (input_dir / "test.jpg").write_bytes(b"\xff\xd8")
+        resp = test_client.post("/api/label/submit", json={
+            "filename": "test.jpg",
+            "model_type": "arrows",
+            "label": "12"
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data['label'] == '1.2'
+
+    def test_arrows_reject_out_of_range(self, test_client, mock_service, tmp_path):
+        mock_service.config['low_confidence'] = {'save_path': str(tmp_path)}
+        input_dir = tmp_path / "arrows" / "input"
+        input_dir.mkdir(parents=True)
+        (input_dir / "test.jpg").write_bytes(b"\xff\xd8")
+
+        for bad_label in ['10.0', '-1.0', 'abc']:
+            resp = test_client.post("/api/label/submit", json={
+                "filename": "test.jpg",
+                "model_type": "arrows",
+                "label": bad_label
+            })
+            assert resp.status_code == 400, f"Arrow label '{bad_label}' should be rejected"
+
+    def test_file_not_found(self, test_client, mock_service, tmp_path):
+        mock_service.config['low_confidence'] = {'save_path': str(tmp_path)}
+        # Don't create the input directory
+        resp = test_client.post("/api/label/submit", json={
+            "filename": "ghost.jpg",
+            "model_type": "digits",
+            "label": "5"
+        })
+        assert resp.status_code == 404
