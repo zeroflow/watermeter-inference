@@ -4,6 +4,8 @@ Persistence module for storing state across restarts.
 
 import json
 import logging
+import os
+import tempfile
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
@@ -26,8 +28,15 @@ class StateStore:
                 'last_update_time': last_update_time.isoformat() if last_update_time else None
             }
 
-            with open(self.file_path, 'w') as f:
-                json.dump(state, f, indent=2)
+            # Write to temp file then rename for atomic save (prevents corruption on crash)
+            fd, tmp_path = tempfile.mkstemp(dir=self.file_path.parent, suffix='.tmp')
+            try:
+                with os.fdopen(fd, 'w') as f:
+                    json.dump(state, f, indent=2)
+                os.replace(tmp_path, self.file_path)
+            except BaseException:
+                os.unlink(tmp_path)
+                raise
 
             logger.debug(f"State saved to {self.file_path}")
         except Exception as e:
