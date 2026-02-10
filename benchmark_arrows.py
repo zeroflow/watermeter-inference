@@ -20,7 +20,6 @@ except ImportError:
 
 
 def check_cuda_available() -> bool:
-    return False
     """Check if CUDA is available for ONNX Runtime."""
     if not ONNX_AVAILABLE:
         return False
