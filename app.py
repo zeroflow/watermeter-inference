@@ -468,7 +468,7 @@ async def save_rotation(submission: RotationSubmission):
         def _update(config):
             if 'detection' not in config:
                 config['detection'] = {}
-            config['detection']['rotation'] = submission.rotation
+            config['detection']['rotation'] = round(submission.rotation, 4)
 
         config = config_utils.update_config(config_path, _update)
 
@@ -577,10 +577,10 @@ async def save_markers(submission: MarkersSubmission):
             cv2.imwrite(str(marker_path), roi)
 
             markers_data.append({
-                'x': marker.x,
-                'y': marker.y,
-                'width': marker.width,
-                'height': marker.height
+                'x': round(marker.x, 4),
+                'y': round(marker.y, 4),
+                'width': round(marker.width, 4),
+                'height': round(marker.height, 4)
             })
 
         # Save to config
@@ -723,10 +723,10 @@ async def save_digits(submission: DigitsSubmission):
             cv2.imwrite(str(digit_path), roi_img)
 
             rois_data.append({
-                'x': roi.x,
-                'y': roi.y,
-                'width': roi.width,
-                'height': roi.height
+                'x': round(roi.x, 4),
+                'y': round(roi.y, 4),
+                'width': round(roi.width, 4),
+                'height': round(roi.height, 4)
             })
 
         # Save to config
@@ -947,10 +947,10 @@ async def save_analogs(submission: AnalogsSubmission):
             cv2.imwrite(str(analog_path), roi_img)
 
             rois_data.append({
-                'x': roi.x,
-                'y': roi.y,
-                'width': roi.width,
-                'height': roi.height
+                'x': round(roi.x, 4),
+                'y': round(roi.y, 4),
+                'width': round(roi.width, 4),
+                'height': round(roi.height, 4)
             })
 
         # Save to config
