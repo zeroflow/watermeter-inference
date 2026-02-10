@@ -66,7 +66,7 @@ if [[ $PURGE_MODELS -eq 1 ]]; then
     rm -rf ./models_debug/*
 fi
 
-rm -rf ./config_debug/*
+# rm -rf ./config_debug/*
 
 CONTAINER_NAME="wmi_full"
 

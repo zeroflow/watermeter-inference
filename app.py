@@ -1513,11 +1513,20 @@ async def list_models(model_type: str = None):
             digits_models = model_mgr.list_models("digits")
             arrows_models = model_mgr.list_models("arrows")
 
+            # Determine active models from config
+            service = get_service()
+            active_digits = model_mgr.get_active_model("digits", service.config)
+            active_arrows = model_mgr.get_active_model("arrows", service.config)
+
             return JSONResponse({
                 "success": True,
                 "models": {
                     "digits": digits_models,
                     "arrows": arrows_models
+                },
+                "active_models": {
+                    "digits": active_digits,
+                    "arrows": active_arrows
                 }
             })
 

@@ -1603,7 +1603,7 @@
                             ...model.benchmark,
                             modelType: type,
                             modelId: model.id,
-                            isActive: model.status === 'active'
+                            isActive: activeModels[type] === model.id
                         });
                     }
                 }
@@ -1962,11 +1962,8 @@
 
                 allModels = data.models;
 
-                // Get active models from config
-                const statusResponse = await fetch('/api/status');
-                const statusData = await statusResponse.json();
-                // Note: We'd need to add active model info to the API
-                // For now, we'll check based on config path in model metadata
+                // Get active models from API response
+                activeModels = data.active_models || {};
 
                 renderModels();
                 loadBenchmarkResultsFromModels();
@@ -2037,8 +2034,8 @@
 
             for (const model of models) {
                 const modelType = model.model_type;
-                const isActive = model.status === 'active';
-                const isArchived = model.status === 'archived';
+                const isActive = activeModels[modelType] === model.id;
+                const isArchived = !isActive && model.status === 'archived';
                 const isFailed = model.status === 'failed';
                 const createdAt = model.created_at ? new Date(model.created_at).toLocaleDateString() : '-';
 
