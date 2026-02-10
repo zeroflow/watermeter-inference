@@ -235,7 +235,7 @@ class TrainingManager:
 ### ✅ Phase 1: Backend Foundation (Completed)
 **Ziele:**
 1. ✅ Model metadata structure & management (`ModelManager` class)
-2. ✅ Training execution backend (`TrainingManager` class)
+2. ⚠️ Training execution backend (`TrainingManager` class) - **Struktur fertig, aber `_execute_training()` ist noch Placeholder!**
 3. ✅ REST API endpoints für Training & Models
 4. ✅ Model hot-reload functionality
 5. ✅ Docker volume mount setup & default model initialization
@@ -254,24 +254,52 @@ class TrainingManager:
 - Updated `docker-entrypoint.sh` - Default model copy logic
 - Updated `Dockerfile` & `docker-compose.yml` - Volume mounts
 
-### Phase 2: Training UI (Next)
-1. Training dashboard page (`/training`)
-2. Start training form (with batch parameter ranges)
-3. Progress display (polling-based)
-4. Model list with activate/delete actions
-5. Training data statistics
+**✅ Training-Execution - IMPLEMENTIERT**
+Die `_execute_training()` Methode in `training_manager.py` ist vollständig implementiert:
+- PyTorch + timm für Model-Training
+- Progress-Callbacks für Live-Updates (Epoch, Loss, Val Accuracy)
+- ONNX + OpenVINO Export
+- Model-Speicherung in `/app/models/{type}/{model_id}/` mit metadata.json
+- Training-Plot als PNG
+- Für Arrows: automatische Dataset-Subsampling basierend auf step_size
 
-### Phase 3: Benchmark Integration
-1. Benchmark execution backend
-2. Benchmark API endpoints
-3. Benchmark UI & progress display
-4. Model comparison view
+### ✅ Phase 2: Training UI (Completed)
+1. ✅ Training dashboard page (`/training`)
+2. ✅ Start training form (with batch parameter ranges)
+3. ✅ Progress display (polling-based)
+4. ✅ Model list with activate/delete actions
+5. ✅ Training data statistics
 
-### Phase 4: Polish & Optimization
-1. Training logs view
+**Deliverables:**
+- `templates/training.html` - Vollständige Training-UI (~1300 Zeilen)
+- Route `/training` in `app.py`
+- JavaScript für Polling, Form-Handling, Model-Verwaltung
+
+### ✅ Phase 3: Benchmark Integration (Completed)
+1. ✅ Benchmark execution backend (`_execute_benchmark()` in training_manager.py)
+2. ✅ Benchmark API endpoints (`POST /api/models/{type}/{id}/benchmark`, `POST /api/benchmark/cancel`)
+3. ✅ Benchmark UI & progress display (in training.html)
+4. ❌ Model comparison view - nicht implementiert (als "nice-to-have" eingestuft)
+
+**Deliverables:**
+- `_execute_benchmark()` - Echte Benchmark-Logik mit OpenVINO
+- `_generate_arrow_classes()`, `_round_to_arrow_class()`, `_collect_benchmark_images()` - Helper-Funktionen
+- Benchmark Progress Section in UI
+- Benchmark Results Section mit Per-Class Accuracy Details
+- Benchmark Button in Model-Tabelle
+
+### Phase 4: Polish & Optimization (TODO)
+1. Training logs view (bereits teilweise in Progress-Section)
 2. Advanced visualizations (training curves)
 3. Model search/filter
 4. Performance optimizations
+
+### ⚠️ Wichtig: Training-Execution fehlt noch!
+Bevor Training funktioniert, muss `_execute_training()` implementiert werden. Dies erfordert:
+1. Refactoring von `train_digits.py` und `train_arrows.py` für programmatische Nutzung
+2. Integration in `training_manager.py`
+3. Progress-Callbacks für Epoch/Loss/Accuracy Updates
+4. Model-Export nach `/app/models/{type}/{model_id}/`
 
 ---
 

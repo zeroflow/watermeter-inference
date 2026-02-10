@@ -284,6 +284,28 @@ class ModelManager:
         metadata['status'] = 'archived'
         return self.save_metadata(model_type, model_id, metadata)
 
+    def get_model_metadata(self, model_type: str, model_id: str) -> Dict:
+        """
+        Get model metadata (alias for get_model with empty dict fallback).
+
+        Args:
+            model_type: "digits" or "arrows"
+            model_id: Model directory name
+
+        Returns:
+            Model metadata dictionary (empty dict if not found)
+        """
+        return self.get_model(model_type, model_id) or {}
+
+    def refresh(self):
+        """
+        Refresh model cache.
+
+        Since models are read dynamically from disk, this is a no-op.
+        Provided for API compatibility with TrainingManager.
+        """
+        pass
+
 
 # Singleton instance
 _model_manager = None

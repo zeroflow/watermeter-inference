@@ -1,6 +1,22 @@
 #!/bin/bash
 set -e
 
+# Parse flags
+PURGE_MODELS=0
+for arg in "$@"; do
+    case "$arg" in
+        --purge-models) PURGE_MODELS=1 ;;
+        *) echo "Unknown option: $arg"; echo "Usage: $0 [--purge-models]"; exit 1 ;;
+    esac
+done
+
+# Load environment variables (.env contains HF_TOKEN etc.)
+if [ -f .env ]; then
+    set -a
+    source .env
+    set +a
+fi
+
 CONFIG_FILE="config.yaml"
 
 echo "Preparing selected models from config.yaml..."
@@ -43,8 +59,14 @@ echo "Building watermeter-dashboard..."
 docker build . -t wmi_full
 
 echo "Creating local directories for volumes..."
-rm -rf ./config_debug
-mkdir -p ./config_debug ./data_debug
+mkdir -p ./config_debug ./data_debug ./models_debug
+
+if [[ $PURGE_MODELS -eq 1 ]]; then
+    echo "Purging models directory (--purge-models)..."
+    rm -rf ./models_debug/*
+fi
+
+rm -rf ./config_debug/*
 
 echo "Starting container..."
 
@@ -64,7 +86,9 @@ docker run -it --rm \
   -p 8002:8001 \
   -v $(pwd)/config_debug:/config \
   -v $(pwd)/data_debug:/data \
+  -v $(pwd)/models_debug:/app/models \
   -v ./arrows/:/training/arrows \
   -v ./digits/:/training/digits \
+  -v /home/thomas/.cache/huggingface:/root/.cache/huggingface \
+  ${HF_TOKEN:+-e HF_TOKEN="$HF_TOKEN"} \
   wmi_full
-

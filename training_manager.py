@@ -128,7 +128,8 @@ class TrainingManager:
         self.active_benchmark_job: Optional[BenchmarkJob] = None
         self.job_history: Dict[str, Any] = {}
         self.model_manager = get_model_manager()
-        self._cancel_flag = threading.Event()
+        self._training_cancel_flag = threading.Event()
+        self._benchmark_cancel_flag = threading.Event()
 
     def start_training(self, config: Dict[str, Any]) -> str:
         """
@@ -151,7 +152,7 @@ class TrainingManager:
         Raises:
             RuntimeError: If training is already running
         """
-        if self.active_training_job is not None:
+        if self.active_training_job is not None and self.active_training_job.status == JobStatus.RUNNING:
             raise RuntimeError("Training is already running")
 
         # Generate job ID
@@ -163,7 +164,7 @@ class TrainingManager:
         self.job_history[job_id] = job
 
         # Start training in background thread
-        self._cancel_flag.clear()
+        self._training_cancel_flag.clear()
         job.thread = threading.Thread(target=self._run_training, args=(job,), daemon=True)
         job.thread.start()
 
@@ -184,7 +185,7 @@ class TrainingManager:
         Raises:
             RuntimeError: If benchmark is already running
         """
-        if self.active_benchmark_job is not None:
+        if self.active_benchmark_job is not None and self.active_benchmark_job.status == JobStatus.RUNNING:
             raise RuntimeError("Benchmark is already running")
 
         # Generate job ID
@@ -196,7 +197,7 @@ class TrainingManager:
         self.job_history[job_id] = job
 
         # Start benchmark in background thread
-        self._cancel_flag.clear()
+        self._benchmark_cancel_flag.clear()
         job.thread = threading.Thread(target=self._run_benchmark, args=(job,), daemon=True)
         job.thread.start()
 
@@ -216,7 +217,7 @@ class TrainingManager:
         if self.active_training_job is None or self.active_training_job.job_id != job_id:
             return False
 
-        self._cancel_flag.set()
+        self._training_cancel_flag.set()
         self.active_training_job.add_log("Cancellation requested")
         return True
 
@@ -233,7 +234,7 @@ class TrainingManager:
         if self.active_benchmark_job is None or self.active_benchmark_job.job_id != job_id:
             return False
 
-        self._cancel_flag.set()
+        self._benchmark_cancel_flag.set()
         self.active_benchmark_job.add_log("Cancellation requested")
         return True
 
@@ -286,7 +287,7 @@ class TrainingManager:
 
             # Train for each seed
             for config_idx, seed in enumerate(seeds, 1):
-                if self._cancel_flag.is_set():
+                if self._training_cancel_flag.is_set():
                     job.add_log("Training cancelled by user")
                     job.status = JobStatus.CANCELLED
                     return
@@ -330,55 +331,386 @@ class TrainingManager:
             logger.error(traceback.format_exc())
 
         finally:
-            self.active_training_job = None
+            pass  # Keep job visible so frontend can see completed/failed status
 
     def _execute_training(self, job: TrainingJob, model_type: str, architecture: str,
                          resolution: int, seed: int, epochs: int, batch_size: int,
                          step_size: Optional[float]) -> Optional[Dict]:
         """
-        Execute the actual training process.
+        Execute the actual training process using PyTorch and timm.
 
-        This is a placeholder that will call the existing train_*.py logic.
+        Progress updates are sent via job.update_progress() during training.
         """
-        import sys
-        import importlib.util
+        import random
+        import shutil
+        import math
+
+        import numpy as np
+        import torch
+        import timm
+        import cv2
+        import openvino as ov
+        from torchvision.datasets import ImageFolder
+        from torchvision import transforms
+        from torch.utils.data import DataLoader, Subset
+        from sklearn.utils.class_weight import compute_class_weight as sklearn_compute_class_weight
+
+        def set_all_seeds(s):
+            """Set all random seeds for reproducibility."""
+            random.seed(s)
+            np.random.seed(s)
+            torch.manual_seed(s)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(s)
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = False
+
+        def worker_init_fn(worker_id):
+            """Initialize worker with unique but reproducible seed."""
+            worker_seed = torch.initial_seed() % 2**32
+            np.random.seed(worker_seed)
+            random.seed(worker_seed)
 
         try:
-            # Determine which training script to use
+            # Set seeds for reproducibility
+            set_all_seeds(seed)
+            job.add_log(f"Random seed set to {seed}")
+
+            # Setup device
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            job.add_log(f"Using device: {device}")
+
+            # Determine paths and classes based on model type
             if model_type == 'digits':
-                train_script = 'train_digits.py'
+                dataset_dir = Path("/training/digits/ground_truth")
+                num_classes = 11  # 0-9 + NAN
+                model_filename = f'model_digits_{architecture}_r{resolution}_s{seed}'
             elif model_type == 'arrows':
-                train_script = 'train_arrows.py'
+                ground_truth_dir = Path("/training/arrows/ground_truth")
+                dataset_dir = Path("/training/arrows/dataset_temp")
+
+                # Calculate num_classes from step_size
+                step = step_size or 1.0
+                num_classes = int(10 / step)
+                model_filename = f'model_arrows_{architecture}_c{num_classes}_r{resolution}_s{seed}'
+
+                # Create subsampled dataset for arrows
+                job.add_log(f"Creating subsampled dataset with step={step} ({num_classes} classes)")
+                self._create_arrow_dataset(ground_truth_dir, dataset_dir, step, job)
             else:
                 raise ValueError(f"Unknown model type: {model_type}")
 
-            job.add_log(f"Loading training script: {train_script}")
+            job.add_log(f"Dataset directory: {dataset_dir}")
 
-            # Load training module dynamically
-            spec = importlib.util.spec_from_file_location("train_module", train_script)
-            train_module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(train_module)
+            # Verify dataset exists
+            if not dataset_dir.exists():
+                raise ValueError(f"Dataset directory not found: {dataset_dir}")
 
-            # Prepare training parameters
-            # This will require refactoring train_*.py to expose a trainable function
-            # For now, this is a placeholder
+            # Create transforms
+            train_transform = transforms.Compose([
+                transforms.Resize((resolution, resolution)),
+                transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            ])
 
-            job.add_log("Training execution placeholder - actual training will be implemented")
+            val_transform = transforms.Compose([
+                transforms.Resize((resolution, resolution)),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            ])
 
-            # Return mock result for now
+            # Load dataset and create stratified split
+            job.add_log("Loading dataset and creating train/val split...")
+            dataset = ImageFolder(str(dataset_dir))
+
+            indices_by_class = {}
+            for idx, (_, label) in enumerate(dataset):
+                if label not in indices_by_class:
+                    indices_by_class[label] = []
+                indices_by_class[label].append(idx)
+
+            train_idx = []
+            val_idx = []
+            for label, indices in indices_by_class.items():
+                random.shuffle(indices)
+                split_point = int(0.8 * len(indices))
+                train_idx.extend(indices[:split_point])
+                val_idx.extend(indices[split_point:])
+
+            # Create datasets with appropriate transforms
+            train_dataset = ImageFolder(str(dataset_dir), transform=train_transform)
+            train_ds = Subset(train_dataset, train_idx)
+
+            val_dataset = ImageFolder(str(dataset_dir), transform=val_transform)
+            val_ds = Subset(val_dataset, val_idx)
+
+            # DataLoaders
+            train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
+                                     num_workers=2, worker_init_fn=worker_init_fn)
+            val_loader = DataLoader(val_ds, batch_size=batch_size,
+                                   num_workers=2, worker_init_fn=worker_init_fn)
+
+            job.add_log(f"Train samples: {len(train_ds)}, Val samples: {len(val_ds)}")
+            job.add_log(f"Classes: {len(dataset.classes)}")
+
+            # Compute class weights
+            num_classes_actual = len(dataset.classes)
+            train_labels = [dataset.targets[idx] for idx in train_idx]
+            unique_labels = np.unique(train_labels)
+            computed_weights = sklearn_compute_class_weight(
+                'balanced', classes=unique_labels, y=train_labels
+            )
+            class_weights = np.ones(num_classes_actual, dtype=np.float32)
+            for label, weight in zip(unique_labels, computed_weights):
+                class_weights[label] = weight
+            class_weights_tensor = torch.FloatTensor(class_weights).to(device)
+            job.add_log(f"Class weights computed (ratio: {computed_weights.max()/computed_weights.min():.1f}x)")
+
+            # Create model
+            job.add_log(f"Creating model: {architecture}")
+            model = timm.create_model(architecture, pretrained=True, num_classes=num_classes_actual)
+            model = model.to(device)
+
+            num_params = sum(p.numel() for p in model.parameters())
+            job.add_log(f"Model parameters: {num_params:,}")
+
+            # Optimizer and loss
+            optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+            criterion = torch.nn.CrossEntropyLoss(weight=class_weights_tensor)
+
+            # Training loop
+            job.add_log(f"Starting training for {epochs} epochs...")
+            train_losses = []
+            val_accs = []
+            best_val_acc = 0
+            best_val_loss = float('inf')
+            best_epoch = 0
+            best_model_state = None
+
+            total_start = time.time()
+
+            for epoch in range(epochs):
+                if self._training_cancel_flag.is_set():
+                    job.add_log("Training cancelled by user")
+                    return None
+
+                epoch_start = time.time()
+
+                # Training phase
+                model.train()
+                epoch_loss = 0
+                for batch_idx, (imgs, labels) in enumerate(train_loader):
+                    if self._training_cancel_flag.is_set():
+                        return None
+
+                    imgs, labels = imgs.to(device), labels.to(device)
+                    optimizer.zero_grad()
+                    outputs = model(imgs)
+                    loss = criterion(outputs, labels)
+                    loss.backward()
+                    optimizer.step()
+                    epoch_loss += loss.item()
+
+                avg_loss = epoch_loss / len(train_loader)
+                train_losses.append(avg_loss)
+
+                # Validation phase
+                model.eval()
+                correct = 0
+                total = 0
+                with torch.no_grad():
+                    for imgs, labels in val_loader:
+                        imgs, labels = imgs.to(device), labels.to(device)
+                        outputs = model(imgs)
+                        _, predicted = torch.max(outputs, 1)
+                        total += labels.size(0)
+                        correct += (predicted == labels).sum().item()
+
+                val_acc = 100 * correct / total
+                val_accs.append(val_acc)
+
+                if val_acc > best_val_acc:
+                    best_val_acc = val_acc
+                    best_val_loss = avg_loss
+                    best_epoch = epoch
+                    best_model_state = model.state_dict().copy()
+
+                epoch_time = time.time() - epoch_start
+
+                # Update progress
+                job.update_progress(
+                    current_epoch=epoch + 1,
+                    total_epochs=epochs,
+                    train_loss=round(avg_loss, 4),
+                    val_accuracy=round(val_acc, 2),
+                    message=f"Epoch {epoch+1}/{epochs}: Loss={avg_loss:.4f}, Val Acc={val_acc:.2f}%"
+                )
+                job.add_log(f"Epoch {epoch+1}/{epochs} - Loss: {avg_loss:.4f} - Val Acc: {val_acc:.2f}% - Time: {epoch_time:.1f}s")
+
+            total_time = time.time() - total_start
+            job.add_log(f"Training completed in {total_time:.1f}s ({total_time/60:.1f}min)")
+
+            # Load best model
+            model.load_state_dict(best_model_state)
+            job.add_log(f"Best model from epoch {best_epoch+1} with {best_val_acc:.2f}% accuracy")
+
+            # Export to ONNX and OpenVINO
+            job.update_progress(message="Exporting model to ONNX...")
+            job.add_log("Exporting to ONNX...")
+
+            model.cpu()
+            model.eval()
+            dummy_input = torch.randn(1, 3, resolution, resolution)
+
+            # Create output directory
+            output_dir = Path(f"/app/models/{model_type}/{model_filename}")
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            onnx_path = output_dir / f'{model_filename}.onnx'
+            torch.onnx.export(
+                model, dummy_input, onnx_path,
+                export_params=True, opset_version=18,
+                input_names=['input'], output_names=['output']
+            )
+            job.add_log(f"ONNX model saved: {onnx_path}")
+
+            # Convert to OpenVINO
+            job.update_progress(message="Converting to OpenVINO...")
+            job.add_log("Converting to OpenVINO...")
+
+            core = ov.Core()
+            model_onnx = core.read_model(str(onnx_path))
+            ov_path = output_dir / f'{model_filename}.xml'
+            ov.save_model(model_onnx, str(ov_path))
+            job.add_log(f"OpenVINO model saved: {ov_path}")
+
+            # Save metadata
+            metadata = {
+                'model_type': model_type,
+                'architecture': architecture,
+                'resolution': resolution,
+                'num_classes': num_classes_actual,
+                'seed': seed,
+                'epochs': epochs,
+                'batch_size': batch_size,
+                'best_val_acc': best_val_acc,
+                'best_val_loss': best_val_loss,
+                'best_epoch': best_epoch + 1,
+                'training_time': total_time,
+                'num_params': num_params,
+                'classes': dataset.classes,
+                'created_at': datetime.now().isoformat()
+            }
+            if model_type == 'arrows' and step_size:
+                metadata['step_size'] = step_size
+
+            import json
+            metadata_path = output_dir / 'metadata.json'
+            with open(metadata_path, 'w') as f:
+                json.dump(metadata, f, indent=2)
+            job.add_log(f"Metadata saved: {metadata_path}")
+
+            # Save training plot
+            try:
+                import matplotlib
+                matplotlib.use('Agg')  # Non-interactive backend
+                import matplotlib.pyplot as plt
+
+                fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+                ax1.plot(train_losses)
+                ax1.set_title('Training Loss')
+                ax1.set_xlabel('Epoch')
+                ax1.set_ylabel('Loss')
+                ax1.grid(True)
+
+                ax2.plot(val_accs)
+                ax2.set_title('Validation Accuracy')
+                ax2.set_xlabel('Epoch')
+                ax2.set_ylabel('Accuracy (%)')
+                ax2.grid(True)
+
+                plt.tight_layout()
+                plot_path = output_dir / f'{model_filename}_training.png'
+                plt.savefig(plot_path, dpi=150, bbox_inches='tight')
+                plt.close()
+                job.add_log(f"Training plot saved: {plot_path}")
+            except Exception as e:
+                job.add_log(f"Warning: Could not save training plot: {e}")
+
+            # Cleanup temp dataset for arrows
+            if model_type == 'arrows' and dataset_dir.name == 'dataset_temp':
+                try:
+                    shutil.rmtree(dataset_dir)
+                    job.add_log("Cleaned up temporary dataset")
+                except Exception as e:
+                    job.add_log(f"Warning: Could not clean up temp dataset: {e}")
+
+            # Refresh model manager to pick up new model
+            self.model_manager.refresh()
+            job.add_log("Model manager refreshed")
+
             return {
                 'model_name': architecture,
+                'model_id': model_filename,
                 'seed': seed,
                 'resolution': resolution,
-                'best_val_acc': 95.0,  # Placeholder
-                'best_val_loss': 0.1,  # Placeholder
-                'training_time': 100.0  # Placeholder
+                'num_classes': num_classes_actual,
+                'best_val_acc': best_val_acc,
+                'best_val_loss': best_val_loss,
+                'training_time': total_time,
+                'output_dir': str(output_dir)
             }
 
         except Exception as e:
             job.add_log(f"Error in training execution: {str(e)}")
             logger.error(traceback.format_exc())
             return None
+
+    def _create_arrow_dataset(self, ground_truth_dir: Path, dataset_dir: Path,
+                              step: float, job: TrainingJob):
+        """Create subsampled arrow dataset from ground_truth."""
+        import shutil
+        import math
+
+        # Remove existing dataset folder
+        if dataset_dir.exists():
+            shutil.rmtree(dataset_dir)
+        dataset_dir.mkdir(parents=True, exist_ok=True)
+
+        total_images = 0
+        class_counts = {}
+
+        for class_dir in sorted(ground_truth_dir.iterdir()):
+            if not class_dir.is_dir():
+                continue
+
+            # Parse original class value (e.g., "0.0", "0.1", ..., "9.9")
+            try:
+                original_value = float(class_dir.name)
+            except ValueError:
+                continue
+
+            # Round to nearest step
+            new_value = math.floor(original_value / step) * step
+            if new_value >= 10.0:
+                new_value = 0.0
+
+            new_class_name = f"{new_value:.1f}"
+
+            # Create target class directory
+            target_class_dir = dataset_dir / new_class_name
+            target_class_dir.mkdir(exist_ok=True)
+
+            # Copy images
+            for img_file in class_dir.glob('*'):
+                if img_file.is_file():
+                    target_file = target_class_dir / f"{class_dir.name}_{img_file.name}"
+                    shutil.copy(img_file, target_file)
+                    total_images += 1
+                    class_counts[new_class_name] = class_counts.get(new_class_name, 0) + 1
+
+        job.add_log(f"Created {len(class_counts)} classes with {total_images} images")
 
     def _run_benchmark(self, job: BenchmarkJob):
         """
@@ -406,6 +738,24 @@ class TrainingManager:
             job.result = result
             job.add_log("Benchmark completed successfully")
 
+            # Persist benchmark result to model metadata
+            try:
+                metadata = self.model_manager.get_model(job.model_type, job.model_id)
+                if metadata:
+                    metadata['benchmark'] = {
+                        'accuracy': result['accuracy'],
+                        'mean_confidence': result['mean_confidence'],
+                        'low_confidence_pct': result['low_confidence_pct'],
+                        'inference_time_ms': result['inference_time_ms'],
+                        'total_images': result['total_images'],
+                        'correct_predictions': result['correct_predictions'],
+                        'date': datetime.now().isoformat(),
+                    }
+                    self.model_manager.save_metadata(job.model_type, job.model_id, metadata)
+                    job.add_log("Benchmark result saved to model metadata")
+            except Exception as e:
+                logger.error(f"Failed to save benchmark to metadata: {e}")
+
         except Exception as e:
             job.status = JobStatus.FAILED
             job.completed_at = datetime.now()
@@ -415,7 +765,7 @@ class TrainingManager:
             logger.error(traceback.format_exc())
 
         finally:
-            self.active_benchmark_job = None
+            pass  # Keep job visible so frontend can see completed/failed status
 
     def _execute_benchmark(self, job: BenchmarkJob, model_path: Path) -> Dict:
         """
@@ -439,7 +789,7 @@ class TrainingManager:
             gt_path = Path("/training/arrows/ground_truth")
             # Determine num_classes from model metadata
             metadata = self.model_manager.get_model_metadata(model_type, job.model_id)
-            num_classes = metadata.get('training_info', {}).get('num_classes', 10)
+            num_classes = metadata.get('num_classes', 10)
             classes = self._generate_arrow_classes(num_classes)
 
         job.add_log(f"Ground truth path: {gt_path}")
@@ -451,7 +801,7 @@ class TrainingManager:
 
         # Get model resolution from metadata
         metadata = self.model_manager.get_model_metadata(model_type, job.model_id)
-        resolution = metadata.get('training_info', {}).get('resolution', 128)
+        resolution = metadata.get('resolution', 128)
         job.add_log(f"Model resolution: {resolution}px")
 
         # Load model with OpenVINO
@@ -482,7 +832,7 @@ class TrainingManager:
         processed = 0
 
         for class_idx, (ground_truth, image_paths) in enumerate(sorted(images_by_class.items())):
-            if self._cancel_flag.is_set():
+            if self._benchmark_cancel_flag.is_set():
                 job.add_log("Benchmark cancelled by user")
                 raise RuntimeError("Benchmark cancelled")
 

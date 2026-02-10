@@ -519,6 +519,11 @@
             cursor: not-allowed;
         }
 
+        .model-actions .btn-benchmark.benchmarked {
+            background: var(--success);
+            font-weight: 700;
+        }
+
         /* Benchmark Progress */
         .benchmark-section {
             display: none;
@@ -528,82 +533,49 @@
             display: block;
         }
 
-        .benchmark-results {
-            margin-top: 16px;
-            padding: 16px;
-            background: var(--bg-light);
-            border-radius: 8px;
-        }
-
-        .benchmark-results h4 {
-            margin: 0 0 12px 0;
-            font-size: 14px;
-            color: var(--text-dark);
-        }
-
-        .benchmark-metrics-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-            gap: 16px;
-            margin-bottom: 16px;
-        }
-
-        .benchmark-metric {
-            text-align: center;
-            padding: 12px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-
-        .benchmark-metric .value {
-            font-size: 24px;
-            font-weight: 700;
-            color: var(--primary);
-        }
-
-        .benchmark-metric .label {
-            font-size: 12px;
-            color: var(--text-light);
-            margin-top: 4px;
-        }
-
-        .benchmark-metric.good .value {
-            color: var(--success);
-        }
-
-        .benchmark-metric.warning .value {
-            color: var(--warning);
-        }
-
-        .per-class-table {
+        .benchmark-results-table {
             width: 100%;
             border-collapse: collapse;
             font-size: 13px;
         }
 
-        .per-class-table th,
-        .per-class-table td {
-            padding: 8px;
+        .benchmark-results-table th,
+        .benchmark-results-table td {
+            padding: 10px 12px;
             text-align: left;
             border-bottom: 1px solid var(--border);
         }
 
-        .per-class-table th {
+        .benchmark-results-table th {
             font-size: 11px;
+            font-weight: 600;
             text-transform: uppercase;
+            letter-spacing: 0.5px;
             color: var(--text-light);
         }
 
-        .per-class-details {
-            margin-top: 12px;
+        .benchmark-results-table tr:last-child td {
+            border-bottom: none;
         }
 
-        .per-class-details summary {
-            cursor: pointer;
-            font-size: 13px;
-            color: var(--primary);
-            padding: 4px 0;
+        .benchmark-results-table tr.best-row td {
+            background: #f0fdf4;
+        }
+
+        .benchmark-results-table .accuracy-cell {
+            font-weight: 700;
+        }
+
+        .benchmark-results-table .accuracy-cell.good {
+            color: var(--success);
+        }
+
+        .benchmark-results-table .accuracy-cell.warning {
+            color: var(--warning);
+        }
+
+        .benchmark-results-table .accuracy-cell.bad {
+            color: var(--danger);
         }
 
         .empty-state {
@@ -687,24 +659,166 @@
 
         /* Responsive */
         @media (max-width: 768px) {
+            .training-content {
+                padding: 8px;
+                gap: 12px;
+                overflow-x: hidden;
+            }
+
+            .section {
+                padding: 12px;
+                overflow: hidden;
+            }
+
+            .section h2 {
+                font-size: 16px;
+            }
+
             .stats-grid {
                 grid-template-columns: 1fr;
+                gap: 16px;
+            }
+
+            .stats-summary {
+                flex-direction: column;
+                gap: 8px;
             }
 
             .form-grid {
                 grid-template-columns: 1fr;
             }
 
-            .progress-metrics {
-                flex-wrap: wrap;
+            .form-actions {
+                flex-direction: column;
             }
 
-            .model-table {
+            .form-actions .btn {
+                width: 100%;
+                justify-content: center;
+                padding: 14px 20px;
+            }
+
+            .progress-metrics {
+                flex-wrap: wrap;
+                gap: 12px;
+                padding: 10px;
+            }
+
+            .metric .metric-value {
+                font-size: 16px;
+            }
+
+            .progress-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 12px;
+            }
+
+            .progress-header .btn {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .log-viewer {
+                font-size: 11px;
+                max-height: 150px;
+            }
+
+            .benchmark-results-table {
                 font-size: 12px;
             }
 
+            .benchmark-results-table th,
+            .benchmark-results-table td {
+                padding: 8px 6px;
+            }
+
+            /* Model table -> card layout on mobile */
+            .model-table thead {
+                display: none;
+            }
+
+            .model-table,
+            .model-table tbody,
+            .model-table tr,
+            .model-table td {
+                display: block;
+                width: 100%;
+            }
+
+            .model-table tr {
+                background: var(--bg-light);
+                border-radius: 8px;
+                padding: 12px;
+                margin-bottom: 12px;
+                border-bottom: none;
+            }
+
+            .model-table td {
+                padding: 4px 0;
+                border-bottom: none;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-size: 13px;
+                word-break: break-word;
+                overflow-wrap: anywhere;
+            }
+
+            .model-table td::before {
+                font-size: 11px;
+                font-weight: 600;
+                color: var(--text-light);
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                flex-shrink: 0;
+                margin-right: 8px;
+            }
+
+            .model-table td:nth-child(1)::before { content: "Name"; }
+            .model-table td:nth-child(2)::before { content: "Type"; }
+            .model-table td:nth-child(3)::before { content: "Arch"; }
+            .model-table td:nth-child(4)::before { content: "Res"; }
+            .model-table td:nth-child(5)::before { content: "Status"; }
+            .model-table td:nth-child(6)::before { content: "Created"; }
+
+            .model-table td:nth-child(7) {
+                padding-top: 8px;
+            }
+
+            .model-table td:nth-child(7)::before {
+                display: none;
+            }
+
             .model-actions {
-                flex-direction: column;
+                width: 100%;
+                flex-direction: row;
+                flex-wrap: wrap;
+            }
+
+            .model-actions button {
+                flex: 1;
+                min-width: 0;
+                padding: 10px 4px;
+                font-size: 12px;
+            }
+
+            .tabs {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            .tab {
+                padding: 10px 16px;
+                white-space: nowrap;
+            }
+
+            /* Toast messages */
+            .message {
+                left: 12px;
+                right: 12px;
+                top: 12px;
+                padding: 12px 16px;
             }
         }
     </style>
@@ -766,10 +880,23 @@
                         <div class="form-group">
                             <label for="architecture">Architecture</label>
                             <select id="architecture" required>
-                                <option value="resnext50_32x4d">ResNeXt50 32x4d</option>
-                                <option value="efficientnetv2_rw_s">EfficientNetV2-S</option>
-                                <option value="convnext_tiny">ConvNeXt Tiny</option>
-                                <option value="resnet34">ResNet34</option>
+                                <optgroup label="Lightweight">
+                                    <option value="mobilenetv3_large_100">MobileNetV3 Large</option>
+                                    <option value="mobilenetv3_small_100">MobileNetV3 Small</option>
+                                    <option value="efficientnet_b0">EfficientNet B0</option>
+                                    <option value="resnet18">ResNet18</option>
+                                </optgroup>
+                                <optgroup label="Medium">
+                                    <option value="efficientnetv2_rw_t">EfficientNetV2-T</option>
+                                    <option value="edgenext_small">EdgeNeXt Small</option>
+                                    <option value="ghostnet_100">GhostNet</option>
+                                    <option value="resnet34">ResNet34</option>
+                                </optgroup>
+                                <optgroup label="Heavy">
+                                    <option value="resnext50_32x4d" selected>ResNeXt50 32x4d</option>
+                                    <option value="efficientnetv2_rw_s">EfficientNetV2-S</option>
+                                    <option value="convnext_tiny">ConvNeXt Tiny</option>
+                                </optgroup>
                             </select>
                         </div>
                         <div class="form-group">
@@ -902,9 +1029,24 @@
             </section>
 
             <!-- Benchmark Results -->
-            <section class="section benchmark-results" id="benchmark-results-section" style="display: none;">
+            <section class="section" id="benchmark-results-section" style="display: none;">
                 <h2>Benchmark Results</h2>
-                <div id="benchmark-results-content"></div>
+                <div style="overflow-x: auto;">
+                    <table class="benchmark-results-table">
+                        <thead>
+                            <tr>
+                                <th>Model</th>
+                                <th>Type</th>
+                                <th>Accuracy</th>
+                                <th>Confidence</th>
+                                <th>Low Conf</th>
+                                <th>Inference</th>
+                                <th>Images</th>
+                            </tr>
+                        </thead>
+                        <tbody id="benchmark-results-body"></tbody>
+                    </table>
+                </div>
             </section>
 
             <!-- Model List -->
@@ -930,7 +1072,7 @@
         let allModels = { digits: [], arrows: [] };
         let activeModels = { digits: null, arrows: null };
         let currentFilter = 'all';
-        let lastBenchmarkResult = null;
+        let benchmarkResults = []; // accumulated benchmark results
 
         // Initialize
         window.addEventListener('load', function() {
@@ -1141,8 +1283,8 @@
                         const status = benchmarkStatus.status;
                         if (status === 'completed') {
                             showMessage('Benchmark completed!', 'success');
-                            lastBenchmarkResult = benchmarkStatus.result;
-                            displayBenchmarkResults(benchmarkStatus.result, benchmarkStatus.model_type, benchmarkStatus.model_id);
+                            addBenchmarkResult(benchmarkStatus.result, benchmarkStatus.model_type, benchmarkStatus.model_id);
+                            loadModels(); // Refresh to show accuracy on button
                         } else if (status === 'cancelled') {
                             showMessage('Benchmark was cancelled.', 'error');
                         } else {
@@ -1202,88 +1344,46 @@
             }
         }
 
-        // Display benchmark results
-        function displayBenchmarkResults(result, modelType, modelId) {
+        // Add a benchmark result and re-render the table
+        function addBenchmarkResult(result, modelType, modelId) {
+            // Replace if same model already in list, otherwise append
+            const idx = benchmarkResults.findIndex(r => r.modelId === modelId && r.modelType === modelType);
+            const entry = { ...result, modelType, modelId };
+            if (idx >= 0) {
+                benchmarkResults[idx] = entry;
+            } else {
+                benchmarkResults.push(entry);
+            }
+            renderBenchmarkTable();
+        }
+
+        // Render accumulated benchmark results table, sorted best to worst
+        function renderBenchmarkTable() {
             const section = document.getElementById('benchmark-results-section');
-            const content = document.getElementById('benchmark-results-content');
+            const tbody = document.getElementById('benchmark-results-body');
 
-            const accuracyClass = result.accuracy >= 90 ? 'good' : result.accuracy >= 70 ? 'warning' : '';
-            const confClass = result.mean_confidence >= 90 ? 'good' : result.mean_confidence >= 70 ? 'warning' : '';
+            // Sort by accuracy descending
+            const sorted = [...benchmarkResults].sort((a, b) => b.accuracy - a.accuracy);
+            const bestAccuracy = sorted.length > 0 ? sorted[0].accuracy : 0;
 
-            let html = `
-                <p style="margin-bottom: 16px; color: var(--text-light);">
-                    Model: <strong>${modelId}</strong> (${modelType})
-                </p>
-                <div class="benchmark-metrics-grid">
-                    <div class="benchmark-metric ${accuracyClass}">
-                        <div class="value">${result.accuracy}%</div>
-                        <div class="label">Accuracy</div>
-                    </div>
-                    <div class="benchmark-metric ${confClass}">
-                        <div class="value">${result.mean_confidence}%</div>
-                        <div class="label">Mean Confidence</div>
-                    </div>
-                    <div class="benchmark-metric">
-                        <div class="value">${result.low_confidence_pct}%</div>
-                        <div class="label">Low Confidence</div>
-                    </div>
-                    <div class="benchmark-metric">
-                        <div class="value">${result.inference_time_ms}ms</div>
-                        <div class="label">Inference Time</div>
-                    </div>
-                    <div class="benchmark-metric">
-                        <div class="value">${result.total_images}</div>
-                        <div class="label">Total Images</div>
-                    </div>
-                    <div class="benchmark-metric">
-                        <div class="value">${result.correct_predictions}</div>
-                        <div class="label">Correct</div>
-                    </div>
-                </div>
-            `;
-
-            // Per-class accuracy details
-            if (result.per_class_accuracy && Object.keys(result.per_class_accuracy).length > 0) {
+            let html = '';
+            for (const r of sorted) {
+                const accClass = r.accuracy >= 90 ? 'good' : r.accuracy >= 70 ? 'warning' : 'bad';
+                const isBest = sorted.length > 1 && r.accuracy === bestAccuracy ? ' best-row' : '';
                 html += `
-                    <details class="per-class-details">
-                        <summary>Per-Class Accuracy</summary>
-                        <table class="per-class-table">
-                            <thead>
-                                <tr>
-                                    <th>Class</th>
-                                    <th>Accuracy</th>
-                                    <th>Images</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                `;
-
-                const sortedClasses = Object.keys(result.per_class_accuracy).sort((a, b) => {
-                    const numA = parseFloat(a) || 0;
-                    const numB = parseFloat(b) || 0;
-                    return numA - numB;
-                });
-
-                for (const cls of sortedClasses) {
-                    const data = result.per_class_accuracy[cls];
-                    const acc = (data.accuracy * 100).toFixed(1);
-                    html += `
-                        <tr>
-                            <td>${cls}</td>
-                            <td>${acc}%</td>
-                            <td>${data.count}</td>
-                        </tr>
-                    `;
-                }
-
-                html += `
-                            </tbody>
-                        </table>
-                    </details>
+                    <tr class="${isBest}">
+                        <td style="font-weight:600">${r.modelId}</td>
+                        <td><span class="model-type ${r.modelType}">${r.modelType}</span></td>
+                        <td class="accuracy-cell ${accClass}">${r.accuracy}%</td>
+                        <td>${r.mean_confidence}%</td>
+                        <td>${r.low_confidence_pct}%</td>
+                        <td>${r.inference_time_ms}ms</td>
+                        <td>${r.correct_predictions} / ${r.total_images}</td>
+                    </tr>
                 `;
             }
 
-            content.innerHTML = html;
+            tbody.innerHTML = html;
             section.style.display = 'block';
         }
 
@@ -1565,9 +1665,14 @@
                             <button class="btn-activate" onclick="activateModel('${modelType}', '${model.id}')" ${isActive ? 'disabled' : ''}>
                                 ${isActive ? 'Active' : 'Activate'}
                             </button>
-                            <button class="btn-benchmark" onclick="startBenchmark('${modelType}', '${model.id}')">
-                                Benchmark
-                            </button>
+                            ${model.benchmark
+                                ? `<button class="btn-benchmark benchmarked" onclick="startBenchmark('${modelType}', '${model.id}')" title="${model.benchmark.mean_confidence}% conf, ${model.benchmark.inference_time_ms}ms, ${model.benchmark.date ? new Date(model.benchmark.date).toLocaleDateString() : ''}">
+                                    ${model.benchmark.accuracy}%
+                                </button>`
+                                : `<button class="btn-benchmark" onclick="startBenchmark('${modelType}', '${model.id}')">
+                                    Benchmark
+                                </button>`
+                            }
                             <button class="btn-delete" onclick="deleteModel('${modelType}', '${model.id}')">
                                 Delete
                             </button>

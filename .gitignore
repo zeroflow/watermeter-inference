@@ -5,6 +5,7 @@ venv
 # Training data and models (in any subfolder)
 **/dataset/
 **/ov_model/
+models_debug/
 **/ground_truth/
 **/input/
 # **/selected/ the one selected model is uploaded.
@@ -17,3 +18,7 @@ data/*
 config/*
 data_debug/*
 config_debug/*
+
+# Secrets
+.env
+token.txt

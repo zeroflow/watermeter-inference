@@ -18,6 +18,8 @@ services:
       - ./models:/app/models
       # Training data: input images and ground truth
       - ./training:/training
+      # Model download cache (timm/huggingface pretrained weights)
+      - /home/thomas/.cache/huggingface:/root/.cache/huggingface
 
     devices:
       # Intel GPU for OpenVINO acceleration
@@ -30,6 +32,9 @@ services:
     environment:
       # Optional: Override logging level
       - LOG_LEVEL=INFO
+      # Optional: HuggingFace API token (avoids download rate limits)
+      # Get yours at https://huggingface.co/settings/tokens
+      - HF_TOKEN=${HF_TOKEN:-}
 
     restart: unless-stopped
 
@@ -40,7 +45,3 @@ services:
       retries: 3
       start_period: 40s
 
-# Optionally create named volumes instead of bind mounts
-# volumes:
-#   config:
-#   data:

@@ -11,7 +11,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxcb-xfixes0 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# Install PyTorch CPU-only FIRST (before timm/other deps that depend on torch)
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+# Install remaining Python dependencies (timm will reuse the CPU-only torch)
 COPY requirements-docker.txt /tmp/requirements-docker.txt
 RUN pip install --no-cache-dir -r /tmp/requirements-docker.txt && rm /tmp/requirements-docker.txt
 
@@ -28,9 +31,9 @@ COPY app.py watermeter_service.py persistence.py inference.py config_utils.py mo
 COPY templates/ /app/templates/
 COPY static/ /app/static/
 
-# Copy selected models (run ./debug.sh before docker build)
-COPY digits/selected/ /app/models/digits/
-COPY arrows/selected/ /app/models/arrows/
+# Copy selected models to staging area (entrypoint copies to /app/models/ on first run)
+COPY digits/selected/ /app/digits/selected/
+COPY arrows/selected/ /app/arrows/selected/
 
 # Copy default configuration
 COPY config.yaml /config_default/config.yaml
