@@ -912,7 +912,11 @@ class WatermeterService:
                     logger.error("Event loop not available - cannot process reading")
 
         elif topic == mqtt_config['reset_topic']:
-            self.reset_previous_value()
+            # Route through event loop to avoid mutating shared state from MQTT thread
+            if self.loop:
+                self.loop.call_soon_threadsafe(self.reset_previous_value)
+            else:
+                self.reset_previous_value()
 
         elif topic == "homeassistant/status":
             if payload == "online":
