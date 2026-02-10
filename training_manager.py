@@ -922,6 +922,20 @@ class TrainingManager:
             except Exception as e:
                 logger.error(f"Failed to save benchmark to metadata: {e}")
 
+        except RuntimeError as e:
+            if "cancelled" in str(e).lower():
+                job.status = JobStatus.CANCELLED
+                job.completed_at = datetime.now()
+                job.add_log("Benchmark cancelled")
+                logger.info(f"Benchmark job {job.job_id} cancelled")
+            else:
+                job.status = JobStatus.FAILED
+                job.completed_at = datetime.now()
+                job.error = str(e)
+                job.add_log(f"Benchmark failed with error: {str(e)}")
+                logger.error(f"Benchmark job {job.job_id} failed: {e}")
+                logger.error(traceback.format_exc())
+
         except Exception as e:
             job.status = JobStatus.FAILED
             job.completed_at = datetime.now()
