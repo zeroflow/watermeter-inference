@@ -119,6 +119,18 @@ class ConfigSaveSubmission(BaseModel):
     save_option: str = "saveonly"  # "saveonly" or "restart"
 
 
+# prevent fire-and-forget tasks from being garbage-collected
+_background_tasks: set = set()
+
+
+def _create_background_task(coro):
+    """Create an asyncio task and prevent it from being garbage-collected."""
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifecycle manager for FastAPI app."""
@@ -130,7 +142,7 @@ async def lifespan(app: FastAPI):
 
     # Initial reading on startup
     logger.info("Triggering initial reading...")
-    asyncio.create_task(service.process_reading())
+    _create_background_task(service.process_reading())
 
     yield
 
@@ -196,7 +208,7 @@ async def trigger_reading():
         )
 
     # Start processing in background
-    asyncio.create_task(service.process_reading())
+    _create_background_task(service.process_reading())
 
     return JSONResponse({"message": "Reading triggered successfully"})
 
