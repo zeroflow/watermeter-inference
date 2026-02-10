@@ -498,6 +498,25 @@
             color: var(--text-light);
             text-transform: uppercase;
             letter-spacing: 0.5px;
+            cursor: pointer;
+            user-select: none;
+            white-space: nowrap;
+        }
+
+        .model-table th:last-child {
+            cursor: default;
+            width: 1%;
+            white-space: nowrap;
+        }
+
+        .model-table th .sort-icon {
+            font-size: 10px;
+            margin-left: 4px;
+            opacity: 0.3;
+        }
+
+        .model-table th.sorted .sort-icon {
+            opacity: 1;
         }
 
         .model-table td {
@@ -626,8 +645,8 @@
             cursor: pointer;
             font-weight: 500;
             transition: background 0.2s;
-            min-width: 80px;
             text-align: center;
+            white-space: nowrap;
         }
 
         .model-actions .btn-activate {
@@ -1197,6 +1216,8 @@
         let allModels = { digits: [], arrows: [] };
         let activeModels = { digits: null, arrows: null };
         let currentFilter = 'all';
+        let sortColumn = localStorage.getItem('modelSortCol') || 'accuracy';
+        let sortAsc = localStorage.getItem('modelSortAsc') === 'true';
 
         // Initialize
         window.addEventListener('load', function() {
@@ -1791,6 +1812,19 @@
             renderModels();
         }
 
+        // Sort models by column
+        function sortModels(column) {
+            if (sortColumn === column) {
+                sortAsc = !sortAsc;
+            } else {
+                sortColumn = column;
+                sortAsc = column === 'name' || column === 'type' || column === 'arch';
+            }
+            localStorage.setItem('modelSortCol', sortColumn);
+            localStorage.setItem('modelSortAsc', sortAsc);
+            renderModels();
+        }
+
         // Render models table
         function renderModels() {
             const container = document.getElementById('models-container');
@@ -1812,28 +1846,59 @@
                 return;
             }
 
-            // Sort: failed at bottom, then by created_at descending
+            // Sort: failed always at bottom, then by selected column
             models.sort((a, b) => {
                 const aFailed = a.status === 'failed' ? 1 : 0;
                 const bFailed = b.status === 'failed' ? 1 : 0;
                 if (aFailed !== bFailed) return aFailed - bFailed;
-                return (b.created_at || '').localeCompare(a.created_at || '');
+
+                let cmp = 0;
+                const dir = sortAsc ? 1 : -1;
+                switch (sortColumn) {
+                    case 'name':
+                        cmp = (a.id || '').localeCompare(b.id || '');
+                        break;
+                    case 'type':
+                        cmp = (a.model_type || '').localeCompare(b.model_type || '');
+                        break;
+                    case 'arch':
+                        cmp = (a.architecture || '').localeCompare(b.architecture || '');
+                        break;
+                    case 'res':
+                        cmp = (a.resolution || 0) - (b.resolution || 0);
+                        break;
+                    case 'accuracy':
+                        cmp = ((a.benchmark?.accuracy ?? -1)) - ((b.benchmark?.accuracy ?? -1));
+                        break;
+                    case 'inftime':
+                        cmp = ((a.benchmark?.inference_time_ms ?? 9999)) - ((b.benchmark?.inference_time_ms ?? 9999));
+                        break;
+                    case 'created':
+                    default:
+                        cmp = (a.created_at || '').localeCompare(b.created_at || '');
+                        break;
+                }
+                return cmp * dir;
             });
+
+            const cols = [
+                { key: 'name', label: 'Name' },
+                { key: 'type', label: 'Type' },
+                { key: 'arch', label: 'Architecture' },
+                { key: 'res', label: 'Res' },
+                { key: 'accuracy', label: 'Accuracy' },
+                { key: 'inftime', label: 'Inf. Time' },
+                { key: 'created', label: 'Created' },
+            ];
+            const thHtml = cols.map(c => {
+                const icon = sortColumn === c.key ? (sortAsc ? '&#9650;' : '&#9660;') : '&#9660;';
+                const cls = sortColumn === c.key ? ' class="sorted"' : '';
+                return `<th${cls} onclick="sortModels('${c.key}')">${c.label}<span class="sort-icon">${icon}</span></th>`;
+            }).join('') + '<th>Actions</th>';
 
             let html = `
                 <table class="model-table">
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>Type</th>
-                            <th>Architecture</th>
-                            <th>Res</th>
-                            <th>Accuracy</th>
-                            <th>Inf. Time</th>
-                            <th>Created</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
+                    <thead><tr>${thHtml}</tr></thead>
                     <tbody>
             `;
 
