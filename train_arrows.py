@@ -495,7 +495,8 @@ def train_model(model_name: str, resolution: int, epochs: int, train_loader, val
 
         compiled = core.compile_model(model_onnx, 'AUTO')
         result = compiled([img_input])[compiled.output(0)]
-        result_softmax = np.exp(result[0]) / np.exp(result[0]).sum()
+        shifted = result[0] - result[0].max()
+        result_softmax = np.exp(shifted) / np.exp(shifted).sum()
         ov_predicted_idx = result_softmax.argmax()
         ov_confidence = result_softmax[ov_predicted_idx]
 
