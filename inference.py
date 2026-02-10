@@ -10,7 +10,6 @@ import tempfile
 import httpx
 import yaml
 import re
-import sys
 import logging
 import threading
 
@@ -202,7 +201,7 @@ def validate_model_config(model_path: str, model_type: str, classes: list, resol
       - digits: model_digits_<model>_r<resolution>
 
     If filename conforms to pattern, validates that embedded values match config.
-    Logs error and exits if mismatch found.
+    Raises ValueError if mismatch found.
     """
     filename = Path(model_path).stem
 
@@ -224,7 +223,7 @@ def validate_model_config(model_path: str, model_type: str, classes: list, resol
             if errors:
                 for error in errors:
                     logger.error(error)
-                sys.exit(1)
+                raise ValueError("; ".join(errors))
 
             logger.info(f"Arrows model validated: {filename} (classes={config_num_classes}, resolution={resolution})")
 
@@ -236,8 +235,9 @@ def validate_model_config(model_path: str, model_type: str, classes: list, resol
             file_resolution = int(match.group(2))
 
             if file_resolution != resolution:
-                logger.error(f"digits resolution mismatch: filename has r{file_resolution}, config has {resolution}")
-                sys.exit(1)
+                msg = f"digits resolution mismatch: filename has r{file_resolution}, config has {resolution}"
+                logger.error(msg)
+                raise ValueError(msg)
 
             logger.info(f"Digits model validated: {filename} (resolution={resolution})")
 
