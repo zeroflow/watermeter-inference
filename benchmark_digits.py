@@ -179,7 +179,7 @@ def calculate_accuracy(predictions: List[Tuple[str, float]], expected_label: str
 
     Args:
         predictions: List of (predicted_value, confidence) tuples
-        expected_label: The expected label string (e.g., "5" or "N")
+        expected_label: The expected label string (e.g., "5" or "NAN")
     """
     correct = 0
     for pred_str, _ in predictions:
