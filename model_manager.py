@@ -201,7 +201,7 @@ class ModelManager:
         Returns:
             True if successful, False otherwise
         """
-        import yaml
+        import config_utils as _config_utils
 
         self._validate_model_id(model_id)
         model_dir = self._get_model_types_dir(model_type) / model_id
@@ -212,24 +212,15 @@ class ModelManager:
             return False
 
         try:
-            # Read config
-            with open(config_path, 'r') as f:
-                config = yaml.safe_load(f)
+            def _update(config):
+                if 'inference' not in config:
+                    config['inference'] = {}
+                if model_type == "digits":
+                    config['inference']['digits_model'] = str(xml_file)
+                elif model_type == "arrows":
+                    config['inference']['arrows_model'] = str(xml_file)
 
-            # Update model path
-            if 'inference' not in config:
-                config['inference'] = {}
-
-            if model_type == "digits":
-                config['inference']['digits_model'] = str(xml_file)
-            elif model_type == "arrows":
-                config['inference']['arrows_model'] = str(xml_file)
-            else:
-                return False
-
-            # Write config back
-            with open(config_path, 'w') as f:
-                yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
+            _config_utils.update_config(config_path, _update)
 
             logger.info(f"Activated model {model_type}/{model_id}")
             return True

@@ -85,6 +85,26 @@ def dump_config_string(config: CommentedMap) -> str:
     return stream.getvalue()
 
 
+def update_config(path: Union[str, Path], updater) -> "CommentedMap":
+    """
+    Load config, apply updater function, save, and return the updated config.
+
+    The updater receives the CommentedMap and mutates it in-place.
+    Comments and formatting are preserved.
+
+    Args:
+        path: Path to the config file
+        updater: Callable that receives the config and mutates it
+
+    Returns:
+        The updated config (CommentedMap)
+    """
+    config = load_config(path)
+    updater(config)
+    save_config(config, path)
+    return config
+
+
 def validate_config(yaml_string: str) -> Dict[str, Any]:
     """
     Validate a YAML config string.

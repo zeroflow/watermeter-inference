@@ -453,17 +453,13 @@ async def save_rotation(submission: RotationSubmission):
     """Save rotation value to config."""
     try:
         config_path = Path('config.yaml')
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
 
-        # Ensure detection section exists
-        if 'detection' not in config:
-            config['detection'] = {}
+        def _update(config):
+            if 'detection' not in config:
+                config['detection'] = {}
+            config['detection']['rotation'] = submission.rotation
 
-        config['detection']['rotation'] = submission.rotation
-
-        with open(config_path, 'w') as f:
-            yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
+        config = config_utils.update_config(config_path, _update)
 
         # Reload config in service
         service = get_service()
@@ -489,22 +485,17 @@ async def delete_rotation():
     """Delete rotation value from config."""
     try:
         config_path = Path('config.yaml')
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
 
-        if 'detection' in config and 'rotation' in config['detection']:
-            del config['detection']['rotation']
+        def _update(config):
+            if 'detection' in config and 'rotation' in config['detection']:
+                del config['detection']['rotation']
+                if not config['detection']:
+                    del config['detection']
 
-            # Remove detection section if empty
-            if not config['detection']:
-                del config['detection']
+        config = config_utils.update_config(config_path, _update)
 
-            with open(config_path, 'w') as f:
-                yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
-
-            # Reload config in service
-            service = get_service()
-            service.config = config
+        service = get_service()
+        service.config = config
 
         logger.info("Rotation deleted")
 
@@ -583,16 +574,13 @@ async def save_markers(submission: MarkersSubmission):
 
         # Save to config
         config_path = Path('config.yaml')
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
 
-        if 'detection' not in config:
-            config['detection'] = {}
+        def _update(config):
+            if 'detection' not in config:
+                config['detection'] = {}
+            config['detection']['markers'] = markers_data
 
-        config['detection']['markers'] = markers_data
-
-        with open(config_path, 'w') as f:
-            yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
+        config = config_utils.update_config(config_path, _update)
 
         # Reload config in service
         service.config = config
@@ -617,17 +605,15 @@ async def delete_markers():
     """Delete markers from config."""
     try:
         config_path = Path('config.yaml')
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
 
-        if 'detection' in config and 'markers' in config['detection']:
-            del config['detection']['markers']
+        def _update(config):
+            if 'detection' in config and 'markers' in config['detection']:
+                del config['detection']['markers']
 
-            with open(config_path, 'w') as f:
-                yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
+        config = config_utils.update_config(config_path, _update)
 
-            service = get_service()
-            service.config = config
+        service = get_service()
+        service.config = config
 
         # Delete marker images
         for i in range(1, 3):
@@ -730,19 +716,16 @@ async def save_digits(submission: DigitsSubmission):
 
         # Save to config
         config_path = Path('config.yaml')
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
 
-        if 'detection' not in config:
-            config['detection'] = {}
+        def _update(config):
+            if 'detection' not in config:
+                config['detection'] = {}
+            config['detection']['digits'] = {
+                'count': submission.count,
+                'rois': rois_data
+            }
 
-        config['detection']['digits'] = {
-            'count': submission.count,
-            'rois': rois_data
-        }
-
-        with open(config_path, 'w') as f:
-            yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
+        config = config_utils.update_config(config_path, _update)
 
         service.config = config
 
@@ -766,24 +749,26 @@ async def delete_digits():
     """Delete digit ROIs from config."""
     try:
         config_path = Path('config.yaml')
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
+        # Read count before deleting (for image cleanup)
+        existing = config_utils.load_config(config_path)
+        count = 0
+        if 'detection' in existing and 'digits' in existing['detection']:
+            count = existing['detection']['digits'].get('count', 0)
 
-        if 'detection' in config and 'digits' in config['detection']:
-            count = config['detection']['digits'].get('count', 0)
-            del config['detection']['digits']
+        def _update(config):
+            if 'detection' in config and 'digits' in config['detection']:
+                del config['detection']['digits']
 
-            with open(config_path, 'w') as f:
-                yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
+        config = config_utils.update_config(config_path, _update)
 
-            service = get_service()
-            service.config = config
+        service = get_service()
+        service.config = config
 
-            # Delete digit images
-            for i in range(1, count + 1):
-                digit_path = Path(f'/data/digit_{i}.jpg')
-                if digit_path.exists():
-                    digit_path.unlink()
+        # Delete digit images
+        for i in range(1, count + 1):
+            digit_path = Path(f'/data/digit_{i}.jpg')
+            if digit_path.exists():
+                digit_path.unlink()
 
         logger.info("Digits deleted")
 
@@ -955,19 +940,16 @@ async def save_analogs(submission: AnalogsSubmission):
 
         # Save to config
         config_path = Path('config.yaml')
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
 
-        if 'detection' not in config:
-            config['detection'] = {}
+        def _update(config):
+            if 'detection' not in config:
+                config['detection'] = {}
+            config['detection']['analogs'] = {
+                'count': submission.count,
+                'rois': rois_data
+            }
 
-        config['detection']['analogs'] = {
-            'count': submission.count,
-            'rois': rois_data
-        }
-
-        with open(config_path, 'w') as f:
-            yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
+        config = config_utils.update_config(config_path, _update)
 
         service.config = config
 
@@ -991,24 +973,26 @@ async def delete_analogs():
     """Delete analog ROIs from config."""
     try:
         config_path = Path('config.yaml')
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
+        # Read count before deleting (for image cleanup)
+        existing = config_utils.load_config(config_path)
+        count = 0
+        if 'detection' in existing and 'analogs' in existing['detection']:
+            count = existing['detection']['analogs'].get('count', 0)
 
-        if 'detection' in config and 'analogs' in config['detection']:
-            count = config['detection']['analogs'].get('count', 0)
-            del config['detection']['analogs']
+        def _update(config):
+            if 'detection' in config and 'analogs' in config['detection']:
+                del config['detection']['analogs']
 
-            with open(config_path, 'w') as f:
-                yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
+        config = config_utils.update_config(config_path, _update)
 
-            service = get_service()
-            service.config = config
+        service = get_service()
+        service.config = config
 
-            # Delete analog images
-            for i in range(1, count + 1):
-                analog_path = Path(f'/data/analog_{i}.jpg')
-                if analog_path.exists():
-                    analog_path.unlink()
+        # Delete analog images
+        for i in range(1, count + 1):
+            analog_path = Path(f'/data/analog_{i}.jpg')
+            if analog_path.exists():
+                analog_path.unlink()
 
         logger.info("Analogs deleted")
 
