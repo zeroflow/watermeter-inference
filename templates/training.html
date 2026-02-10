@@ -39,6 +39,54 @@
             gap: 8px;
         }
 
+        /* Compact stats section */
+        .section-compact {
+            padding: 16px 24px;
+        }
+
+        .section-compact h2 {
+            margin-bottom: 10px;
+        }
+
+        .section-compact .stats-grid {
+            gap: 16px;
+        }
+
+        .section-compact .class-bars {
+            gap: 3px;
+        }
+
+        .section-compact .class-bar .bar-container {
+            height: 16px;
+        }
+
+        .section-compact .class-bar .label,
+        .section-compact .class-bar .count {
+            font-size: 12px;
+        }
+
+        .section-compact .stats-summary {
+            margin-top: 8px;
+            padding-top: 8px;
+        }
+
+        .section-compact .arrow-group summary .bar-container {
+            height: 16px;
+        }
+
+        .section-compact .arrow-group .sub-bars .class-bar .bar-container {
+            height: 12px;
+        }
+
+        /* Log section at bottom */
+        .log-section {
+            display: none;
+        }
+
+        .log-section.visible {
+            display: block;
+        }
+
         .section h2 .badge {
             font-size: 12px;
             padding: 2px 8px;
@@ -837,7 +885,7 @@
 
         <main class="training-content">
             <!-- Training Data Stats -->
-            <section class="section" id="stats-section">
+            <section class="section section-compact" id="stats-section">
                 <h2>Training Data</h2>
                 <div class="stats-grid">
                     <div class="stats-column">
@@ -984,8 +1032,18 @@
                         <span class="metric-value" id="metric-accuracy">-</span>
                     </div>
                 </div>
-                <div class="log-viewer" id="log-viewer">
-                    <div class="log-line">Waiting for logs...</div>
+            </section>
+
+            <!-- Model List -->
+            <section class="section" id="models-section">
+                <h2>Trained Models</h2>
+                <div class="tabs">
+                    <button class="tab active" data-type="all" onclick="filterModels('all')">All</button>
+                    <button class="tab" data-type="digits" onclick="filterModels('digits')">Digits</button>
+                    <button class="tab" data-type="arrows" onclick="filterModels('arrows')">Arrows</button>
+                </div>
+                <div id="models-container">
+                    <div class="empty-state"><p>Loading models...</p></div>
                 </div>
             </section>
 
@@ -1023,9 +1081,6 @@
                         </div>
                     </div>
                 </div>
-                <div class="log-viewer" id="benchmark-log-viewer">
-                    <div class="log-line">Waiting for logs...</div>
-                </div>
             </section>
 
             <!-- Benchmark Results -->
@@ -1049,16 +1104,11 @@
                 </div>
             </section>
 
-            <!-- Model List -->
-            <section class="section" id="models-section">
-                <h2>Trained Models</h2>
-                <div class="tabs">
-                    <button class="tab active" data-type="all" onclick="filterModels('all')">All</button>
-                    <button class="tab" data-type="digits" onclick="filterModels('digits')">Digits</button>
-                    <button class="tab" data-type="arrows" onclick="filterModels('arrows')">Arrows</button>
-                </div>
-                <div id="models-container">
-                    <div class="empty-state"><p>Loading models...</p></div>
+            <!-- Log Output -->
+            <section class="section log-section" id="log-section">
+                <h2>Log Output</h2>
+                <div class="log-viewer" id="log-viewer">
+                    <div class="log-line">No active job.</div>
                 </div>
             </section>
         </main>
@@ -1252,6 +1302,7 @@
                         loadModels(); // Refresh model list
                     }
                     progressSection.classList.remove('visible');
+                    hideLogSectionIfIdle();
                     statusBadge.textContent = 'Training: Idle';
                     statusBadge.className = 'badge badge-idle';
                     startBtn.disabled = false;
@@ -1260,6 +1311,7 @@
                 } else {
                     // No training
                     progressSection.classList.remove('visible');
+                    hideLogSectionIfIdle();
                     statusBadge.textContent = 'Training: Idle';
                     statusBadge.className = 'badge badge-idle';
                     startBtn.disabled = false;
@@ -1293,10 +1345,12 @@
                         currentBenchmarkJobId = null;
                     }
                     benchmarkSection.classList.remove('visible');
+                    hideLogSectionIfIdle();
                     document.querySelectorAll('.btn-benchmark').forEach(btn => btn.disabled = false);
 
                 } else {
                     benchmarkSection.classList.remove('visible');
+                    hideLogSectionIfIdle();
                     document.querySelectorAll('.btn-benchmark').forEach(btn => btn.disabled = false);
                 }
 
@@ -1323,14 +1377,17 @@
             document.getElementById('benchmark-message').textContent = progress.message || 'Running benchmark...';
         }
 
-        // Load benchmark logs
+        // Load benchmark logs into the unified log section
         async function loadBenchmarkLogs(jobId) {
             try {
                 const response = await fetch(`/api/training/logs/${jobId}`);
                 const data = await response.json();
 
                 if (data.success && data.logs) {
-                    const logViewer = document.getElementById('benchmark-log-viewer');
+                    const logSection = document.getElementById('log-section');
+                    const logViewer = document.getElementById('log-viewer');
+                    logSection.classList.add('visible');
+
                     const wasAtBottom = logViewer.scrollHeight - logViewer.scrollTop <= logViewer.clientHeight + 50;
 
                     logViewer.innerHTML = data.logs.map(log => `<div class="log-line">${log}</div>`).join('');
@@ -1463,19 +1520,33 @@
             document.getElementById('progress-message').textContent = progress.message || 'Training...';
         }
 
-        // Load logs
+        // Hide log section when neither training nor benchmark is active
+        function hideLogSectionIfIdle() {
+            if (!currentJobId && !currentBenchmarkJobId) {
+                document.getElementById('log-section').classList.remove('visible');
+            }
+        }
+
+        // Regex to filter redundant epoch/loss/accuracy lines from training logs
+        const epochLogPattern = /Epoch \d+\/\d+ - Loss: .* - Val Acc: /;
+
+        // Load logs into the unified log section
         async function loadLogs(jobId) {
             try {
                 const response = await fetch(`/api/training/logs/${jobId}`);
                 const data = await response.json();
 
                 if (data.success && data.logs) {
+                    const logSection = document.getElementById('log-section');
                     const logViewer = document.getElementById('log-viewer');
+                    logSection.classList.add('visible');
+
                     const wasAtBottom = logViewer.scrollHeight - logViewer.scrollTop <= logViewer.clientHeight + 50;
 
-                    logViewer.innerHTML = data.logs.map(log => `<div class="log-line">${log}</div>`).join('');
+                    // Filter out redundant epoch lines (already shown in progress metrics)
+                    const filtered = data.logs.filter(log => !epochLogPattern.test(log));
+                    logViewer.innerHTML = filtered.map(log => `<div class="log-line">${log}</div>`).join('');
 
-                    // Auto-scroll if was at bottom
                     if (wasAtBottom) {
                         logViewer.scrollTop = logViewer.scrollHeight;
                     }
