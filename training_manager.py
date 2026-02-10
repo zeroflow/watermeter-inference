@@ -330,11 +330,17 @@ class TrainingManager:
                 else:
                     job.add_log(f"Training failed for seed {seed}")
 
-            # Training completed
-            job.status = JobStatus.COMPLETED
+            # Check if any training succeeded
+            if results:
+                job.status = JobStatus.COMPLETED
+                job.result = results
+                job.add_log(f"Training completed successfully: {len(results)}/{total_configs} models trained")
+            else:
+                job.status = JobStatus.FAILED
+                job.error = "All training configurations failed"
+                job.add_log(f"Training failed: 0/{total_configs} models trained successfully")
+
             job.completed_at = datetime.now()
-            job.result = results
-            job.add_log(f"Training completed successfully: {len(results)}/{total_configs} models trained")
 
         except Exception as e:
             job.status = JobStatus.FAILED
@@ -345,6 +351,13 @@ class TrainingManager:
             logger.error(traceback.format_exc())
 
         finally:
+            # Persist logs to disk
+            self._persist_training_logs(job)
+
+            # On failure, persist failure metadata so it appears in the model list
+            if job.status == JobStatus.FAILED:
+                self._persist_failure_metadata(job)
+
             # Collect model IDs for auto-benchmark if requested
             if job.status == JobStatus.COMPLETED and job.config.get('auto_benchmark', False):
                 for result in (job.result or []):
@@ -730,7 +743,94 @@ class TrainingManager:
         except Exception as e:
             job.add_log(f"Error in training execution: {str(e)}")
             logger.error(traceback.format_exc())
+
+            # Cleanup partial model directory if it was created
+            partial_dir = Path(f"/app/models/{model_type}/{model_filename}")
+            if partial_dir.exists():
+                try:
+                    import shutil
+                    shutil.rmtree(partial_dir)
+                    job.add_log(f"Cleaned up partial model directory: {partial_dir}")
+                except Exception as cleanup_err:
+                    job.add_log(f"Warning: Could not clean up partial directory: {cleanup_err}")
+
             return None
+
+    def _persist_training_logs(self, job: TrainingJob):
+        """Save training logs to disk for later viewing."""
+        import json
+
+        config = job.config
+        model_type = config.get('model_type', 'unknown')
+
+        # For successful jobs, save logs into each model directory
+        if job.status == JobStatus.COMPLETED and job.result:
+            for result in job.result:
+                model_id = result.get('model_id')
+                if model_id:
+                    log_path = Path(f"/app/models/{model_type}/{model_id}/training.log")
+                    try:
+                        with open(log_path, 'w') as f:
+                            f.write('\n'.join(job.logs))
+                    except Exception as e:
+                        logger.error(f"Failed to persist training logs to {log_path}: {e}")
+
+        # For failed/cancelled jobs, save into the failure directory
+        elif job.status in (JobStatus.FAILED, JobStatus.CANCELLED):
+            fail_dir = self._get_failure_dir(job)
+            if fail_dir:
+                fail_dir.mkdir(parents=True, exist_ok=True)
+                log_path = fail_dir / "training.log"
+                try:
+                    with open(log_path, 'w') as f:
+                        f.write('\n'.join(job.logs))
+                except Exception as e:
+                    logger.error(f"Failed to persist failure logs to {log_path}: {e}")
+
+    def _persist_failure_metadata(self, job: TrainingJob):
+        """Save metadata.json for a failed training so it appears in the model list."""
+        import json
+
+        fail_dir = self._get_failure_dir(job)
+        if not fail_dir:
+            return
+
+        fail_dir.mkdir(parents=True, exist_ok=True)
+        config = job.config
+
+        metadata = {
+            'model_type': config.get('model_type', 'unknown'),
+            'architecture': config.get('architecture', 'unknown'),
+            'resolution': config.get('resolution', 0),
+            'status': 'failed',
+            'error': job.error or 'Unknown error',
+            'created_at': (job.started_at or datetime.now()).isoformat(),
+            'training_info': {
+                'seeds': config.get('seeds', []),
+                'epochs': config.get('epochs', 0),
+                'notes': config.get('notes', ''),
+            }
+        }
+
+        metadata_path = fail_dir / 'metadata.json'
+        try:
+            with open(metadata_path, 'w') as f:
+                json.dump(metadata, f, indent=2)
+            logger.info(f"Saved failure metadata: {metadata_path}")
+            # Refresh model manager so it picks up the failure entry
+            self.model_manager.refresh()
+        except Exception as e:
+            logger.error(f"Failed to persist failure metadata: {e}")
+
+    def _get_failure_dir(self, job: TrainingJob) -> Optional[Path]:
+        """Get the directory path for storing failure artifacts."""
+        config = job.config
+        model_type = config.get('model_type')
+        architecture = config.get('architecture', 'unknown')
+        timestamp = (job.started_at or datetime.now()).strftime('%Y%m%d_%H%M%S')
+        if not model_type:
+            return None
+        return Path(f"/app/models/{model_type}/_failed_{architecture}_{timestamp}")
 
     def _create_arrow_dataset(self, ground_truth_dir: Path, dataset_dir: Path,
                               step: float, job: TrainingJob):

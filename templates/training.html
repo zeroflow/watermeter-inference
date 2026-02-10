@@ -550,6 +550,92 @@
             color: var(--text-light);
         }
 
+        .model-table .status-badge.failed {
+            background: #fee2e2;
+            color: var(--danger);
+        }
+
+        .model-actions .btn-viewlog {
+            background: var(--bg-light);
+            color: var(--text-dark);
+            border: 1px solid var(--border);
+        }
+
+        .model-actions .btn-viewlog:hover {
+            background: #e2e8f0;
+        }
+
+        /* Log viewer modal */
+        .log-modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .log-modal-overlay.visible {
+            display: flex;
+        }
+
+        .log-modal {
+            background: white;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 800px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .log-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .log-modal-header h3 {
+            margin: 0;
+            font-size: 16px;
+        }
+
+        .log-modal-close {
+            background: none;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            color: var(--text-light);
+            padding: 4px 8px;
+        }
+
+        .log-modal-close:hover {
+            color: var(--text-dark);
+        }
+
+        .log-modal-body {
+            padding: 16px 20px;
+            overflow-y: auto;
+            flex: 1;
+            font-family: monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            background: #1a1a2e;
+            color: #e0e0e0;
+        }
+
+        .log-modal-body .log-line {
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
         .model-actions {
             display: flex;
             gap: 8px;
@@ -1193,6 +1279,19 @@
                 </div>
             </section>
         </main>
+    </div>
+
+    <!-- Log Viewer Modal -->
+    <div class="log-modal-overlay" id="log-modal-overlay" onclick="closeLogModal(event)">
+        <div class="log-modal" onclick="event.stopPropagation()">
+            <div class="log-modal-header">
+                <h3 id="log-modal-title">Training Log</h3>
+                <button class="log-modal-close" onclick="closeLogModal()">&times;</button>
+            </div>
+            <div class="log-modal-body" id="log-modal-body">
+                <div class="log-line">Loading...</div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -1912,8 +2011,13 @@
                 return;
             }
 
-            // Sort by created_at descending
-            models.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+            // Sort: failed at bottom, then by created_at descending
+            models.sort((a, b) => {
+                const aFailed = a.status === 'failed' ? 1 : 0;
+                const bFailed = b.status === 'failed' ? 1 : 0;
+                if (aFailed !== bFailed) return aFailed - bFailed;
+                return (b.created_at || '').localeCompare(a.created_at || '');
+            });
 
             let html = `
                 <table class="model-table">
@@ -1935,10 +2039,38 @@
                 const modelType = model.model_type;
                 const isActive = model.status === 'active';
                 const isArchived = model.status === 'archived';
+                const isFailed = model.status === 'failed';
                 const createdAt = model.created_at ? new Date(model.created_at).toLocaleDateString() : '-';
 
+                let actionsHtml;
+                if (isFailed) {
+                    actionsHtml = `
+                        <button class="btn-viewlog" onclick="viewModelLog('${modelType}', '${model.id}')">
+                            View Log
+                        </button>
+                        <button class="btn-delete" onclick="deleteModel('${modelType}', '${model.id}')">
+                            Delete
+                        </button>
+                    `;
+                } else {
+                    actionsHtml = `
+                        <button class="btn-activate" onclick="activateModel('${modelType}', '${model.id}')" ${isActive ? 'disabled' : ''}>
+                            ${isActive ? 'Active' : 'Activate'}
+                        </button>
+                        <button class="btn-benchmark" onclick="startBenchmark('${modelType}', '${model.id}')">
+                            Benchmark
+                        </button>
+                        <button class="btn-viewlog" onclick="viewModelLog('${modelType}', '${model.id}')">
+                            View Log
+                        </button>
+                        <button class="btn-delete" onclick="deleteModel('${modelType}', '${model.id}')">
+                            Delete
+                        </button>
+                    `;
+                }
+
                 html += `
-                    <tr>
+                    <tr${isFailed ? ' style="opacity: 0.7"' : ''}>
                         <td class="model-name">${model.id}</td>
                         <td><span class="model-type ${modelType}">${modelType}</span></td>
                         <td>${model.architecture || '-'}</td>
@@ -1946,18 +2078,11 @@
                         <td>
                             ${isActive ? '<span class="status-badge active">Active</span>' : ''}
                             ${isArchived ? '<span class="status-badge archived">Archived</span>' : ''}
+                            ${isFailed ? '<span class="status-badge failed">Failed</span>' : ''}
                         </td>
                         <td>${createdAt}</td>
                         <td class="model-actions">
-                            <button class="btn-activate" onclick="activateModel('${modelType}', '${model.id}')" ${isActive ? 'disabled' : ''}>
-                                ${isActive ? 'Active' : 'Activate'}
-                            </button>
-                            <button class="btn-benchmark" onclick="startBenchmark('${modelType}', '${model.id}')">
-                                Benchmark
-                            </button>
-                            <button class="btn-delete" onclick="deleteModel('${modelType}', '${model.id}')">
-                                Delete
-                            </button>
+                            ${actionsHtml}
                         </td>
                     </tr>
                 `;
@@ -1987,6 +2112,36 @@
                 console.error('Error activating model:', error);
                 showMessage('Error: ' + error.message, 'error');
             }
+        }
+
+        // View model training log
+        async function viewModelLog(modelType, modelId) {
+            const overlay = document.getElementById('log-modal-overlay');
+            const body = document.getElementById('log-modal-body');
+            const title = document.getElementById('log-modal-title');
+
+            title.textContent = `Training Log: ${modelId}`;
+            body.innerHTML = '<div class="log-line">Loading...</div>';
+            overlay.classList.add('visible');
+
+            try {
+                const response = await fetch(`/api/models/${modelType}/${modelId}/logs`);
+                const data = await response.json();
+
+                if (data.success && data.logs) {
+                    body.innerHTML = data.logs.map(line => `<div class="log-line">${line}</div>`).join('');
+                    body.scrollTop = body.scrollHeight;
+                } else {
+                    body.innerHTML = '<div class="log-line">No training log available for this model.</div>';
+                }
+            } catch (error) {
+                body.innerHTML = `<div class="log-line">Error loading log: ${error.message}</div>`;
+            }
+        }
+
+        function closeLogModal(event) {
+            if (event && event.target !== event.currentTarget) return;
+            document.getElementById('log-modal-overlay').classList.remove('visible');
         }
 
         // Delete model

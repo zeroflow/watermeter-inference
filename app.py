@@ -1650,6 +1650,34 @@ async def delete_model(model_type: str, model_id: str):
         }, status_code=500)
 
 
+@app.get("/api/models/{model_type}/{model_id}/logs")
+async def get_model_logs(model_type: str, model_id: str):
+    """Get persisted training logs for a model (successful or failed)."""
+    try:
+        model_mgr = get_model_manager()
+        model_dir = model_mgr._get_model_types_dir(model_type) / model_id
+        log_file = model_dir / "training.log"
+
+        if not log_file.exists():
+            return JSONResponse({
+                "success": False,
+                "message": "No training log found for this model"
+            }, status_code=404)
+
+        logs = log_file.read_text().split('\n')
+        return JSONResponse({
+            "success": True,
+            "logs": logs
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting model logs: {e}")
+        return JSONResponse({
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }, status_code=500)
+
+
 @app.post("/api/models/{model_type}/{model_id}/benchmark")
 async def start_benchmark(model_type: str, model_id: str):
     """Start a benchmark job for a specific model."""
