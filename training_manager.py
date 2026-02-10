@@ -130,40 +130,35 @@ class TrainingManager:
         self.model_manager = get_model_manager()
         self._training_cancel_flag = threading.Event()
         self._benchmark_cancel_flag = threading.Event()
+        self.training_queue: List[Dict[str, Any]] = []
+        self._auto_benchmark_pending: List[tuple] = []  # [(model_type, model_id), ...]
+        self._queue_lock = threading.Lock()
 
-    def start_training(self, config: Dict[str, Any]) -> str:
+    def start_training(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Start a training job.
-
-        Args:
-            config: Training configuration with keys:
-                - model_type: "digits" or "arrows"
-                - architecture: Model architecture name
-                - resolution: Image resolution
-                - seeds: List of seeds to train
-                - epochs: Number of epochs
-                - batch_size: Batch size
-                - step_size: For arrows only (1.0, 0.5, 0.2, 0.1)
-                - notes: Optional notes
+        Start a training job, or queue it if one is already running.
 
         Returns:
-            Job ID
-
-        Raises:
-            RuntimeError: If training is already running
+            Dict with job_id, queued, queue_position
         """
         if self.active_training_job is not None and self.active_training_job.status == JobStatus.RUNNING:
-            raise RuntimeError("Training is already running")
+            with self._queue_lock:
+                self.training_queue.append(config)
+                position = len(self.training_queue)
+            logger.info(f"Training queued at position {position}")
+            return {'job_id': None, 'queued': True, 'queue_position': position}
 
-        # Generate job ID
+        job_id = self._start_training_now(config)
+        return {'job_id': job_id, 'queued': False, 'queue_position': 0}
+
+    def _start_training_now(self, config: Dict[str, Any]) -> str:
+        """Start a training job immediately."""
         job_id = f"train_{config['model_type']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-        # Create job
         job = TrainingJob(job_id, config)
         self.active_training_job = job
         self.job_history[job_id] = job
 
-        # Start training in background thread
         self._training_cancel_flag.clear()
         job.thread = threading.Thread(target=self._run_training, args=(job,), daemon=True)
         job.thread.start()
@@ -204,18 +199,17 @@ class TrainingManager:
         job.add_log("Benchmark job started")
         return job_id
 
-    def cancel_training(self, job_id: str) -> bool:
+    def cancel_training(self, job_id: str, clear_queue: bool = True) -> bool:
         """
-        Cancel a running training job.
-
-        Args:
-            job_id: Job ID to cancel
-
-        Returns:
-            True if successful, False otherwise
+        Cancel a running training job and optionally clear the queue.
         """
         if self.active_training_job is None or self.active_training_job.job_id != job_id:
             return False
+
+        if clear_queue:
+            with self._queue_lock:
+                self.training_queue.clear()
+            self._auto_benchmark_pending.clear()
 
         self._training_cancel_flag.set()
         self.active_training_job.add_log("Cancellation requested")
@@ -249,6 +243,26 @@ class TrainingManager:
         if self.active_benchmark_job is None:
             return None
         return self.active_benchmark_job.to_dict()
+
+    def get_queue(self) -> List[Dict]:
+        """Get the current training queue."""
+        with self._queue_lock:
+            return list(self.training_queue)
+
+    def remove_from_queue(self, index: int) -> bool:
+        """Remove an item from the queue by index."""
+        with self._queue_lock:
+            if 0 <= index < len(self.training_queue):
+                self.training_queue.pop(index)
+                return True
+            return False
+
+    def clear_queue(self) -> int:
+        """Clear the entire training queue. Returns number of items removed."""
+        with self._queue_lock:
+            count = len(self.training_queue)
+            self.training_queue.clear()
+            return count
 
     def get_job_logs(self, job_id: str) -> List[str]:
         """Get logs for a specific job."""
@@ -331,7 +345,58 @@ class TrainingManager:
             logger.error(traceback.format_exc())
 
         finally:
-            pass  # Keep job visible so frontend can see completed/failed status
+            # Collect model IDs for auto-benchmark if requested
+            if job.status == JobStatus.COMPLETED and job.config.get('auto_benchmark', False):
+                for result in (job.result or []):
+                    model_id = result.get('model_id')
+                    if model_id:
+                        self._auto_benchmark_pending.append((job.config['model_type'], model_id))
+
+            # Start next queued job, or auto-benchmarks if queue is empty
+            self._process_next_in_queue()
+
+    def _process_next_in_queue(self):
+        """Start the next queued training job, or run auto-benchmarks if queue is empty."""
+        with self._queue_lock:
+            if not self.training_queue:
+                # Queue empty - start auto-benchmarks if any pending
+                if self._auto_benchmark_pending:
+                    self._run_auto_benchmarks()
+                return
+            next_config = self.training_queue.pop(0)
+
+        logger.info("Starting next queued training job")
+        try:
+            self._start_training_now(next_config)
+        except Exception as e:
+            logger.error(f"Failed to start queued training: {e}")
+            self._process_next_in_queue()
+
+    def _run_auto_benchmarks(self):
+        """Run benchmarks for all models in the auto-benchmark pending list."""
+        pending = list(self._auto_benchmark_pending)
+        self._auto_benchmark_pending.clear()
+
+        if not pending:
+            return
+
+        def run_sequential():
+            for model_type, model_id in pending:
+                if self._benchmark_cancel_flag.is_set():
+                    break
+                try:
+                    logger.info(f"Auto-benchmarking {model_type}/{model_id}")
+                    job_id = f"bench_{model_type}_{model_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                    job = BenchmarkJob(job_id, model_type, model_id)
+                    self.active_benchmark_job = job
+                    self.job_history[job_id] = job
+                    self._benchmark_cancel_flag.clear()
+                    self._run_benchmark(job)
+                except Exception as e:
+                    logger.error(f"Auto-benchmark failed for {model_type}/{model_id}: {e}")
+
+        thread = threading.Thread(target=run_sequential, daemon=True)
+        thread.start()
 
     def _execute_training(self, job: TrainingJob, model_type: str, architecture: str,
                          resolution: int, seed: int, epochs: int, batch_size: int,

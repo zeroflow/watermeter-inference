@@ -1322,39 +1322,40 @@ class TrainingConfig(BaseModel):
     batch_size: int = 16
     step_size: float = 1.0  # For arrows only
     notes: str = ""
+    auto_benchmark: bool = True
 
 
 @app.get("/api/training/status")
 async def get_training_status():
-    """Get the status of the active training job."""
+    """Get the status of the active training job, benchmark, and queue."""
     training_mgr = get_training_manager()
     training_status = training_mgr.get_training_status()
     benchmark_status = training_mgr.get_benchmark_status()
+    queue = training_mgr.get_queue()
 
     return JSONResponse({
         "training": training_status,
-        "benchmark": benchmark_status
+        "benchmark": benchmark_status,
+        "queue": queue,
+        "auto_benchmark_pending": len(training_mgr._auto_benchmark_pending)
     })
 
 
 @app.post("/api/training/start")
 async def start_training(config: TrainingConfig):
-    """Start a new training job."""
+    """Start a new training job or queue it if one is already running."""
     try:
         training_mgr = get_training_manager()
-        job_id = training_mgr.start_training(config.dict())
+        result = training_mgr.start_training(config.dict())
 
         return JSONResponse({
             "success": True,
-            "job_id": job_id,
-            "message": "Training started successfully"
+            "job_id": result['job_id'],
+            "queued": result['queued'],
+            "queue_position": result['queue_position'],
+            "message": "Training queued" if result['queued'] else "Training started successfully"
         })
 
-    except RuntimeError as e:
-        return JSONResponse({
-            "success": False,
-            "message": str(e)
-        }, status_code=409)
     except Exception as e:
         logger.error(f"Error starting training: {e}")
         return JSONResponse({
@@ -1364,16 +1365,16 @@ async def start_training(config: TrainingConfig):
 
 
 @app.post("/api/training/cancel")
-async def cancel_training(job_id: str):
-    """Cancel a running training job."""
+async def cancel_training(job_id: str, clear_queue: bool = True):
+    """Cancel a running training job and optionally clear the queue."""
     try:
         training_mgr = get_training_manager()
-        success = training_mgr.cancel_training(job_id)
+        success = training_mgr.cancel_training(job_id, clear_queue=clear_queue)
 
         if success:
             return JSONResponse({
                 "success": True,
-                "message": "Training cancellation requested"
+                "message": "Training cancellation requested" + (" (queue cleared)" if clear_queue else "")
             })
         else:
             return JSONResponse({
@@ -1387,6 +1388,31 @@ async def cancel_training(job_id: str):
             "success": False,
             "message": f"Error: {str(e)}"
         }, status_code=500)
+
+
+@app.delete("/api/training/queue/{index}")
+async def remove_from_queue(index: int):
+    """Remove a specific item from the training queue."""
+    try:
+        training_mgr = get_training_manager()
+        success = training_mgr.remove_from_queue(index)
+        if success:
+            return JSONResponse({"success": True, "message": "Removed from queue"})
+        else:
+            return JSONResponse({"success": False, "message": "Invalid queue index"}, status_code=404)
+    except Exception as e:
+        return JSONResponse({"success": False, "message": str(e)}, status_code=500)
+
+
+@app.delete("/api/training/queue")
+async def clear_queue():
+    """Clear the entire training queue."""
+    try:
+        training_mgr = get_training_manager()
+        count = training_mgr.clear_queue()
+        return JSONResponse({"success": True, "message": f"Removed {count} items from queue"})
+    except Exception as e:
+        return JSONResponse({"success": False, "message": str(e)}, status_code=500)
 
 
 @app.post("/api/benchmark/cancel")
