@@ -27,6 +27,8 @@ class Classifier:
 
     def preprocess(self, image_path):
         img = cv2.imread(str(image_path))
+        if img is None:
+            raise ValueError(f"Failed to read image: {image_path}")
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         img = cv2.resize(img, (self.resolution, self.resolution))
         img = img.astype(np.float32) / 255.0
