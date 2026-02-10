@@ -24,6 +24,12 @@ class ModelManager:
         self.models_base_path = Path(models_base_path)
         self.models_base_path.mkdir(parents=True, exist_ok=True)
 
+    @staticmethod
+    def _validate_model_id(model_id: str) -> None:
+        """Validate model_id to prevent path traversal."""
+        if '/' in model_id or '\\' in model_id or '..' in model_id or model_id in ('', '.'):
+            raise ValueError(f"Invalid model_id: {model_id}")
+
     def _get_model_types_dir(self, model_type: str) -> Path:
         """Get the directory for a specific model type (digits/arrows)."""
         if model_type not in ["digits", "arrows"]:
@@ -77,6 +83,7 @@ class ModelManager:
         Returns:
             Model metadata dictionary or None if not found
         """
+        self._validate_model_id(model_id)
         model_dir = self._get_model_types_dir(model_type) / model_id
         metadata_file = model_dir / "metadata.json"
 
@@ -114,6 +121,7 @@ class ModelManager:
         Returns:
             True if successful, False otherwise
         """
+        self._validate_model_id(model_id)
         model_dir = self._get_model_types_dir(model_type) / model_id
         model_dir.mkdir(parents=True, exist_ok=True)
 
@@ -139,6 +147,7 @@ class ModelManager:
         Returns:
             True if successful, False otherwise
         """
+        self._validate_model_id(model_id)
         model_dir = self._get_model_types_dir(model_type) / model_id
 
         if not model_dir.exists():
@@ -194,6 +203,7 @@ class ModelManager:
         """
         import yaml
 
+        self._validate_model_id(model_id)
         model_dir = self._get_model_types_dir(model_type) / model_id
         xml_file = model_dir / f"{model_id}.xml"
 
@@ -239,6 +249,7 @@ class ModelManager:
         Returns:
             Path to .xml file or None if not found
         """
+        self._validate_model_id(model_id)
         model_dir = self._get_model_types_dir(model_type) / model_id
         xml_file = model_dir / f"{model_id}.xml"
 
@@ -277,6 +288,7 @@ class ModelManager:
         Returns:
             True if successful, False otherwise
         """
+        self._validate_model_id(model_id)
         metadata = self.get_model(model_type, model_id)
         if not metadata:
             return False

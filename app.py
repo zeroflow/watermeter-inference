@@ -30,6 +30,14 @@ import config_utils
 logger = logging.getLogger(__name__)
 
 
+def safe_subpath(base: Path, *parts: str) -> Path:
+    """Join path parts to base and verify the result stays inside base (prevents path traversal)."""
+    resolved = (base / Path(*parts)).resolve()
+    if not resolved.is_relative_to(base.resolve()):
+        raise ValueError(f"Path traversal detected: {'/'.join(parts)}")
+    return resolved
+
+
 class TrainingSubmission(BaseModel):
     """Request model for training submissions."""
     id: str
@@ -220,7 +228,7 @@ async def submit_for_training(submission: TrainingSubmission):
         save_path = service.config.get('low_confidence', {}).get('save_path', '/training/')
 
         # Create directory structure: save_path/{model}/
-        model_dir = Path(save_path) / submission.model / 'input'
+        model_dir = safe_subpath(Path(save_path), submission.model, 'input')
         model_dir.mkdir(parents=True, exist_ok=True)
 
         # Decode base64 image
@@ -1177,8 +1185,8 @@ async def submit_label(submission: LabelSubmission):
         service = get_service()
         training_path = Path(service.config.get('low_confidence', {}).get('save_path', '/training'))
 
-        # Source path
-        source_path = training_path / submission.model_type / 'input' / submission.filename
+        # Source path (validated against traversal)
+        source_path = safe_subpath(training_path, submission.model_type, 'input', submission.filename)
 
         if not source_path.exists():
             return JSONResponse({
@@ -1263,8 +1271,8 @@ async def delete_image(submission: DeleteSubmission):
         service = get_service()
         training_path = Path(service.config.get('low_confidence', {}).get('save_path', '/training'))
 
-        # Source path
-        source_path = training_path / submission.model_type / 'input' / submission.filename
+        # Source path (validated against traversal)
+        source_path = safe_subpath(training_path, submission.model_type, 'input', submission.filename)
 
         if not source_path.exists():
             return JSONResponse({
