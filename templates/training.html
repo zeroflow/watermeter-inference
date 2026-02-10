@@ -532,29 +532,6 @@
             color: #1e40af;
         }
 
-        .model-table .status-badge {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 600;
-        }
-
-        .model-table .status-badge.active {
-            background: var(--success);
-            color: white;
-        }
-
-        .model-table .status-badge.archived {
-            background: var(--bg-light);
-            color: var(--text-light);
-        }
-
-        .model-table .status-badge.failed {
-            background: #fee2e2;
-            color: var(--danger);
-        }
-
         .model-actions .btn-viewlog {
             background: var(--bg-light);
             color: var(--text-dark);
@@ -706,65 +683,20 @@
             display: block;
         }
 
-        .benchmark-results-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-        }
-
-        .benchmark-results-table th,
-        .benchmark-results-table td {
-            padding: 10px 12px;
-            text-align: left;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .benchmark-results-table th {
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: var(--text-light);
-        }
-
-        .benchmark-results-table tr:last-child td {
-            border-bottom: none;
-        }
-
-        .benchmark-results-table tr.best-row td {
-            background: #f0fdf4;
-        }
-
-        .benchmark-results-table .accuracy-cell {
+        .accuracy-cell {
             font-weight: 700;
         }
 
-        .benchmark-results-table .accuracy-cell.good {
+        .accuracy-cell.good {
             color: var(--success);
         }
 
-        .benchmark-results-table .accuracy-cell.warning {
+        .accuracy-cell.warning {
             color: var(--warning);
         }
 
-        .benchmark-results-table .accuracy-cell.bad {
+        .accuracy-cell.bad {
             color: var(--danger);
-        }
-
-        .benchmark-results-table .btn-delete {
-            padding: 6px 12px;
-            font-size: 12px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: 500;
-            transition: background 0.2s;
-            background: #fee2e2;
-            color: var(--danger);
-        }
-
-        .benchmark-results-table .btn-delete:hover {
-            background: #fecaca;
         }
 
         .empty-state {
@@ -913,15 +845,6 @@
                 max-height: 150px;
             }
 
-            .benchmark-results-table {
-                font-size: 12px;
-            }
-
-            .benchmark-results-table th,
-            .benchmark-results-table td {
-                padding: 8px 6px;
-            }
-
             /* Model table -> card layout on mobile */
             .model-table thead {
                 display: none;
@@ -968,14 +891,15 @@
             .model-table td:nth-child(2)::before { content: "Type"; }
             .model-table td:nth-child(3)::before { content: "Arch"; }
             .model-table td:nth-child(4)::before { content: "Res"; }
-            .model-table td:nth-child(5)::before { content: "Status"; }
-            .model-table td:nth-child(6)::before { content: "Created"; }
+            .model-table td:nth-child(5)::before { content: "Accuracy"; }
+            .model-table td:nth-child(6)::before { content: "Inf. Time"; }
+            .model-table td:nth-child(7)::before { content: "Created"; }
 
-            .model-table td:nth-child(7) {
+            .model-table td:nth-child(8) {
                 padding-top: 8px;
             }
 
-            .model-table td:nth-child(7)::before {
+            .model-table td:nth-child(8)::before {
                 display: none;
             }
 
@@ -1193,19 +1117,6 @@
                 </div>
             </section>
 
-            <!-- Model List -->
-            <section class="section" id="models-section">
-                <h2>Trained Models</h2>
-                <div class="tabs">
-                    <button class="tab active" data-type="all" onclick="filterModels('all')">All</button>
-                    <button class="tab" data-type="digits" onclick="filterModels('digits')">Digits</button>
-                    <button class="tab" data-type="arrows" onclick="filterModels('arrows')">Arrows</button>
-                </div>
-                <div id="models-container">
-                    <div class="empty-state"><p>Loading models...</p></div>
-                </div>
-            </section>
-
             <!-- Benchmark Progress -->
             <section class="section benchmark-section" id="benchmark-section">
                 <h2>
@@ -1242,33 +1153,17 @@
                 </div>
             </section>
 
-            <!-- Benchmark Results (Persistent) -->
-            <section class="section" id="benchmark-results-section">
-                <h2>Benchmark Results</h2>
-                <div class="tabs" id="benchmark-tabs">
-                    <button class="tab active" data-btype="all" onclick="filterBenchmarks('all')">All</button>
-                    <button class="tab" data-btype="digits" onclick="filterBenchmarks('digits')">Digits</button>
-                    <button class="tab" data-btype="arrows" onclick="filterBenchmarks('arrows')">Arrows</button>
+            <!-- Model List -->
+            <section class="section" id="models-section">
+                <h2>Models</h2>
+                <div class="tabs">
+                    <button class="tab active" data-type="all" onclick="filterModels('all')">All</button>
+                    <button class="tab" data-type="digits" onclick="filterModels('digits')">Digits</button>
+                    <button class="tab" data-type="arrows" onclick="filterModels('arrows')">Arrows</button>
                 </div>
-                <div style="overflow-x: auto;">
-                    <table class="benchmark-results-table">
-                        <thead>
-                            <tr>
-                                <th>Model</th>
-                                <th>Type</th>
-                                <th>Accuracy</th>
-                                <th>Confidence</th>
-                                <th>Low Conf</th>
-                                <th>Inference</th>
-                                <th>Images</th>
-                                <th>Date</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="benchmark-results-body"></tbody>
-                    </table>
+                <div id="models-container">
+                    <div class="empty-state"><p>Loading models...</p></div>
                 </div>
-                <div id="benchmark-empty" class="empty-state"><p>No benchmark results yet. Run benchmarks from the model list.</p></div>
             </section>
 
             <!-- Log Output -->
@@ -1302,8 +1197,6 @@
         let allModels = { digits: [], arrows: [] };
         let activeModels = { digits: null, arrows: null };
         let currentFilter = 'all';
-        let benchmarkResults = []; // loaded from model metadata
-        let benchmarkFilter = 'all';
 
         // Initialize
         window.addEventListener('load', function() {
@@ -1527,8 +1420,7 @@
                         const status = benchmarkStatus.status;
                         if (status === 'completed') {
                             showMessage('Benchmark completed!', 'success');
-                            addBenchmarkResult(benchmarkStatus.result, benchmarkStatus.model_type, benchmarkStatus.model_id);
-                            loadModels(); // Refresh to show accuracy on button
+                            loadModels();
                         } else if (status === 'cancelled') {
                             showMessage('Benchmark was cancelled.', 'error');
                         } else {
@@ -1593,93 +1485,6 @@
             }
         }
 
-        // Load benchmark results from model metadata (persistent across page loads)
-        function loadBenchmarkResultsFromModels() {
-            benchmarkResults = [];
-            for (const type of ['digits', 'arrows']) {
-                for (const model of (allModels[type] || [])) {
-                    if (model.benchmark) {
-                        benchmarkResults.push({
-                            ...model.benchmark,
-                            modelType: type,
-                            modelId: model.id,
-                            isActive: activeModels[type] === model.id
-                        });
-                    }
-                }
-            }
-            renderBenchmarkTable();
-        }
-
-        // Add/update a live benchmark result and re-render
-        function addBenchmarkResult(result, modelType, modelId) {
-            const idx = benchmarkResults.findIndex(r => r.modelId === modelId && r.modelType === modelType);
-            const entry = { ...result, modelType, modelId, isActive: false };
-            if (idx >= 0) {
-                benchmarkResults[idx] = entry;
-            } else {
-                benchmarkResults.push(entry);
-            }
-            renderBenchmarkTable();
-        }
-
-        // Filter benchmark results by type
-        function filterBenchmarks(type) {
-            benchmarkFilter = type;
-            document.querySelectorAll('#benchmark-tabs .tab').forEach(t => {
-                t.classList.toggle('active', t.dataset.btype === type);
-            });
-            renderBenchmarkTable();
-        }
-
-        // Render benchmark results table
-        function renderBenchmarkTable() {
-            const tbody = document.getElementById('benchmark-results-body');
-            const emptyState = document.getElementById('benchmark-empty');
-
-            let filtered = [...benchmarkResults];
-            if (benchmarkFilter !== 'all') {
-                filtered = filtered.filter(r => r.modelType === benchmarkFilter);
-            }
-
-            // Sort by accuracy descending
-            filtered.sort((a, b) => b.accuracy - a.accuracy);
-
-            if (filtered.length === 0) {
-                tbody.innerHTML = '';
-                emptyState.style.display = 'block';
-                return;
-            }
-            emptyState.style.display = 'none';
-
-            const bestAccuracy = filtered[0].accuracy;
-            let html = '';
-            for (const r of filtered) {
-                const accClass = r.accuracy >= 90 ? 'good' : r.accuracy >= 70 ? 'warning' : 'bad';
-                const isBest = filtered.length > 1 && r.accuracy === bestAccuracy ? ' best-row' : '';
-                const dateStr = r.date ? new Date(r.date).toLocaleDateString() : '-';
-                html += `
-                    <tr class="${isBest}">
-                        <td style="font-weight:600">${r.modelId}</td>
-                        <td><span class="model-type ${r.modelType}">${r.modelType}</span></td>
-                        <td class="accuracy-cell ${accClass}">${r.accuracy}%</td>
-                        <td>${r.mean_confidence}%</td>
-                        <td>${r.low_confidence_pct}%</td>
-                        <td>${r.inference_time_ms}ms</td>
-                        <td>${r.correct_predictions} / ${r.total_images}</td>
-                        <td>${dateStr}</td>
-                        <td>
-                            ${r.isActive
-                                ? '<span class="status-badge active">Active</span>'
-                                : `<button class="btn-delete" onclick="deleteModel('${r.modelType}', '${r.modelId}')">Delete Model</button>`
-                            }
-                        </td>
-                    </tr>
-                `;
-            }
-
-            tbody.innerHTML = html;
-        }
 
         // Start benchmark
         async function startBenchmark(modelType, modelId) {
@@ -1966,7 +1771,6 @@
                 activeModels = data.active_models || {};
 
                 renderModels();
-                loadBenchmarkResultsFromModels();
 
             } catch (error) {
                 console.error('Error loading models:', error);
@@ -2023,8 +1827,9 @@
                             <th>Name</th>
                             <th>Type</th>
                             <th>Architecture</th>
-                            <th>Resolution</th>
-                            <th>Status</th>
+                            <th>Res</th>
+                            <th>Accuracy</th>
+                            <th>Inf. Time</th>
                             <th>Created</th>
                             <th>Actions</th>
                         </tr>
@@ -2035,34 +1840,41 @@
             for (const model of models) {
                 const modelType = model.model_type;
                 const isActive = activeModels[modelType] === model.id;
-                const isArchived = !isActive && model.status === 'archived';
                 const isFailed = model.status === 'failed';
                 const createdAt = model.created_at ? new Date(model.created_at).toLocaleDateString() : '-';
+                const bm = model.benchmark;
+
+                // Accuracy cell
+                let accuracyHtml = '-';
+                if (bm && bm.accuracy !== undefined) {
+                    const accClass = bm.accuracy >= 90 ? 'good' : bm.accuracy >= 70 ? 'warning' : 'bad';
+                    accuracyHtml = `<span class="accuracy-cell ${accClass}">${bm.accuracy}%</span>`;
+                }
+
+                // Inference time cell
+                const infTimeHtml = bm && bm.inference_time_ms !== undefined ? `${bm.inference_time_ms}ms` : '-';
 
                 let actionsHtml;
                 if (isFailed) {
                     actionsHtml = `
-                        <button class="btn-viewlog" onclick="viewModelLog('${modelType}', '${model.id}')">
-                            View Log
-                        </button>
-                        <button class="btn-delete" onclick="deleteModel('${modelType}', '${model.id}')">
-                            Delete
-                        </button>
+                        <button class="btn-viewlog" onclick="viewModelLog('${modelType}', '${model.id}')">Log</button>
+                        <button class="btn-delete" onclick="deleteModel('${modelType}', '${model.id}')">Delete</button>
                     `;
                 } else {
+                    // Benchmark button: show accuracy if already benchmarked
+                    let benchBtnHtml;
+                    if (bm && bm.accuracy !== undefined) {
+                        benchBtnHtml = `<button class="btn-benchmark benchmarked" onclick="startBenchmark('${modelType}', '${model.id}')">${bm.accuracy}%</button>`;
+                    } else {
+                        benchBtnHtml = `<button class="btn-benchmark" onclick="startBenchmark('${modelType}', '${model.id}')">Benchmark</button>`;
+                    }
+
                     actionsHtml = `
                         <button class="btn-activate" onclick="activateModel('${modelType}', '${model.id}')" ${isActive ? 'disabled' : ''}>
                             ${isActive ? 'Active' : 'Activate'}
                         </button>
-                        <button class="btn-benchmark" onclick="startBenchmark('${modelType}', '${model.id}')">
-                            Benchmark
-                        </button>
-                        <button class="btn-viewlog" onclick="viewModelLog('${modelType}', '${model.id}')">
-                            View Log
-                        </button>
-                        <button class="btn-delete" onclick="deleteModel('${modelType}', '${model.id}')">
-                            Delete
-                        </button>
+                        ${benchBtnHtml}
+                        <button class="btn-delete" onclick="deleteModel('${modelType}', '${model.id}')">Delete</button>
                     `;
                 }
 
@@ -2072,11 +1884,8 @@
                         <td><span class="model-type ${modelType}">${modelType}</span></td>
                         <td>${model.architecture || '-'}</td>
                         <td>${model.resolution || '-'}px</td>
-                        <td>
-                            ${isActive ? '<span class="status-badge active">Active</span>' : ''}
-                            ${isArchived ? '<span class="status-badge archived">Archived</span>' : ''}
-                            ${isFailed ? '<span class="status-badge failed">Failed</span>' : ''}
-                        </td>
+                        <td>${accuracyHtml}</td>
+                        <td>${infTimeHtml}</td>
                         <td>${createdAt}</td>
                         <td class="model-actions">
                             ${actionsHtml}
