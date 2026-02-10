@@ -370,20 +370,22 @@ class TrainingManager:
 
     def _process_next_in_queue(self):
         """Start the next queued training job, or run auto-benchmarks if queue is empty."""
-        with self._queue_lock:
-            if not self.training_queue:
-                # Queue empty - start auto-benchmarks if any pending
-                if self._auto_benchmark_pending:
-                    self._run_auto_benchmarks()
-                return
-            next_config = self.training_queue.pop(0)
+        while True:
+            with self._queue_lock:
+                if not self.training_queue:
+                    # Queue empty - start auto-benchmarks if any pending
+                    if self._auto_benchmark_pending:
+                        self._run_auto_benchmarks()
+                    return
+                next_config = self.training_queue.pop(0)
 
-        logger.info("Starting next queued training job")
-        try:
-            self._start_training_now(next_config)
-        except Exception as e:
-            logger.error(f"Failed to start queued training: {e}")
-            self._process_next_in_queue()
+            logger.info("Starting next queued training job")
+            try:
+                self._start_training_now(next_config)
+                return  # Successfully started
+            except Exception as e:
+                logger.error(f"Failed to start queued training: {e}")
+                # Loop to try next item in queue
 
     def _run_auto_benchmarks(self):
         """Run benchmarks for all models in the auto-benchmark pending list."""
