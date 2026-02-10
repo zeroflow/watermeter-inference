@@ -78,6 +78,43 @@
             height: 12px;
         }
 
+        /* Queue items */
+        .queue-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 12px;
+            background: var(--bg-light);
+            border-radius: 8px;
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+
+        .queue-item .queue-info {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .queue-item .queue-info span {
+            color: var(--text-dark);
+        }
+
+        .queue-item .btn-remove {
+            padding: 4px 10px;
+            font-size: 11px;
+            background: #fee2e2;
+            color: var(--danger);
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .queue-item .btn-remove:hover {
+            background: #fecaca;
+        }
+
         /* Log section at bottom */
         .log-section {
             display: none;
@@ -526,6 +563,8 @@
             cursor: pointer;
             font-weight: 500;
             transition: background 0.2s;
+            min-width: 80px;
+            text-align: center;
         }
 
         .model-actions .btn-activate {
@@ -624,6 +663,22 @@
 
         .benchmark-results-table .accuracy-cell.bad {
             color: var(--danger);
+        }
+
+        .benchmark-results-table .btn-delete {
+            padding: 6px 12px;
+            font-size: 12px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background 0.2s;
+            background: #fee2e2;
+            color: var(--danger);
+        }
+
+        .benchmark-results-table .btn-delete:hover {
+            background: #fecaca;
         }
 
         .empty-state {
@@ -930,17 +985,22 @@
                             <select id="architecture" required>
                                 <optgroup label="Lightweight">
                                     <option value="mobilenetv3_small_100">MobileNetV3 Small</option>
+                                    <option value="mobileone_s0">MobileOne S0</option>
                                     <option value="efficientnet_b0">EfficientNet B0</option>
                                     <option value="mobilenetv3_large_100">MobileNetV3 Large</option>
+                                    <option value="mobileone_s1">MobileOne S1</option>
                                     <option value="resnet18">ResNet18</option>
                                 </optgroup>
                                 <optgroup label="Medium">
                                     <option value="ghostnet_100">GhostNet</option>
                                     <option value="edgenext_small">EdgeNeXt Small</option>
+                                    <option value="efficientnet_b2">EfficientNet B2</option>
                                     <option value="efficientnetv2_rw_t">EfficientNetV2-T</option>
+                                    <option value="densenet121">DenseNet121</option>
                                     <option value="resnet34">ResNet34</option>
                                 </optgroup>
                                 <optgroup label="Heavy">
+                                    <option value="densenet169">DenseNet169</option>
                                     <option value="efficientnetv2_rw_s">EfficientNetV2-S</option>
                                     <option value="resnext50_32x4d" selected>ResNeXt50 32x4d</option>
                                     <option value="convnext_tiny">ConvNeXt Tiny</option>
@@ -984,8 +1044,23 @@
                         <button type="submit" id="start-training-btn" class="btn btn-primary">
                             Start Training
                         </button>
+                        <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-dark); cursor: pointer;">
+                            <input type="checkbox" id="auto-benchmark" checked>
+                            Auto-benchmark after training
+                        </label>
                     </div>
                 </form>
+            </section>
+
+            <!-- Training Queue -->
+            <section class="section" id="queue-section" style="display: none;">
+                <h2>Training Queue <span class="badge badge-idle" id="queue-count-badge">0</span></h2>
+                <div id="queue-container"></div>
+                <div style="margin-top: 12px;">
+                    <button class="btn btn-secondary" onclick="clearQueue()" id="clear-queue-btn">
+                        Clear Queue
+                    </button>
+                </div>
             </section>
 
             <!-- Training Progress -->
@@ -995,9 +1070,6 @@
                     <span id="progress-status-badge" class="badge badge-running">Running</span>
                 </h2>
                 <div class="progress-header">
-                    <div class="progress-status">
-                        <span id="progress-message">Initializing...</span>
-                    </div>
                     <button id="cancel-training-btn" class="btn btn-secondary" onclick="cancelTraining()">
                         Cancel
                     </button>
@@ -1083,9 +1155,14 @@
                 </div>
             </section>
 
-            <!-- Benchmark Results -->
-            <section class="section" id="benchmark-results-section" style="display: none;">
+            <!-- Benchmark Results (Persistent) -->
+            <section class="section" id="benchmark-results-section">
                 <h2>Benchmark Results</h2>
+                <div class="tabs" id="benchmark-tabs">
+                    <button class="tab active" data-btype="all" onclick="filterBenchmarks('all')">All</button>
+                    <button class="tab" data-btype="digits" onclick="filterBenchmarks('digits')">Digits</button>
+                    <button class="tab" data-btype="arrows" onclick="filterBenchmarks('arrows')">Arrows</button>
+                </div>
                 <div style="overflow-x: auto;">
                     <table class="benchmark-results-table">
                         <thead>
@@ -1097,11 +1174,14 @@
                                 <th>Low Conf</th>
                                 <th>Inference</th>
                                 <th>Images</th>
+                                <th>Date</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody id="benchmark-results-body"></tbody>
                     </table>
                 </div>
+                <div id="benchmark-empty" class="empty-state"><p>No benchmark results yet. Run benchmarks from the model list.</p></div>
             </section>
 
             <!-- Log Output -->
@@ -1122,7 +1202,8 @@
         let allModels = { digits: [], arrows: [] };
         let activeModels = { digits: null, arrows: null };
         let currentFilter = 'all';
-        let benchmarkResults = []; // accumulated benchmark results
+        let benchmarkResults = []; // loaded from model metadata
+        let benchmarkFilter = 'all';
 
         // Initialize
         window.addEventListener('load', function() {
@@ -1271,14 +1352,17 @@
                 const statusBadge = document.getElementById('training-status-badge');
                 const startBtn = document.getElementById('start-training-btn');
 
-                if (trainingStatus && trainingStatus.status === 'running') {
+                const queue = data.queue || [];
+                const isTrainingRunning = trainingStatus && trainingStatus.status === 'running';
+
+                if (isTrainingRunning) {
                     // Training is running
                     currentJobId = trainingStatus.job_id;
                     progressSection.classList.add('visible');
                     statusBadge.textContent = 'Training: Running';
                     statusBadge.className = 'badge badge-running';
-                    startBtn.disabled = true;
-                    startBtn.textContent = 'Training in Progress...';
+                    startBtn.disabled = false;
+                    startBtn.textContent = 'Add to Queue';
 
                     // Update progress
                     const progress = trainingStatus.progress || {};
@@ -1317,6 +1401,9 @@
                     startBtn.disabled = false;
                     startBtn.textContent = 'Start Training';
                 }
+
+                // Render training queue
+                renderQueue(queue);
 
                 // Handle benchmark status
                 const benchmarkStatus = data.benchmark;
@@ -1401,11 +1488,28 @@
             }
         }
 
-        // Add a benchmark result and re-render the table
+        // Load benchmark results from model metadata (persistent across page loads)
+        function loadBenchmarkResultsFromModels() {
+            benchmarkResults = [];
+            for (const type of ['digits', 'arrows']) {
+                for (const model of (allModels[type] || [])) {
+                    if (model.benchmark) {
+                        benchmarkResults.push({
+                            ...model.benchmark,
+                            modelType: type,
+                            modelId: model.id,
+                            isActive: model.status === 'active'
+                        });
+                    }
+                }
+            }
+            renderBenchmarkTable();
+        }
+
+        // Add/update a live benchmark result and re-render
         function addBenchmarkResult(result, modelType, modelId) {
-            // Replace if same model already in list, otherwise append
             const idx = benchmarkResults.findIndex(r => r.modelId === modelId && r.modelType === modelType);
-            const entry = { ...result, modelType, modelId };
+            const entry = { ...result, modelType, modelId, isActive: false };
             if (idx >= 0) {
                 benchmarkResults[idx] = entry;
             } else {
@@ -1414,19 +1518,41 @@
             renderBenchmarkTable();
         }
 
-        // Render accumulated benchmark results table, sorted best to worst
+        // Filter benchmark results by type
+        function filterBenchmarks(type) {
+            benchmarkFilter = type;
+            document.querySelectorAll('#benchmark-tabs .tab').forEach(t => {
+                t.classList.toggle('active', t.dataset.btype === type);
+            });
+            renderBenchmarkTable();
+        }
+
+        // Render benchmark results table
         function renderBenchmarkTable() {
-            const section = document.getElementById('benchmark-results-section');
             const tbody = document.getElementById('benchmark-results-body');
+            const emptyState = document.getElementById('benchmark-empty');
+
+            let filtered = [...benchmarkResults];
+            if (benchmarkFilter !== 'all') {
+                filtered = filtered.filter(r => r.modelType === benchmarkFilter);
+            }
 
             // Sort by accuracy descending
-            const sorted = [...benchmarkResults].sort((a, b) => b.accuracy - a.accuracy);
-            const bestAccuracy = sorted.length > 0 ? sorted[0].accuracy : 0;
+            filtered.sort((a, b) => b.accuracy - a.accuracy);
 
+            if (filtered.length === 0) {
+                tbody.innerHTML = '';
+                emptyState.style.display = 'block';
+                return;
+            }
+            emptyState.style.display = 'none';
+
+            const bestAccuracy = filtered[0].accuracy;
             let html = '';
-            for (const r of sorted) {
+            for (const r of filtered) {
                 const accClass = r.accuracy >= 90 ? 'good' : r.accuracy >= 70 ? 'warning' : 'bad';
-                const isBest = sorted.length > 1 && r.accuracy === bestAccuracy ? ' best-row' : '';
+                const isBest = filtered.length > 1 && r.accuracy === bestAccuracy ? ' best-row' : '';
+                const dateStr = r.date ? new Date(r.date).toLocaleDateString() : '-';
                 html += `
                     <tr class="${isBest}">
                         <td style="font-weight:600">${r.modelId}</td>
@@ -1436,12 +1562,18 @@
                         <td>${r.low_confidence_pct}%</td>
                         <td>${r.inference_time_ms}ms</td>
                         <td>${r.correct_predictions} / ${r.total_images}</td>
+                        <td>${dateStr}</td>
+                        <td>
+                            ${r.isActive
+                                ? '<span class="status-badge active">Active</span>'
+                                : `<button class="btn-delete" onclick="deleteModel('${r.modelType}', '${r.modelId}')">Delete Model</button>`
+                            }
+                        </td>
                     </tr>
                 `;
             }
 
             tbody.innerHTML = html;
-            section.style.display = 'block';
         }
 
         // Start benchmark
@@ -1516,8 +1648,6 @@
             document.getElementById('metric-loss').textContent = loss !== null && loss !== undefined ? loss.toFixed(4) : '-';
             document.getElementById('metric-accuracy').textContent = accuracy !== null && accuracy !== undefined ? accuracy.toFixed(2) + '%' : '-';
 
-            // Message
-            document.getElementById('progress-message').textContent = progress.message || 'Training...';
         }
 
         // Hide log section when neither training nor benchmark is active
@@ -1575,6 +1705,8 @@
                 return;
             }
 
+            const autoBenchmark = document.getElementById('auto-benchmark').checked;
+
             const config = {
                 model_type: modelType,
                 architecture: architecture,
@@ -1582,7 +1714,8 @@
                 seeds: seeds,
                 epochs: epochs,
                 batch_size: 16,
-                notes: notes
+                notes: notes,
+                auto_benchmark: autoBenchmark
             };
 
             if (modelType === 'arrows') {
@@ -1599,8 +1732,12 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    showMessage('Training started!', 'success');
-                    currentJobId = data.job_id;
+                    if (data.queued) {
+                        showMessage(`Training queued (position ${data.queue_position})`, 'success');
+                    } else {
+                        showMessage('Training started!', 'success');
+                        currentJobId = data.job_id;
+                    }
                 } else {
                     showMessage('Failed to start training: ' + data.message, 'error');
                 }
@@ -1615,10 +1752,10 @@
         async function cancelTraining() {
             if (!currentJobId) return;
 
-            if (!confirm('Are you sure you want to cancel the training?')) return;
+            if (!confirm('Cancel training and clear the queue?')) return;
 
             try {
-                const response = await fetch(`/api/training/cancel?job_id=${currentJobId}`, {
+                const response = await fetch(`/api/training/cancel?job_id=${currentJobId}&clear_queue=true`, {
                     method: 'POST'
                 });
 
@@ -1633,6 +1770,69 @@
             } catch (error) {
                 console.error('Error cancelling training:', error);
                 showMessage('Error cancelling: ' + error.message, 'error');
+            }
+        }
+
+        // Render training queue
+        function renderQueue(queue) {
+            const section = document.getElementById('queue-section');
+            const container = document.getElementById('queue-container');
+            const badge = document.getElementById('queue-count-badge');
+
+            if (!queue || queue.length === 0) {
+                section.style.display = 'none';
+                return;
+            }
+
+            section.style.display = 'block';
+            badge.textContent = queue.length;
+
+            let html = '';
+            for (let i = 0; i < queue.length; i++) {
+                const item = queue[i];
+                html += `
+                    <div class="queue-item">
+                        <div class="queue-info">
+                            <span><strong>${item.architecture}</strong></span>
+                            <span>${item.model_type}</span>
+                            <span>${item.resolution}px</span>
+                            <span>Seeds: ${(item.seeds || []).join(', ')}</span>
+                            <span>${item.epochs} epochs</span>
+                            ${item.auto_benchmark ? '<span>+ benchmark</span>' : ''}
+                        </div>
+                        <button class="btn-remove" onclick="removeFromQueue(${i})">Remove</button>
+                    </div>
+                `;
+            }
+            container.innerHTML = html;
+        }
+
+        // Remove item from queue
+        async function removeFromQueue(index) {
+            try {
+                const response = await fetch(`/api/training/queue/${index}`, { method: 'DELETE' });
+                const data = await response.json();
+                if (data.success) {
+                    showMessage('Removed from queue', 'success');
+                } else {
+                    showMessage('Failed: ' + data.message, 'error');
+                }
+            } catch (error) {
+                showMessage('Error: ' + error.message, 'error');
+            }
+        }
+
+        // Clear entire queue
+        async function clearQueue() {
+            if (!confirm('Remove all queued training jobs?')) return;
+            try {
+                const response = await fetch('/api/training/queue', { method: 'DELETE' });
+                const data = await response.json();
+                if (data.success) {
+                    showMessage('Queue cleared', 'success');
+                }
+            } catch (error) {
+                showMessage('Error: ' + error.message, 'error');
             }
         }
 
@@ -1655,6 +1855,7 @@
                 // For now, we'll check based on config path in model metadata
 
                 renderModels();
+                loadBenchmarkResultsFromModels();
 
             } catch (error) {
                 console.error('Error loading models:', error);
@@ -1736,14 +1937,9 @@
                             <button class="btn-activate" onclick="activateModel('${modelType}', '${model.id}')" ${isActive ? 'disabled' : ''}>
                                 ${isActive ? 'Active' : 'Activate'}
                             </button>
-                            ${model.benchmark
-                                ? `<button class="btn-benchmark benchmarked" onclick="startBenchmark('${modelType}', '${model.id}')" title="${model.benchmark.mean_confidence}% conf, ${model.benchmark.inference_time_ms}ms, ${model.benchmark.date ? new Date(model.benchmark.date).toLocaleDateString() : ''}">
-                                    ${model.benchmark.accuracy}%
-                                </button>`
-                                : `<button class="btn-benchmark" onclick="startBenchmark('${modelType}', '${model.id}')">
-                                    Benchmark
-                                </button>`
-                            }
+                            <button class="btn-benchmark" onclick="startBenchmark('${modelType}', '${model.id}')">
+                                Benchmark
+                            </button>
                             <button class="btn-delete" onclick="deleteModel('${modelType}', '${model.id}')">
                                 Delete
                             </button>

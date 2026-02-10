@@ -246,6 +246,28 @@
             color: var(--text-dark);
         }
 
+        .prediction-hint {
+            margin-top: 8px;
+            font-size: 13px;
+            color: var(--text-light);
+        }
+
+        .prediction-hint .confidence {
+            font-weight: 600;
+        }
+
+        .prediction-hint .confidence.high {
+            color: var(--success);
+        }
+
+        .prediction-hint .confidence.medium {
+            color: var(--warning);
+        }
+
+        .prediction-hint .confidence.low {
+            color: var(--danger);
+        }
+
         .delete-button {
             margin-top: 1.5rem;
             padding: 12px 32px;
@@ -336,12 +358,16 @@
                         placeholder=""
                         autocomplete="off"
                         autofocus>
+                    <div class="prediction-hint" id="prediction-hint" style="display: none;">
+                        Model prediction: <span id="prediction-value"></span>
+                        (<span id="prediction-confidence" class="confidence"></span>)
+                    </div>
                 </div>
 
                 <button class="delete-button" onclick="deleteImage()">Delete (Garbage)</button>
 
                 <div class="keyboard-shortcuts">
-                    <strong>Keyboard:</strong> Enter = Submit label | D = Delete image
+                    <strong>Keyboard:</strong> Enter = Confirm | Type to override | D = Delete (when empty)
                 </div>
             </div>
 
@@ -418,9 +444,32 @@
                 document.getElementById('labeling-interface').style.display = 'block';
                 document.getElementById('no-images').style.display = 'none';
 
-                // Clear and focus input
-                input.value = '';
+                // Pre-fill with model prediction or clear
+                const predictionHint = document.getElementById('prediction-hint');
+                if (data.prediction !== null && data.prediction !== undefined) {
+                    // Format prediction for display in input
+                    let displayValue;
+                    if (data.model_type === 'digits') {
+                        displayValue = data.prediction === 'NAN' ? 'N' : data.prediction;
+                    } else {
+                        // Arrows: prediction is like "3.0" - show as "3,0"
+                        displayValue = data.prediction.replace('.', ',');
+                    }
+                    input.value = displayValue;
+
+                    // Show confidence hint
+                    document.getElementById('prediction-value').textContent = displayValue;
+                    const confEl = document.getElementById('prediction-confidence');
+                    confEl.textContent = data.confidence + '%';
+                    confEl.className = 'confidence ' + (data.confidence >= 90 ? 'high' : data.confidence >= 70 ? 'medium' : 'low');
+                    predictionHint.style.display = 'block';
+                } else {
+                    input.value = '';
+                    predictionHint.style.display = 'none';
+                }
+
                 input.focus();
+                input.select();
 
                 // Hide message
                 const message = document.getElementById('message');
