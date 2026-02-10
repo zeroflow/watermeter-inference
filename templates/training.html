@@ -1070,6 +1070,7 @@
                     <span id="progress-status-badge" class="badge badge-running">Running</span>
                 </h2>
                 <div class="progress-header">
+                    <div class="progress-status" id="progress-model-info"></div>
                     <button id="cancel-training-btn" class="btn btn-secondary" onclick="cancelTraining()">
                         Cancel
                     </button>
@@ -1364,6 +1365,11 @@
                     startBtn.disabled = false;
                     startBtn.textContent = 'Add to Queue';
 
+                    // Show model info
+                    const cfg = trainingStatus.config || {};
+                    const infoEl = document.getElementById('progress-model-info');
+                    infoEl.innerHTML = `<strong>${cfg.architecture || '?'}</strong> &middot; ${cfg.model_type || '?'} &middot; ${cfg.resolution || '?'}px &middot; Seeds: ${(cfg.seeds || []).join(', ')} &middot; ${cfg.epochs || '?'} epochs`;
+
                     // Update progress
                     const progress = trainingStatus.progress || {};
                     updateProgress(progress);
@@ -1588,8 +1594,6 @@
                 if (data.success) {
                     showMessage('Benchmark started!', 'success');
                     currentBenchmarkJobId = data.job_id;
-                    // Hide previous results
-                    document.getElementById('benchmark-results-section').style.display = 'none';
                 } else {
                     showMessage('Failed to start benchmark: ' + data.message, 'error');
                 }
@@ -1752,17 +1756,28 @@
         async function cancelTraining() {
             if (!currentJobId) return;
 
-            if (!confirm('Cancel training and clear the queue?')) return;
+            // Check if there are queued items
+            const queueSection = document.getElementById('queue-section');
+            const hasQueue = queueSection.style.display !== 'none';
+
+            let clearQueue = false;
+            if (hasQueue) {
+                const choice = prompt('Cancel current training.\n\nType "all" to also clear the queue, or press OK to keep queued jobs:');
+                if (choice === null) return; // user pressed Cancel
+                clearQueue = choice.trim().toLowerCase() === 'all';
+            } else {
+                if (!confirm('Cancel current training?')) return;
+            }
 
             try {
-                const response = await fetch(`/api/training/cancel?job_id=${currentJobId}&clear_queue=true`, {
+                const response = await fetch(`/api/training/cancel?job_id=${currentJobId}&clear_queue=${clearQueue}`, {
                     method: 'POST'
                 });
 
                 const data = await response.json();
 
                 if (data.success) {
-                    showMessage('Training cancellation requested.', 'success');
+                    showMessage(clearQueue ? 'Training cancelled, queue cleared.' : 'Training cancelled, queue will continue.', 'success');
                 } else {
                     showMessage('Failed to cancel: ' + data.message, 'error');
                 }
