@@ -10,6 +10,7 @@ from pathlib import Path
 import random
 import shutil
 import httpx
+import timm
 import yaml
 import cv2
 from fastapi import FastAPI, Request
@@ -1492,6 +1493,15 @@ async def get_training_progress(job_id: str):
             "success": False,
             "message": f"Error: {str(e)}"
         }, status_code=500)
+
+
+@app.get("/api/models/architectures")
+async def list_architectures(q: str = ""):
+    """Search available timm model architectures."""
+    if len(q) < 2:
+        return JSONResponse([])
+    models = timm.list_models(f'*{q}*')
+    return JSONResponse(models[:50])
 
 
 # ============================================================================

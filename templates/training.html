@@ -18,7 +18,7 @@
         }
 
         .training-content {
-            padding: 24px 32px;
+            padding: 24px 12px;
             display: grid;
             gap: 24px;
         }
@@ -26,7 +26,7 @@
         .section {
             background: white;
             border-radius: 12px;
-            padding: 24px;
+            padding: 20px 16px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.08);
         }
 
@@ -358,6 +358,65 @@
             grid-column: 1 / -1;
         }
 
+        /* Architecture combobox */
+        .arch-combobox {
+            position: relative;
+        }
+        .arch-combobox input[type="text"] {
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .arch-dropdown {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            max-height: 280px;
+            overflow-y: auto;
+            background: #ffffff;
+            border: 2px solid var(--primary);
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            z-index: 100;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .arch-dropdown.open {
+            display: block;
+        }
+        .arch-group-label {
+            padding: 6px 12px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: var(--text-light);
+            background: var(--bg-alt);
+        }
+        .arch-option {
+            padding: 8px 12px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .arch-option:hover {
+            background: var(--primary);
+            color: white;
+        }
+        .arch-option .arch-value {
+            font-size: 11px;
+            color: var(--text-light);
+            margin-left: 6px;
+        }
+        .arch-option:hover .arch-value {
+            color: rgba(255,255,255,0.7);
+        }
+        .arch-search-info {
+            padding: 6px 12px;
+            font-size: 11px;
+            color: var(--text-light);
+            background: var(--bg-alt);
+            border-bottom: 1px solid var(--border);
+        }
+
         .form-group .hint {
             font-size: 12px;
             color: var(--text-light);
@@ -480,6 +539,10 @@
         }
 
         /* Model List */
+        .model-table-wrap {
+            overflow-x: auto;
+        }
+
         .model-table {
             width: 100%;
             border-collapse: collapse;
@@ -487,7 +550,7 @@
 
         .model-table th,
         .model-table td {
-            padding: 12px;
+            padding: 10px 8px;
             text-align: left;
             border-bottom: 1px solid var(--border);
         }
@@ -804,8 +867,8 @@
             border-bottom-color: var(--primary);
         }
 
-        /* Responsive */
-        @media (max-width: 768px) {
+        /* Responsive - narrow/mobile */
+        @media (max-width: 1200px) {
             .training-content {
                 padding: 8px;
                 gap: 12px;
@@ -1017,31 +1080,12 @@
                             </select>
                         </div>
                         <div class="form-group">
-                            <label for="architecture">Architecture</label>
-                            <select id="architecture" required>
-                                <optgroup label="Lightweight">
-                                    <option value="mobilenetv3_small_100">MobileNetV3 Small</option>
-                                    <option value="mobileone_s0">MobileOne S0</option>
-                                    <option value="efficientnet_b0">EfficientNet B0</option>
-                                    <option value="mobilenetv3_large_100">MobileNetV3 Large</option>
-                                    <option value="mobileone_s1">MobileOne S1</option>
-                                    <option value="resnet18">ResNet18</option>
-                                </optgroup>
-                                <optgroup label="Medium">
-                                    <option value="ghostnet_100">GhostNet</option>
-                                    <option value="edgenext_small">EdgeNeXt Small</option>
-                                    <option value="efficientnet_b2">EfficientNet B2</option>
-                                    <option value="efficientnetv2_rw_t">EfficientNetV2-T</option>
-                                    <option value="densenet121">DenseNet121</option>
-                                    <option value="resnet34">ResNet34</option>
-                                </optgroup>
-                                <optgroup label="Heavy">
-                                    <option value="densenet169">DenseNet169</option>
-                                    <option value="efficientnetv2_rw_s">EfficientNetV2-S</option>
-                                    <option value="resnext50_32x4d" selected>ResNeXt50 32x4d</option>
-                                    <option value="convnext_tiny">ConvNeXt Tiny</option>
-                                </optgroup>
-                            </select>
+                            <label for="arch-search">Architecture</label>
+                            <input type="hidden" id="architecture" value="resnext50_32x4d">
+                            <div class="arch-combobox">
+                                <input type="text" id="arch-search" placeholder="Search timm models..." value="ResNeXt50 32x4d" autocomplete="off">
+                                <div class="arch-dropdown" id="arch-dropdown"></div>
+                            </div>
                         </div>
                         <div class="form-group">
                             <label for="resolution">Resolution</label>
@@ -1278,6 +1322,144 @@
             const stepSizeGroup = document.getElementById('step-size-group');
             stepSizeGroup.style.display = modelType === 'arrows' ? '' : 'none';
         }
+
+        // Architecture combobox
+        const CURATED_MODELS = [
+            { group: 'Lightweight', models: [
+                { value: 'mobilenetv3_small_100', label: 'MobileNetV3 Small' },
+                { value: 'mobileone_s0', label: 'MobileOne S0' },
+                { value: 'efficientnet_b0', label: 'EfficientNet B0' },
+                { value: 'mobilenetv3_large_100', label: 'MobileNetV3 Large' },
+                { value: 'mobileone_s1', label: 'MobileOne S1' },
+                { value: 'resnet18', label: 'ResNet18' },
+            ]},
+            { group: 'Medium', models: [
+                { value: 'ghostnet_100', label: 'GhostNet' },
+                { value: 'edgenext_small', label: 'EdgeNeXt Small' },
+                { value: 'efficientnet_b2', label: 'EfficientNet B2' },
+                { value: 'efficientnet_b3', label: 'EfficientNet B3' },
+                { value: 'efficientnet_b4', label: 'EfficientNet B4' },
+                { value: 'efficientnet_lite0', label: 'EfficientNet Lite0' },
+                { value: 'efficientnetv2_rw_t', label: 'EfficientNetV2-T' },
+                { value: 'densenet121', label: 'DenseNet121' },
+                { value: 'densenet169', label: 'DenseNet169' },
+                { value: 'regnetx_032', label: 'RegNetX-032' },
+                { value: 'resnet34', label: 'ResNet34' },
+            ]},
+            { group: 'Heavy', models: [
+                { value: 'efficientnetv2_rw_s', label: 'EfficientNetV2-S' },
+                { value: 'resnext50_32x4d', label: 'ResNeXt50 32x4d' },
+            ]},
+        ];
+
+        // Build a lookup from value -> label for curated models
+        const CURATED_LABELS = {};
+        CURATED_MODELS.forEach(g => g.models.forEach(m => CURATED_LABELS[m.value] = m.label));
+
+        function initArchCombobox() {
+            const input = document.getElementById('arch-search');
+            const hidden = document.getElementById('architecture');
+            const dropdown = document.getElementById('arch-dropdown');
+            let debounceTimer = null;
+
+            function showCurated(filter = '') {
+                let html = '';
+                const lf = filter.toLowerCase();
+                CURATED_MODELS.forEach(group => {
+                    const filtered = lf
+                        ? group.models.filter(m => m.label.toLowerCase().includes(lf) || m.value.includes(lf))
+                        : group.models;
+                    if (filtered.length === 0) return;
+                    html += `<div class="arch-group-label">${group.group}</div>`;
+                    filtered.forEach(m => {
+                        html += `<div class="arch-option" data-value="${m.value}" data-label="${m.label}">${m.label} <span class="arch-value">${m.value}</span></div>`;
+                    });
+                });
+                if (!html && lf) return false; // no curated matches
+                dropdown.innerHTML = html;
+                dropdown.classList.add('open');
+                return true;
+            }
+
+            async function searchTimm(query) {
+                try {
+                    const resp = await fetch(`/api/models/architectures?q=${encodeURIComponent(query)}`);
+                    const models = await resp.json();
+                    if (input.value !== query) return; // stale response
+                    let html = '';
+                    // Show curated matches first
+                    const lf = query.toLowerCase();
+                    let curatedHtml = '';
+                    CURATED_MODELS.forEach(group => {
+                        const filtered = group.models.filter(m => m.label.toLowerCase().includes(lf) || m.value.includes(lf));
+                        if (filtered.length === 0) return;
+                        curatedHtml += `<div class="arch-group-label">${group.group}</div>`;
+                        filtered.forEach(m => {
+                            curatedHtml += `<div class="arch-option" data-value="${m.value}" data-label="${m.label}">${m.label} <span class="arch-value">${m.value}</span></div>`;
+                        });
+                    });
+                    if (curatedHtml) html += curatedHtml;
+                    // Then show timm results (excluding curated ones)
+                    const curatedValues = new Set(Object.keys(CURATED_LABELS));
+                    const timmOnly = models.filter(m => !curatedValues.has(m));
+                    if (timmOnly.length > 0) {
+                        html += `<div class="arch-search-info">${models.length} timm models found${models.length >= 50 ? ' (showing first 50)' : ''}</div>`;
+                        timmOnly.forEach(m => {
+                            html += `<div class="arch-option" data-value="${m}" data-label="${m}">${m}</div>`;
+                        });
+                    }
+                    if (!html) html = `<div class="arch-search-info">No models found</div>`;
+                    dropdown.innerHTML = html;
+                    dropdown.classList.add('open');
+                } catch(e) {
+                    console.error('Architecture search failed:', e);
+                }
+            }
+
+            input.addEventListener('focus', () => {
+                if (!input.value || input.value === (CURATED_LABELS[hidden.value] || hidden.value)) {
+                    input.select();
+                    showCurated();
+                } else {
+                    showCurated(input.value);
+                }
+            });
+
+            input.addEventListener('input', () => {
+                clearTimeout(debounceTimer);
+                const val = input.value.trim();
+                if (!val) {
+                    showCurated();
+                    return;
+                }
+                // Filter curated immediately
+                const hasCurated = showCurated(val);
+                // Also search timm after debounce
+                if (val.length >= 2) {
+                    debounceTimer = setTimeout(() => searchTimm(val), 300);
+                }
+            });
+
+            dropdown.addEventListener('click', (e) => {
+                const opt = e.target.closest('.arch-option');
+                if (!opt) return;
+                hidden.value = opt.dataset.value;
+                input.value = opt.dataset.label;
+                dropdown.classList.remove('open');
+            });
+
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.arch-combobox')) {
+                    dropdown.classList.remove('open');
+                    // Reset display if value was not changed
+                    if (hidden.value) {
+                        input.value = CURATED_LABELS[hidden.value] || hidden.value;
+                    }
+                }
+            });
+        }
+
+        initArchCombobox();
 
         // Load training data stats
         async function loadTrainingStats() {
@@ -1960,7 +2142,7 @@
             }).join('') + '<th>Actions</th>';
 
             let html = `
-                <table class="model-table">
+                <div class="model-table-wrap"><table class="model-table">
                     <thead><tr>${thHtml}</tr></thead>
                     <tbody>
             `;
@@ -2022,7 +2204,7 @@
                 `;
             }
 
-            html += '</tbody></table>';
+            html += '</tbody></table></div>';
             container.innerHTML = html;
         }
 
