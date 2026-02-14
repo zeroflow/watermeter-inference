@@ -43,7 +43,8 @@ Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
     4. **Model softmax** — use top-K predictions, not just argmax; if 2nd-best class fits context better, prefer it
   - **Transparency**: flag corrections as warnings on dashboard (e.g. "digit_3 corrected: 3→9 (prev=347, arrows~9, conf=0.42)")
   - **Safety**: never correct when all positions are high-confidence and consistent — only intervene when something doesn't add up
-  - **Depends on**: softmax scores per position (already available from inference), rate_history (already tracked)
+  - **API change**: add `predict_detailed()` to `Classifier` returning full softmax vector; keep `predict()` lean for normal use
+  - **Depends on**: rate_history (already tracked)
 - **BL-05** `planned` — **Cross-arrow consistency**: use adjacent arrow readings to validate and correct each other
   - **Scope**: single-arrow precision first (per user), cross-validation is a later enhancement
   - **Core idea**: if arrow1 reads 1.x and arrow2 reads 6.2, they should be consistent — arrow1's sub-integer can be narrowed
@@ -53,8 +54,8 @@ Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
 - **BL-08** `planned` — **Arrow regression mode**: train arrows as regression (single 0.0–1.0 output) instead of classification
   - **Motivation**: reference project (AI-on-the-edge) uses regression; avoids class boundary issues; continuous output
   - **Implementation**: add "continuous" mode alongside current "discrete" mode in training config
-    - Training: MSE/Huber loss, single output neuron, sigmoid activation → 0.0–1.0
-    - Inference: multiply output by 10 → dial position 0.0–9.9
+    - Training: MSE/Huber loss, single output neuron, sigmoid → 0.0–1.0; ground truth normalized by dividing folder label by 10
+    - Inference: multiply sigmoid output by 10 → dial position 0.0–9.9
     - New `Regressor` class in inference.py (similar to `Classifier` but no softmax/argmax)
   - **UI**: toggle between discrete/continuous in training form; model filename: `model_arrows_{arch}_continuous_r{res}`
   - **Compare**: benchmark both modes on same ground truth to see which is more accurate
@@ -82,7 +83,7 @@ Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
     - Payloads: `confirm` (accept the reading), `reject` (discard it), `correct:{value}` (override with manual value)
     - Watermeter subscribes and processes the response: update `previous_value`, publish corrected reading
   - **Trigger conditions**: reading accepted but with warnings, low confidence across multiple positions, large jump from previous
-  - **Timeout**: if no response within N minutes, auto-accept (don't block the pipeline)
+  - **Timeout**: if no response within N minutes, auto-reject (don't publish uncertain readings; wait for next cycle)
   - **Depends on**: existing MQTT infra (already has publish + subscribe); BL-06 stale detection could also trigger confirmation requests
 
 ## Tech Debt
