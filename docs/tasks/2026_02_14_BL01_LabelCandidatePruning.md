@@ -76,5 +76,5 @@ low_confidence:
 - [x] `image_hash.py` module with dHash + HashCache
 - [x] Config schema updated with dedup settings
 - [x] `save_low_confidence()` checks for duplicates before saving
-- [ ] Unit tests pass (requires Docker — syntax verified)
-- [ ] Existing tests still pass (requires Docker)
+- [x] Unit tests pass (15/15 passed)
+- [x] Existing tests still pass (149/149 passed)
