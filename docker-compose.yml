@@ -17,15 +17,7 @@ services:
       # Training data: input images and ground truth
       - ./training:/training
       # Model download cache (timm/huggingface pretrained weights)
-      - /home/thomas/.cache/huggingface:/app/.cache/huggingface
-
-    devices:
-      # Intel GPU for OpenVINO acceleration
-      - /dev/dri/renderD128:/dev/dri/renderD128
-
-    group_add:
-      # Grant access to GPU device
-      - "${RENDER_GROUP:-44}"
+      - hf_cache:/app/.cache/huggingface
 
     environment:
       # Optional: Override logging level
@@ -43,3 +35,5 @@ services:
       retries: 3
       start_period: 40s
 
+volumes:
+  hf_cache:

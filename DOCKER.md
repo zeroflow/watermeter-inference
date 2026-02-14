@@ -57,16 +57,18 @@ docker build -t watermeter-dashboard .
 # Create directories
 mkdir -p ./config ./data ./training
 
-# Run
+# Run (CPU only)
 docker run -d \
   --name watermeter \
   -p 8001:8001 \
   -v $(pwd)/config:/config \
   -v $(pwd)/data:/data \
   -v $(pwd)/training:/training \
-  --device /dev/dri/renderD128:/dev/dri/renderD128 \
-  --group-add=$(stat -c "%g" /dev/dri/renderD128) \
   watermeter-dashboard
+
+# Optional: add Intel GPU acceleration
+#   --device /dev/dri/renderD128:/dev/dri/renderD128 \
+#   --group-add=$(stat -c "%g" /dev/dri/renderD128) \
 ```
 
 ## Configuration
@@ -123,16 +125,21 @@ services:
 
 This allows automatic import of low-confidence images into Label Studio for manual annotation.
 
-## GPU Support
+## GPU Support (Optional)
 
-The container requires Intel GPU access for OpenVINO acceleration:
-- Device: `/dev/dri/renderD128`
-- Ensure the user has access to the render group
+By default, the container runs on **CPU only**. To enable Intel iGPU acceleration:
 
-To find your render group:
 ```bash
-stat -c "%g" /dev/dri/renderD128
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 ```
+
+**Prerequisites:**
+- Intel integrated GPU with `/dev/dri/renderD128`
+- Set `RENDER_GROUP` in `.env` if your render group differs from 44:
+  ```bash
+  # Find your render group
+  stat -c "%g" /dev/dri/renderD128
+  ```
 
 ## Environment Variables
 

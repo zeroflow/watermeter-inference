@@ -1,0 +1,17 @@
+# Intel GPU acceleration for OpenVINO
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+#
+# Prerequisites:
+#   - Intel iGPU (integrated graphics)
+#   - /dev/dri/renderD128 must exist
+#   - Find your render group: stat -c "%g" /dev/dri/renderD128
+#   - Set RENDER_GROUP in .env if it differs from 44 (default on Debian/Ubuntu)
+
+services:
+  watermeter:
+    devices:
+      - /dev/dri/renderD128:/dev/dri/renderD128
+    group_add:
+      - "${RENDER_GROUP:-44}"
