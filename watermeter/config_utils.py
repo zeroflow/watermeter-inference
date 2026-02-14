@@ -372,6 +372,24 @@ CONFIG_SCHEMA = {
                 "save_rate_limit": {
                     "type": "integer",
                     "description": "Minimum seconds between saves per ID"
+                },
+                "dedup_enabled": {
+                    "type": "boolean",
+                    "description": "Deduplicate images before saving using perceptual hash",
+                    "default": True
+                },
+                "dedup_threshold": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 64,
+                    "description": "Maximum hamming distance to consider images as duplicates (0=exact, 64=all different)",
+                    "default": 10
+                },
+                "dedup_scope": {
+                    "type": "string",
+                    "enum": ["input", "input+ground_truth"],
+                    "description": "Compare against input folder only, or also against ground truth",
+                    "default": "input+ground_truth"
                 }
             }
         },
