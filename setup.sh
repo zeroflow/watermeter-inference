@@ -28,30 +28,6 @@ if [ "$PYTHON_MAJOR" -lt 3 ] || ([ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" 
     exit 1
 fi
 
-# Check if Docker is installed
-echo "Checking for Docker..."
-if ! command -v docker &> /dev/null; then
-    echo "Docker is not installed. Installing Docker..."
-    echo ""
-
-    # Download and run Docker's official installation script
-    curl -fsSL https://get.docker.com -o get-docker.sh
-    sudo sh get-docker.sh
-    rm get-docker.sh
-
-    # Add current user to docker group to run docker without sudo
-    sudo usermod -aG docker $USER
-
-    echo ""
-    echo "Docker installed successfully!"
-    echo "Note: You may need to log out and back in for group changes to take effect."
-    echo ""
-else
-    DOCKER_VERSION=$(docker --version)
-    echo "Found: $DOCKER_VERSION"
-    echo ""
-fi
-
 # Create virtual environment
 VENV_DIR="venv"
 echo "Creating virtual environment in '$VENV_DIR'..."
