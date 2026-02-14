@@ -242,6 +242,12 @@ if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', function() {
         const isOpen = window.visualViewport.height < baseHeight * 0.75;
         document.body.classList.toggle('keyboard-open', isOpen);
+        // Lock body to visible height so no whitespace appears behind keyboard
+        if (isOpen) {
+            document.body.style.height = window.visualViewport.height + 'px';
+        } else {
+            document.body.style.height = '';
+        }
     });
 }
 

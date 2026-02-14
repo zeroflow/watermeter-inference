@@ -344,13 +344,12 @@
         }
 
         /* Keyboard open — ultra compact */
-        body.keyboard-open .label-content { padding: 8px 12px; }
-        body.keyboard-open .image-display img.main-image { height: 80px; }
-        body.keyboard-open .model-type-badge { display: none; }
-        body.keyboard-open header { display: none; }
         body.keyboard-open .app-nav { display: none; }
-        body.keyboard-open { padding-bottom: 0 !important; }
-        body.keyboard-open .label-actions { margin-top: 0.5rem; }
+        body.keyboard-open {
+            padding-bottom: 0 !important;
+            min-height: auto !important;
+            overflow: hidden;
+        }
     </style>
 </head>
 <body>
@@ -416,6 +415,7 @@
                 <div class="label-input-container">
                     <input
                         type="text"
+                        inputmode="numeric"
                         id="label-input"
                         class="label-input"
                         placeholder=""
@@ -444,6 +444,6 @@
         </main>
     </div>
 
-    <script src="/static/label.js"></script>
+    <script src="/static/label.js?v=4"></script>
 </body>
 </html>
