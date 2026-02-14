@@ -1,222 +1,205 @@
 # Water Meter AI Inference Service
 
-## Übersicht
+## Overview
 
-Dieser Service ersetzt den bisherigen Node-Red Flow und kombiniert alle Funktionen in einem Python-Service:
-- MQTT-basierter Trigger
-- Automatisches Laden von Wasserzähler-Bildern
-- OpenVINO Inference für Ziffern und Analogzeiger
-- Konsistenzprüfung und Plausibilitätschecks
-- MQTT-Integration mit Home Assistant
+This service replaces the previous Node-Red flow, combining all functions in a single Python service:
+- MQTT-based trigger
+- Automatic water meter image loading
+- OpenVINO inference for digits and analog dials
+- Consistency checks and plausibility validation
+- MQTT integration with Home Assistant
 
-## Architektur
+## Architecture
 
 ```
-MQTT Trigger (watermeter/status)  ←─────────┐
-         ↓                                   │
-    Bild-Loader (7 Bilder von AI-on-the-edge)│
-         ↓                                   │
-    OpenVINO Inference (digits & arrows)    │
-         ↓                                   │
-    Wert-Berechnung + Consistency Check     │
-         ↓                                   │
-    Plausibilitätsprüfung (Reverse/Rate)    │
-         ↓                                   │
-    MQTT zu Home Assistant                  │
-         ↓                                   │
-    Status Update → Web Dashboard ──────────┘
-                    (mit "Jetzt Auslesen" Button)
+MQTT Trigger (watermeter/status)  <------------+
+         |                                     |
+    Image Loader (7 images from AI-on-the-edge)|
+         |                                     |
+    OpenVINO Inference (digits & arrows)       |
+         |                                     |
+    Value Calculation + Consistency Check       |
+         |                                     |
+    Plausibility Check (Reverse/Rate)          |
+         |                                     |
+    MQTT to Home Assistant                     |
+         |                                     |
+    Status Update -> Web Dashboard ------------+
+                     (with "Read Now" button)
 ```
 
-## Komponenten
+## Components
 
-### 1. Bilder-Quellen
-Der Service lädt 7 Bilder vom AI-on-the-edge Device:
+### 1. Image Sources
+The service loads 7 images from the AI-on-the-edge device:
 
-**Ziffern (digits):**
-- `main_dig1` - Hunderter (×100 m³)
-- `main_dig2` - Zehner (×10 m³)
-- `main_dig3` - Einer (×1 m³)
+**Digits:**
+- `main_dig1` - Hundreds (x100 m³)
+- `main_dig2` - Tens (x10 m³)
+- `main_dig3` - Ones (x1 m³)
 
-**Analogzeiger (arrows):**
-- `main_ana1` - Zehntel (×0.1 m³)
-- `main_ana2` - Hundertstel (×0.01 m³)
-- `main_ana3` - Tausendstel (×0.001 m³)
-- `main_ana4` - Zehntausendstel (×0.0001 m³)
+**Analog dials (arrows):**
+- `main_ana1` - Tenths (x0.1 m³)
+- `main_ana2` - Hundredths (x0.01 m³)
+- `main_ana3` - Thousandths (x0.001 m³)
+- `main_ana4` - Ten-thousandths (x0.0001 m³)
 
-URL-Pattern: `http://192.168.5.136/img_tmp/{id}.jpg`
+URL pattern: `http://<AIOTE_HOST>/img_tmp/{id}.jpg`
 
-### 2. Inference-Modelle
+### 2. Inference Models
 
 **Digits Classifier:**
-- Modell: `ov_model_digits/model_mobilenetv3_small_100_c11_r144.xml`
-- Klassen: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'NAN']
-- Input: 144×144 RGB
+- Model: `ov_model_digits/model_mobilenetv3_small_100_c11_r144.xml`
+- Classes: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'NAN']
+- Input: 144x144 RGB
 
 **Arrows Classifier:**
-- Modell: `ov_model_arrows/model_mobilenetv3_small_100_c20_r144.xml`
-- Klassen: ['0.0', '0.5', '1.0', '1.5', ..., '9.0', '9.5']
-- Input: 144×144 RGB
+- Model: `ov_model_arrows/model_mobilenetv3_small_100_c20_r144.xml`
+- Classes: ['0.0', '0.5', '1.0', '1.5', ..., '9.0', '9.5']
+- Input: 144x144 RGB
 
-### 3. Wert-Berechnung
+### 3. Value Calculation
 
-**Formel:**
+**Formula:**
 ```
-total = (dig1 × 100) + (dig2 × 10) + (dig3 × 1) +
-        (⌊ana1⌋ × 0.1) + (⌊ana2⌋ × 0.01) + (⌊ana3⌋ × 0.001) + (⌊ana4⌋ × 0.0001)
+total = (dig1 x 100) + (dig2 x 10) + (dig3 x 1) +
+        (floor(ana1) x 0.1) + (floor(ana2) x 0.01) + (floor(ana3) x 0.001) + (floor(ana4) x 0.0001)
 ```
 
 **Consistency Check:**
-Ein Zeiger/Ziffer an Position `i` mit Wert `X.5` (Halbposition) sollte bedeuten, dass die nächste Position `i+1` im Bereich 5-9 liegt.
+A pointer/digit at position `i` with value `X.5` (half-position) should mean that the next position `i+1` is in the range 5-9.
 
-Beispiel:
-- `dig1 = 2.0`, `dig2 = 3` → OK (dig1 zeigt genau auf 2, dig2 ist im unteren Bereich)
-- `dig1 = 2.5`, `dig2 = 7` → OK (dig1 zwischen 2 und 3, dig2 im oberen Bereich)
-- `dig1 = 2.5`, `dig2 = 2` → WARNUNG (Inkonsistenz!)
+Example:
+- `dig1 = 2.0`, `dig2 = 3` -> OK (dig1 points exactly at 2, dig2 is in the lower range)
+- `dig1 = 2.5`, `dig2 = 7` -> OK (dig1 between 2 and 3, dig2 in the upper range)
+- `dig1 = 2.5`, `dig2 = 2` -> WARNING (inconsistency!)
 
-### 4. Plausibilitätschecks
+### 4. Plausibility Checks
 
 **Reverse Prevention:**
-- Der Zählerwert kann nicht rückwärts laufen
-- Wenn `new_value < previous_value` → Wert wird verworfen
-- Reset-Funktion verfügbar (bei Zählerwechsel)
+- The meter value cannot run backwards
+- If `new_value < previous_value` -> value is rejected
+- Reset function available (for meter replacement)
 
 **Rate Limiting:**
-- Bilder werden mit max. 1/Sekunde geladen (Schutz für AI-on-the-edge)
-- Inference wird sequenziell durchgeführt
-- Low-confidence Bilder werden max. 1 pro Stunde gespeichert
+- Images are loaded at max 1/second (protection for AI-on-the-edge)
+- Inference is performed sequentially
+- Low-confidence images are saved at most once per hour
 
 ### 5. Low Confidence Handling
 
-Bei `confidence < 0.8`:
-- Bild wird gespeichert: `/media/import/{class}/{id}_{timestamp}.jpg`
+When `confidence < 0.8`:
+- Image is saved: `/training/{type}/input/{class}/{id}_{timestamp}.jpg`
 - Format: `main_dig1_20260124143025.jpg`
-- Optional: Label Studio Sync triggern (für Re-Training)
 
 ### 6. Web Dashboard
 
-**Status-Seite:** `http://localhost:8001/`
+**Status page:** `http://localhost:8001/`
 
-**Anzeige:**
-- **Bilder in Reihenfolge** (dig1, dig2, dig3, ana1-4)
-  - Thumbnail des Bildes
-  - Erkannter Wert (z.B. "7" oder "3.5")
-  - Confidence Score (z.B. "95.3%")
-  - Farb-Codierung:
-    - Grün: confidence ≥ 0.95
-    - Gelb: 0.80 ≤ confidence < 0.95
-    - Rot: confidence < 0.80
+**Display:**
+- **Images in order** (dig1, dig2, dig3, ana1-4)
+  - Image thumbnail
+  - Recognized value (e.g. "7" or "3.5")
+  - Confidence score (e.g. "95.3%")
+  - Color coding:
+    - Green: confidence >= 0.95
+    - Yellow: 0.80 <= confidence < 0.95
+    - Red: confidence < 0.80
 
-- **Berechneter Gesamtwert**
-  - Große Anzeige: "123.4567 m³"
-  - Letzte Aktualisierung: Timestamp
-  - Status: "OK" / "Warnung"
+- **Calculated total value**
+  - Large display: "123.4567 m³"
+  - Last update: timestamp
+  - Status: "OK" / "Warning"
 
-- **Warnungen & Status**
-  - Consistency Warnings (z.B. "dig1=2.5 vs dig2=2 - inkonsistent!")
-  - Rate too high (z.B. "Sprung um +10 m³ in 5 Minuten")
-  - Reverse detection (z.B. "Rückwärtslauf erkannt: 123.4 → 122.1")
+- **Warnings & Status**
+  - Consistency warnings (e.g. "dig1=2.5 vs dig2=2 - inconsistent!")
+  - Rate too high (e.g. "Jump of +10 m³ in 5 minutes")
+  - Reverse detection (e.g. "Reverse detected: 123.4 -> 122.1")
   - Low confidence alerts
 
-- **Aktionen**
-  - Button "Jetzt Auslesen" → Triggert neue Messung
-  - Button "Reset Previous Value" → Setzt Reverse-Protection zurück
-  - Auto-Refresh Toggle (Live-Updates)
+- **Actions**
+  - "Read Now" button -> triggers new measurement
+  - "Reset Previous Value" button -> resets reverse protection
+  - Auto-refresh toggle (live updates)
 
-**Technologie:**
+**Technology:**
 - FastAPI + Jinja2 Templates (HTML)
-- HTMX für dynamische Updates (ohne Page Reload)
+- HTMX for dynamic updates (no page reload)
 - Minimal CSS (responsive, mobile-friendly)
-- Optional: WebSocket für Live-Updates
 
-## Konfiguration
+## Configuration
 
-### Environment Variables / Config File
+### Config File
 
 ```yaml
 # AI-on-the-edge Device
-AIOTE_HOST: "192.168.5.136"
-AIOTE_IMAGE_PATH: "/img_tmp"
-
-# Image IDs
-DIGIT_IDS: ["main_dig1", "main_dig2", "main_dig3"]
-ARROW_IDS: ["main_ana1", "main_ana2", "main_ana3", "main_ana4"]
+aiote:
+  host: "192.168.x.x"  # Your AI-on-the-edge device IP
 
 # MQTT Settings
-MQTT_BROKER: "192.168.4.11"
-MQTT_PORT: 1883
-MQTT_TRIGGER_TOPIC: "watermeter/status"
-MQTT_TRIGGER_PAYLOAD: "Flow finished"
-MQTT_PUBLISH_TOPIC: "homeassistant/sensor/watermeter/state"
+mqtt:
+  broker: "192.168.x.x"  # Your MQTT broker IP
+  port: 1883
+  trigger_topic: "watermeter/status"
+  trigger_payload: "Flow finished"
 
-# Home Assistant MQTT Discovery
-HA_DISCOVERY_PREFIX: "homeassistant"
-HA_DEVICE_NAME: "AI Water Meter"
-HA_SENSOR_NAME: "Water Usage"
-HA_UNIT: "m³"
-HA_DEVICE_CLASS: "water"
-HA_STATE_CLASS: "total_increasing"
+# Home Assistant Integration
+homeassistant:
+  enabled: true
+  publish_topic: "homeassistant/sensor/watermeter/state"
 
 # Inference Settings
-CONFIDENCE_THRESHOLD: 0.8
-LOW_CONFIDENCE_SAVE_PATH: "/media/import"
-
-# Label Studio (optional)
-LABEL_STUDIO_ENABLED: false
-LABEL_STUDIO_URL: "http://192.168.4.35:8080"
-LABEL_STUDIO_TOKEN: "***REMOVED***"
-LABEL_STUDIO_DIGITS_STORAGE_ID: 1
-LABEL_STUDIO_ARROWS_STORAGE_ID: 3
-
-# Rate Limiting
-IMAGE_FETCH_DELAY: 1.0  # seconds between image fetches
-LOW_CONFIDENCE_SAVE_RATE: 3600  # max 1 per hour
+inference:
+  confidence_threshold: 0.8
+  device: "AUTO"  # CPU, GPU, or AUTO
 ```
+
+See [config.yaml](config.yaml) for the full configuration reference.
 
 ## Workflow Details
 
 ### 1. MQTT Trigger
 ```
-Empfang: watermeter/status = "Flow finished"
-         ↓
-    Starte Verarbeitung
+Receive: watermeter/status = "Flow finished"
+         |
+    Start processing
 ```
 
-### 2. Bild-Laden (sequenziell)
+### 2. Image Loading (sequential)
 ```
-Für jede ID in [main_dig1, main_dig2, main_dig3,
+For each ID in [main_dig1, main_dig2, main_dig3,
                 main_ana1, main_ana2, main_ana3, main_ana4]:
-    1. Warte 1 Sekunde (Rate Limit)
-    2. Lade http://192.168.5.136/img_tmp/{id}.jpg
-    3. Speichere temporär
+    1. Wait (rate limit)
+    2. Load http://<AIOTE_HOST>/img_tmp/{id}.jpg
+    3. Store temporarily
 ```
 
 ### 3. Inference
 ```
-Für jedes Bild:
-    1. Bestimme Classifier (digits/arrows basierend auf ID)
-    2. Führe Inference durch
-    3. Erhalte {class: "X", confidence: 0.XX}
-    4. Falls confidence < 0.8:
-       → Speichere Bild für späteres Training
+For each image:
+    1. Determine classifier (digits/arrows based on ID)
+    2. Run inference
+    3. Get {class: "X", confidence: 0.XX}
+    4. If confidence < 0.8:
+       -> Save image for later training
 ```
 
-### 4. Wert-Berechnung
+### 4. Value Calculation
 ```
-1. Sammle alle 7 Ergebnisse
-2. Sortiere nach Position (dig1, dig2, dig3, ana1-ana4)
-3. Berechne Gesamtwert
-4. Führe Consistency Check durch
-5. Generiere Warnings bei Inkonsistenzen
+1. Collect all 7 results
+2. Sort by position (dig1, dig2, dig3, ana1-ana4)
+3. Calculate total value
+4. Run consistency check
+5. Generate warnings for inconsistencies
 ```
 
-### 5. Plausibilitätsprüfung
+### 5. Plausibility Check
 ```
 IF new_value < previous_value:
-    → Verwerfe Wert (Log Warning)
+    -> Reject value (log warning)
 ELSE:
-    → Akzeptiere Wert
-    → Speichere als previous_value
+    -> Accept value
+    -> Store as previous_value
 ```
 
 ### 6. MQTT Publish
@@ -240,31 +223,23 @@ Payload: {
 
 ## Installation
 
-### 1. Dependencies
+### Option 1: Docker (recommended)
+
+See [DOCKER.md](DOCKER.md) for full instructions.
+
 ```bash
-pip install openvino opencv-python numpy fastapi uvicorn paho-mqtt httpx pyyaml jinja2 python-multipart
+docker compose up -d
 ```
 
-### 2. Verzeichnisstruktur
-```
-watermeter/
-├── inference.py                    # FastAPI Service (bestehend)
-├── watermeter_service.py          # Neuer MQTT-Service
-├── config.yaml                     # Konfiguration
-├── templates/
-│   └── dashboard.html             # Web Dashboard Template
-├── static/
-│   └── style.css                  # Dashboard Styling
-├── ov_model_digits/
-│   └── model_mobilenetv3_small_100_c11_r144.xml
-├── ov_model_arrows/
-│   └── model_mobilenetv3_small_100_c20_r144.xml
-└── /media/import/
-    ├── digits/
-    └── arrows/
+### Option 2: Local Python
+
+```bash
+pip install -r requirements.txt
+uvicorn watermeter.app:app --host 0.0.0.0 --port 8001
 ```
 
-### 3. Systemd Service (optional)
+### Option 3: Systemd Service
+
 ```ini
 [Unit]
 Description=Water Meter AI Service
@@ -273,7 +248,7 @@ After=network.target
 [Service]
 Type=simple
 User=watermeter
-WorkingDirectory=/var/ml/openvino-notebooks/watermeter
+WorkingDirectory=/opt/watermeter
 ExecStart=/usr/bin/python3 -m uvicorn watermeter.app:app --host 0.0.0.0 --port 8001
 Restart=always
 
@@ -281,44 +256,25 @@ Restart=always
 WantedBy=multi-user.target
 ```
 
-## Migration von Node-Red
-
-### Was ersetzt wird:
-- ✅ MQTT Trigger Node
-- ✅ HTTP Request Nodes (Bild-Laden)
-- ✅ Rate Limiting (Delay Nodes)
-- ✅ Semaphore (nur 1 Request gleichzeitig)
-- ✅ Function Nodes (Berechnung, Consistency Check)
-- ✅ Low Confidence Handling
-- ✅ Label Studio Sync
-- ✅ Home Assistant MQTT Sensor
-
-### Vorteile:
-- Einfachere Wartung (alles in Python)
-- Bessere Performance (kein HTTP Overhead für Inference)
-- Leichtere Testbarkeit
-- Versionskontrolle
-- Weniger Abhängigkeiten (kein Node-Red nötig)
-
 ## API Endpoints
 
 ### Web Dashboard
-- `GET /` - Status Dashboard (HTML)
-- `GET /api/status` - Aktueller Status als JSON
-- `POST /api/trigger` - Manuelle Messung auslösen
-- `POST /api/reset` - Previous Value zurücksetzen
+- `GET /` - Status dashboard (HTML)
+- `GET /api/status` - Current status as JSON
+- `POST /api/trigger` - Trigger manual measurement
+- `POST /api/reset` - Reset previous value
 
 ### Legacy Endpoints (Label Studio)
-- `POST /predict/{model_type}/setup` - Model Setup
-- `POST /predict/{model_type}/predict` - Batch Prediction
-- `GET /predict/{model_type}/health` - Health Check
-- `POST /predict/{model_type}` - Direct Prediction
+- `POST /predict/{model_type}/setup` - Model setup
+- `POST /predict/{model_type}/predict` - Batch prediction
+- `GET /predict/{model_type}/health` - Health check
+- `POST /predict/{model_type}` - Direct prediction
 
 ## Testing
 
 ### Manual Trigger via MQTT
 ```bash
-mosquitto_pub -h 192.168.4.11 -t "watermeter/status" -m "Flow finished"
+mosquitto_pub -h <MQTT_BROKER_IP> -t "watermeter/status" -m "Flow finished"
 ```
 
 ### Manual Trigger via Web API
@@ -326,7 +282,7 @@ mosquitto_pub -h 192.168.4.11 -t "watermeter/status" -m "Flow finished"
 curl -X POST http://localhost:8001/api/trigger
 ```
 
-### Status abfragen
+### Query Status
 ```bash
 curl http://localhost:8001/api/status | jq
 ```
@@ -336,39 +292,33 @@ curl http://localhost:8001/api/status | jq
 curl -X POST http://localhost:8001/api/reset
 ```
 
-### Check Logs
-```bash
-journalctl -u watermeter -f
-```
-
-### Web Dashboard öffnen
+### Open Web Dashboard
 ```bash
 xdg-open http://localhost:8001/
 ```
 
 ## Troubleshooting
 
-### Häufige Probleme:
+### Common Problems
 
-**1. Bilder nicht erreichbar**
-- Prüfe: `curl http://192.168.5.136/img_tmp/main_dig1.jpg`
-- Stelle sicher, dass AI-on-the-edge läuft
+**1. Images not reachable**
+- Check: `curl http://<AIOTE_HOST>/img_tmp/main_dig1.jpg`
+- Ensure AI-on-the-edge device is running
 
 **2. MQTT Connection Failed**
-- Prüfe MQTT Broker: `mosquitto_pub -h 192.168.4.11 -t test -m hello`
-- Prüfe Firewall-Regeln
+- Check MQTT broker: `mosquitto_pub -h <MQTT_BROKER_IP> -t test -m hello`
+- Check firewall rules
 
 **3. Low Confidence Warnings**
-- Normal bei schlechter Beleuchtung
-- Gespeicherte Bilder für Re-Training nutzen
-- Label Studio Sync prüfen
+- Normal with poor lighting
+- Use saved images for re-training
 
 **4. Reverse Detection**
-- Normal bei Fehlklassifikation
-- Check logs für tatsächlichen vs. erkannten Wert
-- Eventuell Modell neu trainieren
+- Normal with misclassification
+- Check logs for actual vs. recognized value
+- Consider retraining the model
 
 **5. Consistency Warnings**
-- Deutet auf Klassifikationsfehler hin
-- Prüfe betroffene Bilder in `/media/import/`
-- Feedback-Loop für Training
+- Indicates classification errors
+- Check affected images in the dashboard
+- Feedback loop for training

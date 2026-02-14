@@ -1,24 +1,24 @@
 # Water Meter Service - Quick Start Guide
 
-## 🚀 Installation
+## Installation
 
-### 1. Dependencies installieren
+### 1. Install dependencies
 
 ```bash
-cd /var/ml/openvino-notebooks/watermeter
+cd /path/to/watermeter
 pip install -r requirements.txt
 ```
 
-### 2. Konfiguration prüfen
+### 2. Check configuration
 
-Die Datei [config.yaml](config.yaml) enthält alle Einstellungen. Wichtige Settings:
+The file [config.yaml](config.yaml) contains all settings. Key settings:
 
 ```yaml
 aiote:
-  host: "192.168.5.136"  # AI-on-the-edge Device IP
+  host: "192.168.x.x"  # AI-on-the-edge device IP
 
 mqtt:
-  broker: "192.168.4.11"  # MQTT Broker IP
+  broker: "192.168.x.x"  # MQTT broker IP
   trigger_topic: "watermeter/status"
   trigger_payload: "Flow finished"
 
@@ -27,48 +27,48 @@ dashboard:
   port: 8001
 ```
 
-**Falls nötig, passe diese Werte an!**
+**Adjust these values to match your network!**
 
-## 🎯 Service starten
+## Starting the Service
 
-### Variante 1: Direkt mit Python
+### Option 1: Direct with Python
 
 ```bash
-cd /var/ml/openvino-notebooks/watermeter
+cd /path/to/watermeter
 python -m uvicorn watermeter.app:app --host 0.0.0.0 --port 8001
 ```
 
-### Variante 2: Mit uvicorn (empfohlen für Produktion)
+### Option 2: With uvicorn (recommended for production)
 
 ```bash
-cd /var/ml/openvino-notebooks/watermeter
+cd /path/to/watermeter
 uvicorn watermeter.app:app --host 0.0.0.0 --port 8001 --reload
 ```
 
-Der Service startet auf **http://localhost:8001**
+The service starts at **http://localhost:8001**
 
-## 🌐 Web Dashboard öffnen
+## Open the Web Dashboard
 
-Öffne im Browser: **http://localhost:8001**
+Open in your browser: **http://localhost:8001**
 
-Du siehst:
-- ✅ Header mit Buttons "Jetzt Auslesen" und "Reset"
-- ✅ Auto-Refresh Toggle
-- ✅ Status-Anzeige (initial leer)
+You should see:
+- Header with "Read Now" and "Reset" buttons
+- Auto-refresh toggle
+- Status display (initially empty)
 
-## 🧪 Testing
+## Testing
 
-### Test 1: Manueller Trigger via Web UI
+### Test 1: Manual Trigger via Web UI
 
-1. Öffne http://localhost:8001
-2. Klicke auf **"Jetzt Auslesen"**
-3. Warte ~10 Sekunden (7 Bilder @ 1s delay + Inference)
-4. Status sollte aktualisiert werden mit:
-   - Berechneter Wert (z.B. "123.4567 m³")
-   - 7 Bilder mit erkannten Werten
-   - Confidence Scores (grün/gelb/rot)
+1. Open http://localhost:8001
+2. Click **"Read Now"**
+3. Wait ~10 seconds (7 images @ 1s delay + inference)
+4. Status should update with:
+   - Calculated value (e.g. "123.4567 m³")
+   - 7 images with recognized values
+   - Confidence scores (green/yellow/red)
 
-### Test 2: Manueller Trigger via API
+### Test 2: Manual Trigger via API
 
 ```bash
 curl -X POST http://localhost:8001/api/trigger
@@ -79,7 +79,7 @@ Response:
 {"message": "Reading triggered successfully"}
 ```
 
-### Test 3: Status abfragen
+### Test 3: Query Status
 
 ```bash
 curl http://localhost:8001/api/status | jq
@@ -99,13 +99,13 @@ Response:
 
 ### Test 4: MQTT Trigger (AI-on-the-edge Integration)
 
-**Voraussetzung:** MQTT Broker läuft auf 192.168.4.11
+**Prerequisite:** MQTT broker running at your configured IP
 
 ```bash
-mosquitto_pub -h 192.168.4.11 -t "watermeter/status" -m "Flow finished"
+mosquitto_pub -h <MQTT_BROKER_IP> -t "watermeter/status" -m "Flow finished"
 ```
 
-Der Service sollte automatisch eine Messung starten.
+The service should automatically start a measurement.
 
 ### Test 5: Reset Previous Value
 
@@ -113,16 +113,16 @@ Der Service sollte automatisch eine Messung starten.
 curl -X POST http://localhost:8001/api/reset
 ```
 
-Setzt die Reverse-Detection zurück (nützlich bei Zählerwechsel).
+Resets reverse detection (useful after meter replacement).
 
-## 📊 Logs beobachten
+## Viewing Logs
 
-Der Service loggt alle wichtigen Events:
+The service logs all important events:
 
 ```
 2026-01-24 14:30:15 - __main__ - INFO - Starting Water Meter Dashboard...
 2026-01-24 14:30:15 - watermeter_service - INFO - WatermeterService initialized
-2026-01-24 14:30:15 - watermeter_service - INFO - Connecting to MQTT broker 192.168.4.11:1883
+2026-01-24 14:30:15 - watermeter_service - INFO - Connecting to MQTT broker 192.168.x.x:1883
 2026-01-24 14:30:15 - watermeter_service - INFO - Connected to MQTT broker
 2026-01-24 14:30:20 - watermeter_service - INFO - Trigger received - starting processing
 2026-01-24 14:30:20 - watermeter_service - INFO - Fetching 7 images from AI-on-the-edge
@@ -130,162 +130,86 @@ Der Service loggt alle wichtigen Events:
 2026-01-24 14:30:27 - watermeter_service - INFO - Running inference on 7 images
 2026-01-24 14:30:28 - watermeter_service - INFO - Inference completed for 7 images
 2026-01-24 14:30:28 - watermeter_service - INFO - Calculated total: 123.4567 m³
-2026-01-24 14:30:28 - watermeter_service - INFO - ✓ Reading accepted: 123.4567 m³
+2026-01-24 14:30:28 - watermeter_service - INFO - Reading accepted: 123.4567 m³
 ```
 
-## 🔧 Troubleshooting
+## Troubleshooting
 
 ### Problem: "No images fetched"
 
-**Ursache:** AI-on-the-edge Device nicht erreichbar
+**Cause:** AI-on-the-edge device not reachable
 
-**Lösung:**
+**Solution:**
 ```bash
-# Teste Verbindung
-curl http://192.168.5.136/img_tmp/main_dig1.jpg --output test.jpg
+# Test connection
+curl http://<AIOTE_HOST>/img_tmp/main_dig1.jpg --output test.jpg
 
-# Falls nicht erreichbar:
-# 1. Prüfe IP in config.yaml
-# 2. Prüfe, ob Device läuft
-# 3. Prüfe Netzwerk
+# If not reachable:
+# 1. Check IP in config.yaml
+# 2. Check if device is running
+# 3. Check network connectivity
 ```
 
 ### Problem: "MQTT connection failed"
 
-**Ursache:** MQTT Broker nicht erreichbar
+**Cause:** MQTT broker not reachable
 
-**Lösung:**
+**Solution:**
 ```bash
-# Teste MQTT Broker
-mosquitto_pub -h 192.168.4.11 -t test -m hello
+# Test MQTT broker
+mosquitto_pub -h <MQTT_BROKER_IP> -t test -m hello
 
-# Falls nicht erreichbar:
-# 1. Prüfe Broker IP in config.yaml
-# 2. Starte MQTT Broker (mosquitto)
-# 3. Prüfe Firewall
+# If not reachable:
+# 1. Check broker IP in config.yaml
+# 2. Start MQTT broker (mosquitto)
+# 3. Check firewall
 ```
 
 ### Problem: "ModuleNotFoundError: No module named 'openvino'"
 
-**Ursache:** Dependencies nicht installiert
+**Cause:** Dependencies not installed
 
-**Lösung:**
+**Solution:**
 ```bash
 pip install -r requirements.txt
 ```
 
 ### Problem: Low Confidence Warnings
 
-**Normal bei:**
-- Schlechter Beleuchtung
-- Verschmutztem Zähler
-- Unklaren Zifferstellungen
+**Normal with:**
+- Poor lighting
+- Dirty meter
+- Ambiguous digit positions
 
-**Bilder werden gespeichert in:**
+**Images are saved in:**
 ```
-watermeter/import/digits/
-watermeter/import/arrows/
+/training/digits/input/
+/training/arrows/input/
 ```
 
-Diese können für Re-Training verwendet werden.
+These can be used for re-training.
 
 ### Problem: Consistency Warnings
 
-**Beispiel:** `dig1=2.5 vs dig2=2 - inkonsistent!`
+**Example:** `dig1=2.5 vs dig2=2 - inconsistent!`
 
-**Bedeutung:** Der erste Zeiger steht zwischen 2 und 3, aber der zweite zeigt auf 2 (sollte ≥5 sein für Konsistenz)
+**Meaning:** The first pointer is between 2 and 3, but the second shows 2 (should be >=5 for consistency)
 
-**Ursachen:**
-- Fehlklassifikation
-- Zeiger nicht eindeutig
+**Causes:**
+- Misclassification
+- Ambiguous pointer position
 
-**Aktion:**
-- Prüfe Bilder im Dashboard
-- Eventuell Modell neu trainieren mit mehr Daten
+**Action:**
+- Check images in the dashboard
+- Consider retraining the model with more data
 
 ### Problem: Reverse Detection
 
-**Log:** `Reverse detected: 123.4 → 122.1`
+**Log:** `Reverse detected: 123.4 -> 122.1`
 
-**Ursache:** Wert ist kleiner als vorheriger Wert (unmöglich)
+**Cause:** Value is less than previous value (impossible for a water meter)
 
-**Lösungen:**
-1. Falls Zählerwechsel: Reset mit `curl -X POST http://localhost:8001/api/reset`
-2. Falls Fehlklassifikation: Warte auf nächste Messung
-3. Prüfe Bilder und Confidence Scores
-
-## 📁 Dateistruktur
-
-```
-watermeter/
-├── app.py                          # FastAPI Web Application
-├── watermeter_service.py          # Core Service (MQTT, Inference, Calculation)
-├── inference.py                    # Classifier Definitions (Label Studio)
-├── config.yaml                     # Konfiguration
-├── requirements.txt                # Python Dependencies
-│
-├── templates/
-│   ├── dashboard.html             # Haupt-Dashboard
-│   └── status_fragment.html       # Status-Fragment (HTMX)
-│
-├── static/
-│   └── style.css                  # Dashboard Styling
-│
-├── import/                        # Low Confidence Images
-│   ├── digits/
-│   └── arrows/
-│
-├── digits/
-│   └── ov_model/
-│       └── model_mobilenetv3_small_100_c11_r144.xml
-│
-└── arrows/
-    └── ov_model/
-        └── model_mobilenetv3_small_100_c20_r144.xml
-```
-
-## 🔄 Integration mit Node-Red (Migration)
-
-### Schritt 1: Parallel-Betrieb
-
-Beide Systeme parallel laufen lassen und Ergebnisse vergleichen.
-
-### Schritt 2: MQTT Topic ändern
-
-In AI-on-the-edge:
-- Ändere MQTT Topic von "watermeter/status" zu "watermeter/status-python"
-
-In config.yaml:
-```yaml
-mqtt:
-  trigger_topic: "watermeter/status-python"
-```
-
-### Schritt 3: Node-Red Flow deaktivieren
-
-Wenn Python Service stabil läuft:
-1. Node-Red Flow exportieren (Backup)
-2. Flow deaktivieren
-3. Python Service auf "watermeter/status" umstellen
-
-### Schritt 4: Home Assistant
-
-Der Python Service published direkt via MQTT Discovery. Kein manuelles Setup nötig!
-
-## 🎉 Erfolg!
-
-Wenn alles funktioniert, solltest du sehen:
-
-✅ Dashboard lädt Bilder und zeigt Werte
-✅ MQTT Trigger funktioniert
-✅ Home Assistant empfängt Updates
-✅ Low Confidence Bilder werden gespeichert
-✅ Consistency Checks funktionieren
-
-**Bei Fragen oder Problemen:** Prüfe die Logs!
-
-```bash
-# Logs in Echtzeit
-tail -f /var/log/watermeter.log  # Falls systemd
-# oder direkt im Terminal beobachten
-```
+**Solutions:**
+1. If meter replaced: Reset with `curl -X POST http://localhost:8001/api/reset`
+2. If misclassification: Wait for next measurement
+3. Check images and confidence scores
