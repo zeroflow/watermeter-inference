@@ -92,10 +92,10 @@ Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
 ## Legal / Licensing
 
 - **BL-10** `planned` — **Handle upstream data license**: training data from jomjol's repos has no explicit license ([issue #4041](https://github.com/jomjol/AI-on-the-edge-device/issues/4041))
-  - **Impact**: models trained on this data and annotated ground truth derived from it cannot be shipped/redistributed until license is clarified
-  - **Our use is fine**: personal/research use is not restricted
-  - **What can't ship**: pre-trained model weights, annotated datasets, anything derivative of the upstream training data
+  - **Solution**: ship our own data, add a script to pull his — models are trained locally by the user, no derivative works distributed
+  - **What ships**: our self-collected meter photos + ground truth, pre-trained models from our data only
+  - **Script**: `scripts/fetch_upstream_data.sh` — downloads jomjol's training data into the right directory structure on the user's machine
   - **Action items**:
-    1. Track the upstream issue for resolution
-    2. Document which local data is self-collected (our own meter photos) vs derived from upstream
-    3. If shipping models is needed later: either get license clarification or retrain purely on self-collected data
+    1. Separate our ground truth from upstream-derived data (document provenance)
+    2. Write fetch script that pulls from jomjol's repos (digits + analog needles)
+    3. Track upstream issue #4041 — if license is clarified, can simplify
