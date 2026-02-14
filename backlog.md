@@ -31,7 +31,19 @@ Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
 
 ## Algorithm / Inference
 
-- **BL-04** `idea` — **Value deduction from rules**: deduce correct meter value using plausibility rules (e.g. monotonic increase, rate limits)
+- **BL-04** `planned` — **Value deduction from rules**: correct misread positions using temporal + spatial context
+  - **Where**: new step between `calculate_total()` and `validate_plausibility()` in `process_reading()`
+  - **Approach**: confidence-weighted correction
+    - Low confidence → easy to override with contextual evidence
+    - High confidence → needs strong disagreement from multiple signals to override
+  - **Signals used**:
+    1. **Previous value** — meter only goes up, so expected value ≥ previous
+    2. **Expected rate** — average consumption from `rate_history` predicts approximate next value
+    3. **Adjacent positions** — consistency check (e.g. digit at .5 → next position ≥ 5) narrows candidates
+    4. **Model softmax** — use top-K predictions, not just argmax; if 2nd-best class fits context better, prefer it
+  - **Transparency**: flag corrections as warnings on dashboard (e.g. "digit_3 corrected: 3→9 (prev=347, arrows~9, conf=0.42)")
+  - **Safety**: never correct when all positions are high-confidence and consistent — only intervene when something doesn't add up
+  - **Depends on**: softmax scores per position (already available from inference), rate_history (already tracked)
 - **BL-05** `idea` — **Better arrow classes**: combine 1.0 + 0.5 + 0.1 arrow readings for more precise values; cross-check between arrows (e.g. arrow1=1.0/1.5/1.6 + arrow2=6.2 → consistent). Cave: parallax error skews images
 - **BL-06** `idea` — **Warnings on constant use**: detect and warn when meter reading hasn't changed over time
 
