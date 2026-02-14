@@ -137,3 +137,93 @@ class HashCache:
                 except Exception as e:
                     logger.warning(f"Failed to hash {img_path.name}: {e}")
         self._save()
+
+
+def purge_duplicates(input_dir: Path, threshold: int = 10,
+                     gt_dirs: Optional[List[Path]] = None) -> Dict:
+    """
+    Remove near-duplicate images from an input folder.
+
+    Iterates images sorted by name (oldest first due to timestamp naming).
+    Keeps the first occurrence of each visually unique image, deletes the rest.
+    Also deletes companion _next.jpg files.
+
+    Args:
+        input_dir: Path to the input folder (e.g. /training/arrows/input/)
+        threshold: Maximum hamming distance to consider a duplicate
+        gt_dirs: Optional list of ground_truth class dirs to cross-check against
+
+    Returns:
+        Dict with 'kept', 'removed', 'errors' counts
+    """
+    if not input_dir.is_dir():
+        return {"kept": 0, "removed": 0, "errors": 0}
+
+    images = sorted([
+        p for p in input_dir.glob('*.jpg')
+        if not p.name.endswith('_next.jpg')
+    ])
+
+    if not images:
+        return {"kept": 0, "removed": 0, "errors": 0}
+
+    # Build ground truth hash index if provided
+    gt_hashes: List[int] = []
+    if gt_dirs:
+        for gt_dir in gt_dirs:
+            if gt_dir.is_dir():
+                cache = HashCache(gt_dir)
+                cache.scan_and_update()
+                gt_hashes.extend(cache.get_all_hashes())
+
+    kept_hashes: List[int] = []
+    kept = 0
+    removed = 0
+    errors = 0
+
+    for img_path in images:
+        try:
+            h = compute_dhash(img_path.read_bytes())
+            if h is None:
+                errors += 1
+                continue
+
+            # Check against ground truth
+            is_dup = False
+            for gt_h in gt_hashes:
+                if hamming_distance(h, gt_h) <= threshold:
+                    is_dup = True
+                    break
+
+            # Check against already-kept input images
+            if not is_dup:
+                for kept_h in kept_hashes:
+                    if hamming_distance(h, kept_h) <= threshold:
+                        is_dup = True
+                        break
+
+            if is_dup:
+                img_path.unlink()
+                # Delete companion _next.jpg
+                next_path = img_path.with_name(
+                    img_path.stem + '_next.jpg'
+                )
+                if next_path.exists():
+                    next_path.unlink()
+                removed += 1
+            else:
+                kept_hashes.append(h)
+                kept += 1
+
+        except Exception as e:
+            logger.warning(f"Error processing {img_path.name}: {e}")
+            errors += 1
+
+    # Rebuild hash cache for remaining files
+    cache = HashCache(input_dir)
+    cache.scan_and_update()
+
+    logger.info(
+        f"Purge {input_dir}: kept={kept}, removed={removed}, errors={errors}"
+    )
+    return {"kept": kept, "removed": removed, "errors": errors}

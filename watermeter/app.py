@@ -13,6 +13,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from .image_hash import purge_duplicates
 from .watermeter_service import get_service
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,21 @@ async def lifespan(app: FastAPI):
         service.start_cyclic_loop()
 
     logger.info(f"Water Meter Dashboard started (trigger_mode={trigger_mode})")
+
+    # Purge duplicate images from input folders on startup
+    lc_config = service.config.get('low_confidence', {})
+    if lc_config.get('dedup_enabled', True):
+        training_path = Path(lc_config.get('save_path', '/training'))
+        threshold = lc_config.get('dedup_threshold', 10)
+        scope = lc_config.get('dedup_scope', 'input+ground_truth')
+        for model_type in ('digits', 'arrows'):
+            input_dir = training_path / model_type / 'input'
+            gt_dirs = None
+            if scope == 'input+ground_truth':
+                gt_base = training_path / model_type / 'ground_truth'
+                if gt_base.is_dir():
+                    gt_dirs = [d for d in gt_base.iterdir() if d.is_dir()]
+            purge_duplicates(input_dir, threshold, gt_dirs)
 
     # Initial reading on startup
     logger.info("Triggering initial reading...")

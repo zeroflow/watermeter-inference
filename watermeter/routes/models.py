@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from .. import watermeter_service
 from ..inference import get_inference_service
 from ..model_manager import get_model_manager
+from ..image_hash import purge_duplicates
 from ..training_manager import get_training_manager
 
 logger = logging.getLogger(__name__)
@@ -289,6 +290,40 @@ async def get_training_data_stats():
 
     except Exception as e:
         logger.error(f"Error getting training data stats: {e}")
+        return JSONResponse({
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }, status_code=500)
+
+
+@router.post("/api/training-data/dedup")
+async def dedup_training_data():
+    """Purge near-duplicate images from input folders."""
+    try:
+        service = watermeter_service.get_service()
+        config = service.config.get('low_confidence', {})
+        training_path = Path(config.get('save_path', '/training'))
+        threshold = config.get('dedup_threshold', 10)
+        scope = config.get('dedup_scope', 'input+ground_truth')
+
+        results = {}
+        for model_type in ('digits', 'arrows'):
+            input_dir = training_path / model_type / 'input'
+            gt_dirs = None
+            if scope == 'input+ground_truth':
+                gt_base = training_path / model_type / 'ground_truth'
+                if gt_base.is_dir():
+                    gt_dirs = [d for d in gt_base.iterdir() if d.is_dir()]
+
+            results[model_type] = purge_duplicates(input_dir, threshold, gt_dirs)
+
+        return JSONResponse({
+            "success": True,
+            "results": results
+        })
+
+    except Exception as e:
+        logger.error(f"Error deduplicating training data: {e}")
         return JSONResponse({
             "success": False,
             "message": f"Error: {str(e)}"
