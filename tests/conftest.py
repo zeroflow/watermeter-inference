@@ -10,6 +10,29 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 
+# ---------------------------------------------------------------------------
+# CLI options for integration tests (must live in root conftest for early loading)
+# ---------------------------------------------------------------------------
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--base-url",
+        default=None,
+        help="Use an already-running service instead of starting a fresh container",
+    )
+    parser.addoption(
+        "--image",
+        default="watermeter-dashboard:latest",
+        help="Docker image to use for integration tests",
+    )
+    parser.addoption(
+        "--no-build",
+        action="store_true",
+        default=False,
+        help="Skip auto-building the Docker image (use existing image)",
+    )
+
+
 @pytest.fixture
 def sample_config_yaml():
     """Minimal valid YAML config string."""

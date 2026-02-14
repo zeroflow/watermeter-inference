@@ -16,28 +16,8 @@ import uuid
 import httpx
 import pytest
 
-IMAGE = "watermeter-dashboard:latest"
 CONTAINER_PORT = 8001
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-
-
-def pytest_addoption(parser):
-    parser.addoption(
-        "--base-url",
-        default=None,
-        help="Use an already-running service instead of starting a fresh container",
-    )
-    parser.addoption(
-        "--image",
-        default=IMAGE,
-        help=f"Docker image to use (default: {IMAGE})",
-    )
-    parser.addoption(
-        "--no-build",
-        action="store_true",
-        default=False,
-        help="Skip auto-building the Docker image (use existing image)",
-    )
 
 
 # ---------------------------------------------------------------------------
