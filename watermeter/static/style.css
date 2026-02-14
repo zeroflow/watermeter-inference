@@ -1219,14 +1219,20 @@ main {
 
 /* ============================================
    App Navigation — adaptive bottom bar / side rail
+   Mobile-first: base = bottom tab bar
    ============================================ */
 .app-nav {
     position: fixed;
     z-index: 900;
     background: var(--bg-dark);
     display: flex;
+    flex-direction: row;
     align-items: center;
-    justify-content: center;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 56px;
+    padding: 0;
 }
 
 .nav-item {
@@ -1239,6 +1245,9 @@ main {
     transition: color 0.2s, background 0.2s;
     gap: 2px;
     position: relative;
+    flex: 1;
+    height: 100%;
+    padding: 4px 0;
 }
 
 .nav-item:hover {
@@ -1254,34 +1263,46 @@ main {
     position: absolute;
     background: var(--primary);
     border-radius: 2px;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 24px;
+    height: 3px;
 }
 
 .nav-icon {
-    width: 22px;
-    height: 22px;
+    width: 20px;
+    height: 20px;
     flex-shrink: 0;
 }
 
 .nav-label {
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 500;
     line-height: 1;
     white-space: nowrap;
 }
 
-/* Desktop: left navigation rail */
+/* Mobile body offset for bottom nav */
+body {
+    padding-bottom: 60px;
+}
+
+/* Desktop: switch to left navigation rail */
 @media (min-width: 769px) {
     .app-nav {
-        left: 0;
+        right: auto;
         top: 0;
-        bottom: 0;
         width: 72px;
+        height: auto;
         flex-direction: column;
+        justify-content: flex-start;
         padding: 20px 0;
         gap: 4px;
     }
 
     .nav-item {
+        flex: none;
         width: 56px;
         height: 48px;
         border-radius: 12px;
@@ -1297,45 +1318,24 @@ main {
     }
 
     .nav-item.active::after {
-        left: 0;
         top: 50%;
+        left: 0;
         transform: translateY(-50%);
         width: 3px;
         height: 20px;
     }
 
+    .nav-icon {
+        width: 22px;
+        height: 22px;
+    }
+
+    .nav-label {
+        font-size: 11px;
+    }
+
     body {
+        padding-bottom: 20px;
         padding-left: 92px; /* 72px nav + 20px gap */
-    }
-}
-
-/* Mobile: bottom tab bar */
-@media (max-width: 768px) {
-    .app-nav {
-        left: 0;
-        right: 0;
-        bottom: 0;
-        height: 56px;
-        flex-direction: row;
-        padding: 0;
-    }
-
-    .nav-item {
-        flex: 1;
-        height: 100%;
-        padding: 6px 0 4px;
-        border-radius: 0;
-    }
-
-    .nav-item.active::after {
-        top: 0;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 24px;
-        height: 3px;
-    }
-
-    body {
-        padding-bottom: 60px; /* 56px nav + small gap */
     }
 }
