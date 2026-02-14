@@ -20,6 +20,9 @@ config/*
 data_debug/*
 config_debug/*
 
+# Claude Code (local settings are personal, agents are shared)
+.claude/settings.local.json
+
 # Secrets
 .env
 token.txt

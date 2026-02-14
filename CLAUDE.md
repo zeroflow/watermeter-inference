@@ -49,7 +49,7 @@ python -m pytest -m integration
 
 ## Git
 
-- Always use git for version control
+- Commit after every completed task — do not wait for the user to remind you
 - Prefix all commit messages with `claude: ` (e.g., `claude: fix arrow classification threshold`)
 - Never amend or force-push existing commits
 
