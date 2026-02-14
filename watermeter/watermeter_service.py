@@ -95,6 +95,9 @@ class WatermeterService:
         # Cyclic loop task
         self._cyclic_task: Optional[asyncio.Task] = None
 
+        # Cached marker templates for alignment (loaded lazily)
+        self._marker_templates: Optional[List[np.ndarray]] = None
+
         logger.info(f"WatermeterService initialized (trigger_mode={self.trigger_mode})")
 
     async def fetch_images(self) -> Dict[str, Tuple[bytes, str]]:
@@ -222,17 +225,59 @@ class WatermeterService:
         logger.info(f"Extracted {len(images)} ROIs from whole image")
         return images
 
-    def _align_with_markers(self, img: np.ndarray, markers: List[Dict]) -> np.ndarray:
+    # Alignment constants (internal tuning, not user-facing)
+    SEARCH_MARGIN = 0.15      # ±15% of image dimensions for search window
+    CONFIDENCE_THRESHOLD = 0.5  # Minimum template match quality
+
+    def _load_marker_templates(self, marker_count: int) -> Optional[List[np.ndarray]]:
         """
-        Align image using saved marker positions.
-        Uses affine transformation based on marker reference positions.
+        Load marker template images from disk, with caching.
 
         Args:
-            img: Input image
-            markers: List of marker dicts with x, y (normalized 0-1)
+            marker_count: Number of marker templates to load
 
         Returns:
-            Aligned image
+            List of grayscale template images, or None if any are missing/unreadable
+        """
+        if self._marker_templates is not None:
+            return self._marker_templates
+
+        templates = []
+        for i in range(1, marker_count + 1):
+            path = Path(f'/data/marker_{i}.jpg')
+            if not path.exists():
+                logger.warning(f"Marker template not found: {path}")
+                return None
+            template = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+            if template is None:
+                logger.warning(f"Failed to read marker template: {path}")
+                return None
+            templates.append(template)
+
+        self._marker_templates = templates
+        logger.debug(f"Loaded {len(templates)} marker templates")
+        return self._marker_templates
+
+    def invalidate_marker_cache(self):
+        """Clear cached marker templates so they are reloaded on next alignment."""
+        self._marker_templates = None
+
+    def _align_with_markers(self, img: np.ndarray, markers: List[Dict]) -> np.ndarray:
+        """
+        Align image using saved marker positions via template matching.
+
+        Uses cv2.matchTemplate to locate each marker in the current image,
+        then applies a similarity transform (rotation + uniform scale + translation)
+        to correct for camera drift.
+
+        Fail-open: returns original image unchanged on any failure.
+
+        Args:
+            img: Input image (BGR)
+            markers: List of marker dicts with x, y, width, height (normalized 0-1)
+
+        Returns:
+            Aligned image, or original if alignment fails
         """
         height, width = img.shape[:2]
 
@@ -240,22 +285,69 @@ class WatermeterService:
             logger.warning("Need at least 2 markers for alignment")
             return img
 
-        # Convert normalized marker coordinates to pixel coordinates
-        src_points = []
-        for marker in markers[:3]:  # Use up to 3 markers
-            px = marker['x'] * width
-            py = marker['y'] * height
-            src_points.append([px, py])
+        # Load templates (cached after first call)
+        templates = self._load_marker_templates(len(markers))
+        if templates is None:
+            return img
 
-        src_points = np.float32(src_points)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-        # For alignment, we assume the saved markers are the "correct" positions
-        # The image should already be aligned if markers were saved from a good image
-        # This method is for future use when we want to align new images to reference
-        # For now, just return the image as-is since markers define the current state
+        ref_centers = []
+        found_centers = []
 
-        logger.debug(f"Markers available for alignment: {len(markers)}")
-        return img
+        for i, marker in enumerate(markers[:2]):
+            template = templates[i]
+            th, tw = template.shape[:2]
+
+            # Reference center: where the marker should be
+            ref_cx = (marker['x'] + marker['width'] / 2) * width
+            ref_cy = (marker['y'] + marker['height'] / 2) * height
+            ref_centers.append([ref_cx, ref_cy])
+
+            # Search region: ±SEARCH_MARGIN around expected position
+            margin_x = int(self.SEARCH_MARGIN * width)
+            margin_y = int(self.SEARCH_MARGIN * height)
+
+            sx1 = max(0, int(ref_cx - margin_x))
+            sy1 = max(0, int(ref_cy - margin_y))
+            sx2 = min(width, int(ref_cx + margin_x))
+            sy2 = min(height, int(ref_cy + margin_y))
+
+            # Search region must be larger than template
+            if (sx2 - sx1) < tw or (sy2 - sy1) < th:
+                logger.warning(f"Search region too small for marker {i+1}")
+                return img
+
+            search_region = gray[sy1:sy2, sx1:sx2]
+
+            result = cv2.matchTemplate(search_region, template, cv2.TM_CCOEFF_NORMED)
+            _, max_val, _, max_loc = cv2.minMaxLoc(result)
+
+            if max_val < self.CONFIDENCE_THRESHOLD:
+                logger.warning(
+                    f"Marker {i+1} match confidence too low: {max_val:.3f} < {self.CONFIDENCE_THRESHOLD}"
+                )
+                return img
+
+            # Convert match position back to full-image coordinates (center of matched region)
+            found_cx = sx1 + max_loc[0] + tw / 2
+            found_cy = sy1 + max_loc[1] + th / 2
+            found_centers.append([found_cx, found_cy])
+
+        ref_pts = np.float32(ref_centers).reshape(-1, 1, 2)
+        found_pts = np.float32(found_centers).reshape(-1, 1, 2)
+
+        transform, inliers = cv2.estimateAffinePartial2D(found_pts, ref_pts)
+        if transform is None:
+            logger.warning("Failed to estimate alignment transform")
+            return img
+
+        aligned = cv2.warpAffine(img, transform, (width, height), borderMode=cv2.BORDER_REPLICATE)
+        logger.debug(
+            f"Applied marker alignment (confidence: "
+            f"{', '.join(f'{c:.3f}' for c in [ref_centers[0][0], ref_centers[1][0]])})"
+        )
+        return aligned
 
     def _extract_roi(self, img: np.ndarray, roi: Dict, width: int, height: int) -> np.ndarray:
         """

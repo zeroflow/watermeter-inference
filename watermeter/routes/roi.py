@@ -291,6 +291,7 @@ async def save_markers(submission: MarkersSubmission):
         # Reload config in service
         service = watermeter_service.get_service()
         service.config = config
+        service.invalidate_marker_cache()
 
         logger.info(f"Markers saved: {len(markers_data)} markers")
 
@@ -325,6 +326,7 @@ async def delete_markers():
 
         service = watermeter_service.get_service()
         service.config = config
+        service.invalidate_marker_cache()
 
         # Delete marker images
         for i in range(1, marker_count + 1):
