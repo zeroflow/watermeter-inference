@@ -266,6 +266,79 @@
         .delete-button:active {
             background: #bd2130;
         }
+
+        /* Label action buttons (mobile replacement for standalone delete) */
+        .label-actions {
+            display: none;
+            gap: 12px;
+            margin-top: 1rem;
+            width: 100%;
+            max-width: 300px;
+        }
+
+        .label-actions .btn-action-submit {
+            flex: 2;
+            padding: 14px 20px;
+            font-size: 16px;
+            font-weight: 700;
+            color: white;
+            background: var(--primary);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .label-actions .btn-action-delete {
+            flex: 1;
+            padding: 14px 12px;
+            font-size: 14px;
+            font-weight: 600;
+            color: white;
+            background: var(--danger);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        /* Mobile label layout */
+        @media (max-width: 768px) {
+            .label-content {
+                padding: 16px 12px;
+                min-height: auto;
+                justify-content: flex-start;
+            }
+
+            .image-display { margin: 0.5rem 0; gap: 8px; }
+            .image-display img.main-image { height: 150px; }
+            .next-image-container { display: none !important; }
+            .image-row { gap: 0; }
+
+            .model-type-badge { padding: 4px 12px; font-size: 12px; }
+            .instructions { display: none; }
+            .keyboard-shortcuts { display: none; }
+
+            .label-input-container { margin: 0.75rem 0; }
+            .label-input { font-size: 2rem; padding: 0.75rem; width: 180px; }
+
+            .delete-button { display: none; }
+            .label-actions { display: flex !important; }
+
+            .progress-digits-item,
+            .progress-arrows-item { display: none; }
+            .progress-item { min-width: 0; flex: 1; }
+            .progress-stats { gap: 8px; }
+
+            .message { left: 12px; right: 12px; top: 12px; }
+        }
+
+        /* Keyboard open — ultra compact */
+        body.keyboard-open .label-content { padding: 8px 12px; }
+        body.keyboard-open .image-display img.main-image { height: 80px; }
+        body.keyboard-open .model-type-badge { display: none; }
+        body.keyboard-open header { display: none; }
+        body.keyboard-open .app-nav { display: none; }
+        body.keyboard-open { padding-bottom: 0 !important; }
+        body.keyboard-open .label-actions { margin-top: 0.5rem; }
     </style>
 </head>
 <body>
@@ -275,7 +348,7 @@
             <h1>🌊 AI Water Meter Dashboard</h1>
             <div class="header-actions">
                 <div class="progress-stats">
-                    <div class="progress-item">
+                    <div class="progress-item progress-digits-item">
                         <div class="progress-header">
                             <span class="progress-label">Digits</span>
                             <span class="progress-count" id="remaining-digits">-</span>
@@ -284,7 +357,7 @@
                             <div class="progress-bar-fill" id="progress-digits" style="width: 0%"></div>
                         </div>
                     </div>
-                    <div class="progress-item">
+                    <div class="progress-item progress-arrows-item">
                         <div class="progress-header">
                             <span class="progress-label">Arrows</span>
                             <span class="progress-count" id="remaining-arrows">-</span>
@@ -293,7 +366,7 @@
                             <div class="progress-bar-fill" id="progress-arrows" style="width: 0%"></div>
                         </div>
                     </div>
-                    <div class="progress-item">
+                    <div class="progress-item progress-total-item">
                         <div class="progress-header">
                             <span class="progress-label">Total</span>
                             <span class="progress-count" id="remaining-total">-</span>
@@ -339,6 +412,11 @@
                 </div>
 
                 <button class="delete-button" onclick="deleteImage()">Delete (Garbage)</button>
+
+                <div class="label-actions">
+                    <button class="btn-action-submit" onclick="validateAndSubmit(document.getElementById('label-input').value)">Submit</button>
+                    <button class="btn-action-delete" onclick="deleteImage()">Delete</button>
+                </div>
 
                 <div class="keyboard-shortcuts">
                     <strong>Keyboard:</strong> Enter = Confirm | D = Delete (when empty)
