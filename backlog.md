@@ -84,3 +84,8 @@ Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
   - **Trigger conditions**: reading accepted but with warnings, low confidence across multiple positions, large jump from previous
   - **Timeout**: if no response within N minutes, auto-accept (don't block the pipeline)
   - **Depends on**: existing MQTT infra (already has publish + subscribe); BL-06 stale detection could also trigger confirmation requests
+
+## Tech Debt
+
+- **BL-09** `planned` — **Fix Pydantic `schema` field shadow**: `SetupRequest` in `inference.py:267` uses field name `schema` which shadows `BaseModel.schema()` → rename to e.g. `json_schema` or `config_schema`
+- **BL-10** `planned` — **Replace deprecated `openvino.runtime` import**: `openvino.runtime` is deprecated and will be removed in 2026.0 release → replace with `import openvino` throughout
