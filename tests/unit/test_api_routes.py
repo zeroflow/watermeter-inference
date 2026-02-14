@@ -71,8 +71,8 @@ class TestTrainingStatus:
         mock_tm.get_benchmark_status.return_value = {"status": "idle"}
         mock_tm.get_queue.return_value = []
 
-        import watermeter.app as app_module
-        monkeypatch.setattr(app_module, "get_training_manager", lambda: mock_tm)
+        import watermeter.routes.training as training_module
+        monkeypatch.setattr(training_module, "get_training_manager", lambda: mock_tm)
 
         resp = test_client.get("/api/training/status")
         assert resp.status_code == 200
@@ -91,8 +91,8 @@ class TestModelEndpoints:
             {"id": "model_a", "created_at": "2025-01-01"}
         ]
 
-        import watermeter.app as app_module
-        monkeypatch.setattr(app_module, "get_model_manager", lambda: mock_mm)
+        import watermeter.routes.models as models_module
+        monkeypatch.setattr(models_module, "get_model_manager", lambda: mock_mm)
 
         resp = test_client.get("/api/models?model_type=digits")
         assert resp.status_code == 200
@@ -104,8 +104,8 @@ class TestModelEndpoints:
         mock_mm = MagicMock()
         mock_mm.get_model.return_value = {"id": "model_a", "accuracy": 0.95}
 
-        import watermeter.app as app_module
-        monkeypatch.setattr(app_module, "get_model_manager", lambda: mock_mm)
+        import watermeter.routes.models as models_module
+        monkeypatch.setattr(models_module, "get_model_manager", lambda: mock_mm)
 
         resp = test_client.get("/api/models/digits/model_a")
         assert resp.status_code == 200
@@ -117,8 +117,8 @@ class TestModelEndpoints:
         mock_mm = MagicMock()
         mock_mm.get_model.return_value = None
 
-        import watermeter.app as app_module
-        monkeypatch.setattr(app_module, "get_model_manager", lambda: mock_mm)
+        import watermeter.routes.models as models_module
+        monkeypatch.setattr(models_module, "get_model_manager", lambda: mock_mm)
 
         resp = test_client.get("/api/models/digits/nonexistent")
         assert resp.status_code == 404
@@ -127,8 +127,8 @@ class TestModelEndpoints:
         mock_mm = MagicMock()
         mock_mm.delete_model.return_value = True
 
-        import watermeter.app as app_module
-        monkeypatch.setattr(app_module, "get_model_manager", lambda: mock_mm)
+        import watermeter.routes.models as models_module
+        monkeypatch.setattr(models_module, "get_model_manager", lambda: mock_mm)
 
         resp = test_client.delete("/api/models/digits/model_a")
         assert resp.status_code == 200

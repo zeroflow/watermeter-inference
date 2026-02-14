@@ -116,13 +116,10 @@ def test_client(mock_service, tmp_path, monkeypatch):
 
     # Import app after mocking (deferred to avoid import errors at collection time)
     import watermeter.app as app_module
-
-    # Patch the singletons at the app module level too
-    monkeypatch.setattr(app_module, "get_service", lambda: mock_service)
-    monkeypatch.setattr(app_module, "get_inference_service", lambda: MagicMock())
+    import watermeter.routes.pages as pages_module
 
     # Override template/static dirs to use test stubs
-    monkeypatch.setattr(app_module, "templates", Jinja2Templates(directory=str(templates_dir)))
+    monkeypatch.setattr(pages_module, "templates", Jinja2Templates(directory=str(templates_dir)))
     app_module.app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
     from fastapi.testclient import TestClient

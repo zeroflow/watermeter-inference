@@ -421,35 +421,18 @@ class TrainingManager:
 
         Progress updates are sent via job.update_progress() during training.
         """
-        import random
         import shutil
-        import math
 
         import numpy as np
         import torch
         import timm
-        import cv2
-        import openvino as ov
         from torchvision.datasets import ImageFolder
-        from torchvision import transforms
         from torch.utils.data import DataLoader, Subset
-        from sklearn.utils.class_weight import compute_class_weight as sklearn_compute_class_weight
 
-        def set_all_seeds(s):
-            """Set all random seeds for reproducibility."""
-            random.seed(s)
-            np.random.seed(s)
-            torch.manual_seed(s)
-            if torch.cuda.is_available():
-                torch.cuda.manual_seed_all(s)
-            torch.backends.cudnn.deterministic = True
-            torch.backends.cudnn.benchmark = False
-
-        def worker_init_fn(worker_id):
-            """Initialize worker with unique but reproducible seed."""
-            worker_seed = torch.initial_seed() % 2**32
-            np.random.seed(worker_seed)
-            random.seed(worker_seed)
+        from .training_core import (
+            set_all_seeds, worker_init_fn, create_transforms,
+            stratified_split, compute_class_weights, export_to_openvino,
+        )
 
         try:
             # Set seeds for reproducibility
@@ -487,36 +470,12 @@ class TrainingManager:
                 raise ValueError(f"Dataset directory not found: {dataset_dir}")
 
             # Create transforms
-            train_transform = transforms.Compose([
-                transforms.Resize((resolution, resolution)),
-                transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2),
-                transforms.ToTensor(),
-                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-            ])
-
-            val_transform = transforms.Compose([
-                transforms.Resize((resolution, resolution)),
-                transforms.ToTensor(),
-                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-            ])
+            train_transform, val_transform = create_transforms(resolution)
 
             # Load dataset and create stratified split
             job.add_log("Loading dataset and creating train/val split...")
             dataset = ImageFolder(str(dataset_dir))
-
-            indices_by_class = {}
-            for idx, (_, label) in enumerate(dataset):
-                if label not in indices_by_class:
-                    indices_by_class[label] = []
-                indices_by_class[label].append(idx)
-
-            train_idx = []
-            val_idx = []
-            for label, indices in indices_by_class.items():
-                random.shuffle(indices)
-                split_point = int(0.8 * len(indices))
-                train_idx.extend(indices[:split_point])
-                val_idx.extend(indices[split_point:])
+            train_idx, val_idx = stratified_split(dataset)
 
             # Create datasets with appropriate transforms
             train_dataset = ImageFolder(str(dataset_dir), transform=train_transform)
@@ -536,16 +495,8 @@ class TrainingManager:
 
             # Compute class weights
             num_classes_actual = len(dataset.classes)
-            train_labels = [dataset.targets[idx] for idx in train_idx]
-            unique_labels = np.unique(train_labels)
-            computed_weights = sklearn_compute_class_weight(
-                'balanced', classes=unique_labels, y=train_labels
-            )
-            class_weights = np.ones(num_classes_actual, dtype=np.float32)
-            for label, weight in zip(unique_labels, computed_weights):
-                class_weights[label] = weight
-            class_weights_tensor = torch.FloatTensor(class_weights).to(device)
-            job.add_log(f"Class weights computed (ratio: {computed_weights.max()/computed_weights.min():.1f}x)")
+            class_weights_tensor = compute_class_weights(dataset, train_idx, device)
+            job.add_log(f"Class weights computed")
 
             # Create model
             job.add_log(f"Creating model: {architecture}")
@@ -637,33 +588,15 @@ class TrainingManager:
             job.add_log(f"Best model from epoch {best_epoch+1} with {best_val_acc:.2f}% accuracy")
 
             # Export to ONNX and OpenVINO
-            job.update_progress(message="Exporting model to ONNX...")
-            job.add_log("Exporting to ONNX...")
+            job.update_progress(message="Exporting model...")
+            job.add_log("Exporting to ONNX + OpenVINO...")
 
             model.cpu()
             model.eval()
-            dummy_input = torch.randn(1, 3, resolution, resolution)
 
-            # Create output directory
             output_dir = Path(f"/app/models/{model_type}/{model_filename}")
-            output_dir.mkdir(parents=True, exist_ok=True)
-
-            onnx_path = output_dir / f'{model_filename}.onnx'
-            torch.onnx.export(
-                model, dummy_input, onnx_path,
-                export_params=True, opset_version=18,
-                input_names=['input'], output_names=['output']
-            )
+            onnx_path, ov_path = export_to_openvino(model, resolution, output_dir, model_filename)
             job.add_log(f"ONNX model saved: {onnx_path}")
-
-            # Convert to OpenVINO
-            job.update_progress(message="Converting to OpenVINO...")
-            job.add_log("Converting to OpenVINO...")
-
-            core = ov.Core()
-            model_onnx = core.read_model(str(onnx_path))
-            ov_path = output_dir / f'{model_filename}.xml'
-            ov.save_model(model_onnx, str(ov_path))
             job.add_log(f"OpenVINO model saved: {ov_path}")
 
             # Save metadata
@@ -956,10 +889,10 @@ class TrainingManager:
         Uses logic from benchmark_digits.py and benchmark_arrows.py.
         """
         import openvino as ov
-        import cv2
         import numpy as np
         from collections import defaultdict
-        import math
+
+        from .training_core import preprocess_image, softmax_predict
 
         model_type = job.model_type
 
@@ -1030,27 +963,17 @@ class TrainingManager:
                 expected_label = ground_truth
 
             for img_path in image_paths:
-                # Preprocess
-                img = cv2.imread(str(img_path))
-                if img is None:
+                try:
+                    img = preprocess_image(str(img_path), resolution)
+                except ValueError:
                     continue
-                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                img = cv2.resize(img, (resolution, resolution))
-                img = img.astype(np.float32) / 255.0
-                img = (img - [0.485, 0.456, 0.406]) / [0.229, 0.224, 0.225]
-                img = img.transpose(2, 0, 1)[np.newaxis, ...].astype(np.float32)
 
                 # Inference
                 start_time = time.perf_counter()
                 result = compiled([img])[compiled.output(0)][0]
                 inference_time = time.perf_counter() - start_time
 
-                # Softmax
-                result = result - result.max()
-                probs = np.exp(result) / np.exp(result).sum()
-                pred_idx = probs.argmax()
-                confidence = float(probs[pred_idx])
-                pred_label = classes[pred_idx]
+                pred_label, confidence = softmax_predict(result, classes)
 
                 all_predictions.append((pred_label, expected_label))
                 all_confidences.append(confidence)

@@ -1,4 +1,4 @@
-FROM openvino/ubuntu22_runtime:latest
+FROM openvino/ubuntu22_runtime:2025.0.0
 USER root
 
 # Install system dependencies
@@ -18,13 +18,18 @@ RUN pip install --no-cache-dir torch torchvision --index-url https://download.py
 COPY requirements-docker.txt /tmp/requirements-docker.txt
 RUN pip install --no-cache-dir -r /tmp/requirements-docker.txt && rm /tmp/requirements-docker.txt
 
-# Set up directory structure
+# Create non-root user
+RUN groupadd -r watermeter && useradd -r -g watermeter -d /app -s /sbin/nologin watermeter
+
+# Set up directory structure (owned by watermeter user)
 WORKDIR /app
 RUN mkdir -p /config /config_default /data \
     /training/arrows/input \
     /training/arrows/ground_truth \
     /training/digits/input \
-    /training/digits/ground_truth
+    /training/digits/ground_truth \
+    /app/models \
+    && chown -R watermeter:watermeter /app /config /data /training
 
 # Copy application package
 COPY watermeter/ /app/watermeter/
@@ -40,8 +45,14 @@ COPY config.yaml /config_default/config.yaml
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
+# Fix ownership of copied files
+RUN chown -R watermeter:watermeter /app /config_default
+
 # Expose port
 EXPOSE 8001
+
+# Switch to non-root user
+USER watermeter
 
 # Set entrypoint and default command
 ENTRYPOINT ["/docker-entrypoint.sh"]

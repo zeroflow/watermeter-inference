@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Debug build & run script for local development.
+# Maps to host port 8002 (not 8001) so it can run alongside production.
+
 # Parse flags
 PURGE_MODELS=0
 for arg in "$@"; do
