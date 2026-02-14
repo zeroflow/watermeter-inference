@@ -11,17 +11,7 @@ import pytest
 from watermeter.training_manager import TrainingManager
 
 
-def test_digit_classes_include_nan():
-    """Digits class list must contain 'NAN' (not 'N', not 'nan')."""
-    # The standard digit classes used throughout the codebase
-    digit_classes = [str(i) for i in range(10)] + ['NAN']
-
-    assert 'NAN' in digit_classes
-    assert 'N' not in digit_classes
-    assert len(digit_classes) == 11
-
-
-def test_arrow_classes_100_do_not_contain_nan(tmp_path):
+def test_arrow_classes_do_not_contain_nan(tmp_path):
     """Arrow classes should be numeric, never NAN."""
     with patch('watermeter.model_manager._model_manager', None):
         with patch('watermeter.model_manager.ModelManager.__init__', lambda self, **kw: setattr(self, 'models_base_path', tmp_path)):

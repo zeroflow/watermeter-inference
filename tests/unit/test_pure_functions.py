@@ -10,17 +10,7 @@ from pathlib import Path
 
 import pytest
 
-
-# === safe_subpath (from app.py) ===
-# We re-implement it here since app.py can't be imported directly (cv2/openvino deps).
-# The regression test validates it matches the real implementation.
-
-def safe_subpath(base: Path, *parts: str) -> Path:
-    """Join path parts to base and verify the result stays inside base (prevents path traversal)."""
-    resolved = (base / Path(*parts)).resolve()
-    if not resolved.is_relative_to(base.resolve()):
-        raise ValueError(f"Path traversal detected: {'/'.join(parts)}")
-    return resolved
+from watermeter.app import safe_subpath
 
 
 class TestSafeSubpath:
