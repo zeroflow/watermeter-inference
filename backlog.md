@@ -44,7 +44,21 @@ Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
   - **Transparency**: flag corrections as warnings on dashboard (e.g. "digit_3 corrected: 3→9 (prev=347, arrows~9, conf=0.42)")
   - **Safety**: never correct when all positions are high-confidence and consistent — only intervene when something doesn't add up
   - **Depends on**: softmax scores per position (already available from inference), rate_history (already tracked)
-- **BL-05** `idea` — **Better arrow classes**: combine 1.0 + 0.5 + 0.1 arrow readings for more precise values; cross-check between arrows (e.g. arrow1=1.0/1.5/1.6 + arrow2=6.2 → consistent). Cave: parallax error skews images
+- **BL-05** `planned` — **Cross-arrow consistency**: use adjacent arrow readings to validate and correct each other
+  - **Scope**: single-arrow precision first (per user), cross-validation is a later enhancement
+  - **Core idea**: if arrow1 reads 1.x and arrow2 reads 6.2, they should be consistent — arrow1's sub-integer can be narrowed
+  - **Cave**: parallax error skews images, especially on outer dial positions — may need tolerance
+  - **Depends on**: BL-04 (rule engine) provides the framework for cross-position correction
+  - **Deferred**: multi-model ensemble (running 1.0 + 0.5 + 0.1 step models) — too expensive for now
+- **BL-08** `planned` — **Arrow regression mode**: train arrows as regression (single 0.0–1.0 output) instead of classification
+  - **Motivation**: reference project (AI-on-the-edge) uses regression; avoids class boundary issues; continuous output
+  - **Implementation**: add "continuous" mode alongside current "discrete" mode in training config
+    - Training: MSE/Huber loss, single output neuron, sigmoid activation → 0.0–1.0
+    - Inference: multiply output by 10 → dial position 0.0–9.9
+    - New `Regressor` class in inference.py (similar to `Classifier` but no softmax/argmax)
+  - **UI**: toggle between discrete/continuous in training form; model filename: `model_arrows_{arch}_continuous_r{res}`
+  - **Compare**: benchmark both modes on same ground truth to see which is more accurate
+  - **Priority**: implement after BL-05 since it's a bigger change to the training pipeline
 - **BL-06** `idea` — **Warnings on constant use**: detect and warn when meter reading hasn't changed over time
 
 ## User Interaction
