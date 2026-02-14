@@ -7,6 +7,7 @@ import pytest
 pytestmark = pytest.mark.integration
 
 BENCHMARK_TIMEOUT = 120  # 2 minutes max
+MIN_ACCURACY = 90.0      # percent — fail if model is worse than this
 
 
 def _find_benchmarkable_model(api, model_type="digits"):
@@ -35,21 +36,9 @@ def _poll_benchmark_status(api, timeout=BENCHMARK_TIMEOUT):
     pytest.fail(f"Benchmark did not complete within {timeout}s")
 
 
-def test_benchmark_e2e(api):
-    """Run benchmark on an existing model and verify results."""
-    model_id = _find_benchmarkable_model(api)
-    if not model_id:
-        pytest.skip("No benchmarkable digits model found")
-
-    # Check ground truth exists
-    stats = api.get("/api/training-data/stats").json()
-    gt = stats.get("ground_truth", {}).get("digits", {})
-    total = sum(gt.values()) if isinstance(gt, dict) else 0
-    if total < 10:
-        pytest.skip(f"Not enough ground truth data for benchmark ({total} images)")
-
-    # Start benchmark
-    r = api.post(f"/api/models/digits/{model_id}/benchmark")
+def _run_benchmark(api, model_type, model_id):
+    """Start benchmark, poll to completion, return result dict."""
+    r = api.post(f"/api/models/{model_type}/{model_id}/benchmark")
     if r.status_code == 409:
         pytest.skip("Another benchmark is already running")
     assert r.status_code == 200
@@ -57,17 +46,79 @@ def test_benchmark_e2e(api):
     assert data["success"] is True
     assert "job_id" in data
 
-    # Poll until done
     final = _poll_benchmark_status(api)
     benchmark = final.get("benchmark")
-    if benchmark:
-        assert benchmark["status"] in ("completed", "idle"), (
-            f"Benchmark ended with: {benchmark['status']}"
-        )
-        # If completed, check for accuracy results
-        if benchmark["status"] == "completed":
-            result = benchmark.get("result", {})
-            assert "accuracy" in result or "overall_accuracy" in result or result
+    assert benchmark is not None, "No benchmark status returned"
+    assert benchmark["status"] == "completed", (
+        f"Benchmark ended with status '{benchmark['status']}', "
+        f"error: {benchmark.get('error')}"
+    )
+
+    result = benchmark.get("result")
+    assert result is not None, "Benchmark completed but no result returned"
+    return result, data["job_id"]
+
+
+def _skip_if_not_enough_gt(api, model_type, min_images=10):
+    """Skip test if not enough ground truth data exists."""
+    stats = api.get("/api/training-data/stats").json()
+    gt = stats.get("ground_truth", {}).get(model_type, {})
+    total = sum(gt.values()) if isinstance(gt, dict) else 0
+    if total < min_images:
+        pytest.skip(f"Not enough {model_type} ground truth data ({total} images)")
+    return total
+
+
+def test_benchmark_digits(api):
+    """Benchmark digits model: verify result structure and minimum accuracy."""
+    model_id = _find_benchmarkable_model(api, "digits")
+    if not model_id:
+        pytest.skip("No benchmarkable digits model found")
+
+    gt_total = _skip_if_not_enough_gt(api, "digits")
+
+    result, job_id = _run_benchmark(api, "digits", model_id)
+
+    # Result structure
+    assert isinstance(result["accuracy"], (int, float))
+    assert isinstance(result["mean_confidence"], (int, float))
+    assert isinstance(result["total_images"], int)
+    assert isinstance(result["correct_predictions"], int)
+    assert isinstance(result["per_class_accuracy"], dict)
+    assert result["total_images"] > 0
+    assert result["correct_predictions"] <= result["total_images"]
+
+    # Accuracy gate
+    assert result["accuracy"] >= MIN_ACCURACY, (
+        f"Digits accuracy {result['accuracy']:.1f}% < {MIN_ACCURACY}% threshold "
+        f"({result['correct_predictions']}/{result['total_images']})"
+    )
+
+    # Per-class: every class should have count > 0 and accuracy as float
+    for cls, data in result["per_class_accuracy"].items():
+        assert "accuracy" in data, f"Class '{cls}' missing accuracy"
+        assert "count" in data, f"Class '{cls}' missing count"
+
+
+def test_benchmark_arrows(api):
+    """Benchmark arrows model: verify result structure and minimum accuracy."""
+    model_id = _find_benchmarkable_model(api, "arrows")
+    if not model_id:
+        pytest.skip("No benchmarkable arrows model found")
+
+    _skip_if_not_enough_gt(api, "arrows")
+
+    result, job_id = _run_benchmark(api, "arrows", model_id)
+
+    # Result structure
+    assert isinstance(result["accuracy"], (int, float))
+    assert result["total_images"] > 0
+
+    # Accuracy gate
+    assert result["accuracy"] >= MIN_ACCURACY, (
+        f"Arrows accuracy {result['accuracy']:.1f}% < {MIN_ACCURACY}% threshold "
+        f"({result['correct_predictions']}/{result['total_images']})"
+    )
 
 
 def test_benchmark_cancel(api):
@@ -76,11 +127,7 @@ def test_benchmark_cancel(api):
     if not model_id:
         pytest.skip("No benchmarkable digits model found")
 
-    stats = api.get("/api/training-data/stats").json()
-    gt = stats.get("ground_truth", {}).get("digits", {})
-    total = sum(gt.values()) if isinstance(gt, dict) else 0
-    if total < 10:
-        pytest.skip("Not enough ground truth data")
+    _skip_if_not_enough_gt(api, "digits")
 
     r = api.post(f"/api/models/digits/{model_id}/benchmark")
     if r.status_code == 409:
