@@ -49,6 +49,9 @@ async def get_status_html(request: Request):
     """Get current status as HTML fragment for HTMX."""
     service = watermeter_service.get_service()
     state = service.current_state
+    state["mqtt_connected"] = (
+        service.mqtt_client.is_connected() if service.mqtt_client else False
+    )
 
     return templates.TemplateResponse(
         request,

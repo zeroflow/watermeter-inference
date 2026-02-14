@@ -1,3 +1,9 @@
+{% if not mqtt_connected %}
+<div class="warnings">
+    <p>MQTT nicht verbunden — Daten werden nicht an Home Assistant gesendet.</p>
+</div>
+{% endif %}
+
 {% if status == 'idle' or not total_value %}
 <div class="no-data">
     <h3>Keine Daten verfügbar</h3>

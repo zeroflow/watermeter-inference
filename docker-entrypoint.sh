@@ -11,6 +11,7 @@ if [ ! -f /config/config.yaml ]; then
     echo "No config found, copying defaults..."
     cp /config_default/config.yaml /config/config.yaml
 fi
+chown watermeter:watermeter /config/config.yaml 2>/dev/null || true
 echo "OK config"
 
 # Symlink config to /app for application to use
@@ -75,6 +76,9 @@ EOF
 else
     echo "OK arrows models (existing)"
 fi
+
+# Fix ownership after all copies (entrypoint runs as root, files need to be owned by watermeter)
+chown -R watermeter:watermeter /app/models /config /data 2>/dev/null || true
 
 echo "=== Starting application ==="
 cd /app

@@ -924,7 +924,11 @@ class WatermeterService:
                 self.publish_discovery()
 
     def start_mqtt(self):
-        """Initialize and start MQTT client."""
+        """Initialize and start MQTT client.
+
+        Connects to the MQTT broker. If the broker is unreachable the app
+        continues without MQTT — paho's background loop will keep retrying.
+        """
         # Capture the event loop for MQTT callbacks
         try:
             self.loop = asyncio.get_running_loop()
@@ -939,13 +943,19 @@ class WatermeterService:
         self.mqtt_client.on_message = self.on_mqtt_message
 
         logger.info(f"Connecting to MQTT broker {mqtt_config['broker']}:{mqtt_config['port']}")
-        self.mqtt_client.connect(
-            mqtt_config['broker'],
-            mqtt_config['port'],
-            mqtt_config['keepalive']
-        )
+        try:
+            self.mqtt_client.connect(
+                mqtt_config['broker'],
+                mqtt_config['port'],
+                mqtt_config['keepalive']
+            )
+        except (OSError, ConnectionRefusedError) as exc:
+            logger.warning(
+                f"MQTT broker not reachable ({exc}). "
+                f"App continues without MQTT — will reconnect automatically."
+            )
 
-        # Start loop in background thread
+        # Start loop in background thread (handles reconnect automatically)
         self.mqtt_client.loop_start()
         logger.info("MQTT client started")
 

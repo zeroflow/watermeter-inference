@@ -59,7 +59,7 @@ ls -lh digits/selected/ arrows/selected/
 
 echo ""
 echo "Building watermeter-dashboard..."
-docker build . -t wmi_full
+docker build . -t watermeter-dashboard
 
 echo "Creating local directories for volumes..."
 mkdir -p ./config_debug ./data_debug ./models_debug
@@ -71,7 +71,7 @@ fi
 
 # rm -rf ./config_debug/*
 
-CONTAINER_NAME="wmi_full"
+CONTAINER_NAME="watermeter-dashboard"
 
 # Stop and remove existing container if it exists
 if docker container inspect "$CONTAINER_NAME" &>/dev/null; then
@@ -102,4 +102,4 @@ docker run -it --rm \
   -v ./digits/:/training/digits \
   -v /home/thomas/.cache/huggingface:/root/.cache/huggingface \
   ${HF_TOKEN:+-e HF_TOKEN="$HF_TOKEN"} \
-  wmi_full
+  watermeter-dashboard
