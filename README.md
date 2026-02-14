@@ -1,324 +1,160 @@
-# Water Meter AI Inference Service
+# Water Meter AI
 
-## Overview
+Self-hosted service that reads water meters using OpenVINO inference and publishes readings to Home Assistant via MQTT.
 
-This service replaces the previous Node-Red flow, combining all functions in a single Python service:
-- MQTT-based trigger
-- Automatic water meter image loading
-- OpenVINO inference for digits and analog dials
-- Consistency checks and plausibility validation
-- MQTT integration with Home Assistant
+## Features
 
-## Architecture
+- **Automated meter reading** -- receives MQTT triggers from an AI-on-the-edge ESP32-CAM, fetches images, runs inference, and publishes values to Home Assistant
+- **Digit and analog dial recognition** -- MobileNetV3-based classifiers for digital counters (classes 0-9 + NAN) and analog pointer dials (10 to 100 decimal classes, e.g. 0.0, 0.5, 1.0 ... 9.5 for a 20-class model)
+- **Web dashboard** -- live view of the current reading with per-image confidence scores, warnings, and manual trigger/reset controls
+- **Built-in model training** -- train new classifiers from the web UI using PyTorch and timm, with automatic ONNX and OpenVINO export
+- **Benchmarking** -- evaluate model accuracy against labeled ground truth data
+- **Labeling tool** -- review and correct low-confidence images directly in the browser to build training datasets
+- **ROI configuration** -- visually define digit and dial regions on the meter image
+- **Plausibility checks** -- reverse detection, rate limiting, and consistency validation between adjacent dials
 
-```
-MQTT Trigger (watermeter/status)  <------------+
-         |                                     |
-    Image Loader (7 images from AI-on-the-edge)|
-         |                                     |
-    OpenVINO Inference (digits & arrows)       |
-         |                                     |
-    Value Calculation + Consistency Check       |
-         |                                     |
-    Plausibility Check (Reverse/Rate)          |
-         |                                     |
-    MQTT to Home Assistant                     |
-         |                                     |
-    Status Update -> Web Dashboard ------------+
-                     (with "Read Now" button)
-```
-
-## Components
-
-### 1. Image Sources
-The service loads 7 images from the AI-on-the-edge device:
-
-**Digits:**
-- `main_dig1` - Hundreds (x100 m³)
-- `main_dig2` - Tens (x10 m³)
-- `main_dig3` - Ones (x1 m³)
-
-**Analog dials (arrows):**
-- `main_ana1` - Tenths (x0.1 m³)
-- `main_ana2` - Hundredths (x0.01 m³)
-- `main_ana3` - Thousandths (x0.001 m³)
-- `main_ana4` - Ten-thousandths (x0.0001 m³)
-
-URL pattern: `http://<AIOTE_HOST>/img_tmp/{id}.jpg`
-
-### 2. Inference Models
-
-**Digits Classifier:**
-- Model: `ov_model_digits/model_mobilenetv3_small_100_c11_r144.xml`
-- Classes: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'NAN']
-- Input: 144x144 RGB
-
-**Arrows Classifier:**
-- Model: `ov_model_arrows/model_mobilenetv3_small_100_c20_r144.xml`
-- Classes: ['0.0', '0.5', '1.0', '1.5', ..., '9.0', '9.5']
-- Input: 144x144 RGB
-
-### 3. Value Calculation
-
-**Formula:**
-```
-total = (dig1 x 100) + (dig2 x 10) + (dig3 x 1) +
-        (floor(ana1) x 0.1) + (floor(ana2) x 0.01) + (floor(ana3) x 0.001) + (floor(ana4) x 0.0001)
-```
-
-**Consistency Check:**
-A pointer/digit at position `i` with value `X.5` (half-position) should mean that the next position `i+1` is in the range 5-9.
-
-Example:
-- `dig1 = 2.0`, `dig2 = 3` -> OK (dig1 points exactly at 2, dig2 is in the lower range)
-- `dig1 = 2.5`, `dig2 = 7` -> OK (dig1 between 2 and 3, dig2 in the upper range)
-- `dig1 = 2.5`, `dig2 = 2` -> WARNING (inconsistency!)
-
-### 4. Plausibility Checks
-
-**Reverse Prevention:**
-- The meter value cannot run backwards
-- If `new_value < previous_value` -> value is rejected
-- Reset function available (for meter replacement)
-
-**Rate Limiting:**
-- Images are loaded at max 1/second (protection for AI-on-the-edge)
-- Inference is performed sequentially
-- Low-confidence images are saved at most once per hour
-
-### 5. Low Confidence Handling
-
-When `confidence < 0.8`:
-- Image is saved: `/training/{type}/input/{class}/{id}_{timestamp}.jpg`
-- Format: `main_dig1_20260124143025.jpg`
-
-### 6. Web Dashboard
-
-**Status page:** `http://localhost:8001/`
-
-**Display:**
-- **Images in order** (dig1, dig2, dig3, ana1-4)
-  - Image thumbnail
-  - Recognized value (e.g. "7" or "3.5")
-  - Confidence score (e.g. "95.3%")
-  - Color coding:
-    - Green: confidence >= 0.95
-    - Yellow: 0.80 <= confidence < 0.95
-    - Red: confidence < 0.80
-
-- **Calculated total value**
-  - Large display: "123.4567 m³"
-  - Last update: timestamp
-  - Status: "OK" / "Warning"
-
-- **Warnings & Status**
-  - Consistency warnings (e.g. "dig1=2.5 vs dig2=2 - inconsistent!")
-  - Rate too high (e.g. "Jump of +10 m³ in 5 minutes")
-  - Reverse detection (e.g. "Reverse detected: 123.4 -> 122.1")
-  - Low confidence alerts
-
-- **Actions**
-  - "Read Now" button -> triggers new measurement
-  - "Reset Previous Value" button -> resets reverse protection
-  - Auto-refresh toggle (live updates)
-
-**Technology:**
-- FastAPI + Jinja2 Templates (HTML)
-- HTMX for dynamic updates (no page reload)
-- Minimal CSS (responsive, mobile-friendly)
-
-## Configuration
-
-### Config File
-
-```yaml
-# AI-on-the-edge Device
-aiote:
-  host: "192.168.x.x"  # Your AI-on-the-edge device IP
-
-# MQTT Settings
-mqtt:
-  broker: "192.168.x.x"  # Your MQTT broker IP
-  port: 1883
-  trigger_topic: "watermeter/status"
-  trigger_payload: "Flow finished"
-
-# Home Assistant Integration
-homeassistant:
-  enabled: true
-  publish_topic: "homeassistant/sensor/watermeter/state"
-
-# Inference Settings
-inference:
-  confidence_threshold: 0.8
-  device: "AUTO"  # CPU, GPU, or AUTO
-```
-
-See [config.yaml](config.yaml) for the full configuration reference.
-
-## Workflow Details
-
-### 1. MQTT Trigger
-```
-Receive: watermeter/status = "Flow finished"
-         |
-    Start processing
-```
-
-### 2. Image Loading (sequential)
-```
-For each ID in [main_dig1, main_dig2, main_dig3,
-                main_ana1, main_ana2, main_ana3, main_ana4]:
-    1. Wait (rate limit)
-    2. Load http://<AIOTE_HOST>/img_tmp/{id}.jpg
-    3. Store temporarily
-```
-
-### 3. Inference
-```
-For each image:
-    1. Determine classifier (digits/arrows based on ID)
-    2. Run inference
-    3. Get {class: "X", confidence: 0.XX}
-    4. If confidence < 0.8:
-       -> Save image for later training
-```
-
-### 4. Value Calculation
-```
-1. Collect all 7 results
-2. Sort by position (dig1, dig2, dig3, ana1-ana4)
-3. Calculate total value
-4. Run consistency check
-5. Generate warnings for inconsistencies
-```
-
-### 5. Plausibility Check
-```
-IF new_value < previous_value:
-    -> Reject value (log warning)
-ELSE:
-    -> Accept value
-    -> Store as previous_value
-```
-
-### 6. MQTT Publish
-```
-Topic: homeassistant/sensor/watermeter/state
-Payload: {
-    "state": 123.4567,
-    "attributes": {
-        "unit_of_measurement": "m³",
-        "device_class": "water",
-        "state_class": "total_increasing",
-        "warnings": ["..."],  // optional
-        "confidences": {
-            "main_dig1": 0.99,
-            "main_dig2": 0.95,
-            ...
-        }
-    }
-}
-```
-
-## Installation
-
-### Option 1: Docker (recommended)
-
-See [DOCKER.md](DOCKER.md) for full instructions.
+## Quick Start
 
 ```bash
+git clone <repository-url>
+cd watermeter
+
+# Create config directory and copy defaults
+mkdir -p config
+cp config.yaml config/config.yaml
+# Edit config/config.yaml: set aiote.host, mqtt.broker, and images
+
 docker compose up -d
 ```
 
-### Option 2: Local Python
+The dashboard is available at `http://localhost:8001`.
+
+For Intel iGPU acceleration:
 
 ```bash
-pip install -r requirements.txt
-uvicorn watermeter.app:app --host 0.0.0.0 --port 8001
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 ```
 
-### Option 3: Systemd Service
+See [DOCKER.md](DOCKER.md) for volume mounts, GPU setup, and manual Docker commands.
 
-```ini
-[Unit]
-Description=Water Meter AI Service
-After=network.target
+## Configuration
 
-[Service]
-Type=simple
-User=watermeter
-WorkingDirectory=/opt/watermeter
-ExecStart=/usr/bin/python3 -m uvicorn watermeter.app:app --host 0.0.0.0 --port 8001
-Restart=always
+All settings are in `config.yaml`. The most important sections:
 
-[Install]
-WantedBy=multi-user.target
-```
+| Section | Key fields | Purpose |
+|---------|-----------|---------|
+| `aiote` | `host` | IP address of the AI-on-the-edge ESP32-CAM device |
+| `images` | `src`, `digits`, `arrows` | Image source URL and region identifiers |
+| `mqtt` | `broker`, `port`, `trigger_topic` | MQTT broker connection and trigger settings |
+| `homeassistant` | `enabled`, `publish_topic` | Home Assistant MQTT discovery and state publishing |
+| `inference` | `device`, `confidence_threshold`, `digits_model`, `arrows_model` | Model paths and OpenVINO device (CPU, GPU, or AUTO) |
+| `plausibility` | `max_rate_per_hour`, `enable_reverse_detection` | Value validation thresholds |
+| `low_confidence` | `save_enabled`, `save_path` | Automatic collection of uncertain images for retraining |
+
+See [config.yaml](config.yaml) for the full reference with comments.
+
+## Web Interface
+
+The service provides several pages, all using HTMX for live updates without page reloads:
+
+- **Dashboard** (`/`) -- current meter reading, per-image predictions with confidence scores (color-coded green/yellow/red), warnings, and manual trigger/reset buttons
+- **Training** (`/training`) -- start training jobs, monitor progress, view training history, queue management, and benchmarking
+- **Labeling** (`/label`) -- review low-confidence images, assign correct labels, and build ground truth datasets for retraining
+- **ROI Config** (`/roi-config`) -- visually position digit and dial extraction regions on the meter image
+- **Config Editor** (`/config-editor`) -- edit `config.yaml` in the browser with syntax highlighting
 
 ## API Endpoints
 
-### Web Dashboard
-- `GET /` - Status dashboard (HTML)
-- `GET /api/status` - Current status as JSON
-- `POST /api/trigger` - Trigger manual measurement
-- `POST /api/reset` - Reset previous value
+### Service
 
-### Legacy Endpoints (Label Studio)
-- `POST /predict/{model_type}/setup` - Model setup
-- `POST /predict/{model_type}/predict` - Batch prediction
-- `GET /predict/{model_type}/health` - Health check
-- `POST /predict/{model_type}` - Direct prediction
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/status` | Current reading, predictions, and warnings as JSON |
+| `POST` | `/api/trigger` | Trigger a new meter reading |
+| `POST` | `/api/reset` | Reset the previous value (for meter replacement) |
+| `GET` | `/health` | Health check |
 
-## Testing
+### Training and Models
 
-### Manual Trigger via MQTT
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/training/status` | Training job and benchmark status |
+| `POST` | `/api/training/start` | Start or queue a training job |
+| `POST` | `/api/training/cancel` | Cancel the active training job |
+| `GET` | `/api/models?type={digits\|arrows}` | List available models |
+| `POST` | `/api/models/{type}/{id}/activate` | Set a model as the active model |
+| `DELETE` | `/api/models/{type}/{id}` | Delete a model |
+| `POST` | `/api/models/{type}/{id}/benchmark` | Run benchmark on a model |
+| `GET` | `/api/training-data/stats` | Training data statistics |
+
+### Configuration and Labeling
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/config` | Get current config as YAML |
+| `POST` | `/api/config/save` | Save updated config |
+| `GET` | `/api/label/next-image` | Get next image for labeling |
+| `POST` | `/api/label/submit` | Submit a label correction |
+| `GET` | `/api/roi/config` | Get current ROI definitions |
+| `POST` | `/api/roi/digits` | Save digit ROI definitions |
+| `POST` | `/api/roi/analogs` | Save analog dial ROI definitions |
+
+## Development
+
+### Local Setup
+
 ```bash
-mosquitto_pub -h <MQTT_BROKER_IP> -t "watermeter/status" -m "Flow finished"
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Start the service
+uvicorn watermeter.app:app --host 0.0.0.0 --port 8001 --reload
 ```
 
-### Manual Trigger via Web API
+### Running Tests
+
 ```bash
-curl -X POST http://localhost:8001/api/trigger
+# Unit and regression tests (no Docker required, ~6 seconds)
+python -m pytest tests/unit/ tests/regression/ --tb=short -q
+
+# Integration tests (requires a running Docker container)
+python -m pytest -m integration --no-build --base-url http://localhost:8001
 ```
 
-### Query Status
-```bash
-curl http://localhost:8001/api/status | jq
+### Project Structure
+
+```
+watermeter/
+  app.py                 # FastAPI application and lifespan
+  watermeter_service.py  # Core service: MQTT, image fetch, inference loop
+  training_manager.py    # Training and benchmark job orchestration
+  model_manager.py       # Model metadata, activation, deletion
+  config_utils.py        # YAML config loading (ruamel.yaml)
+  persistence.py         # State persistence (state.json)
+  inference.py           # OpenVINO inference wrapper
+  routes/                # API and page route handlers
+  templates/             # Jinja2 + HTMX templates
+  static/                # CSS and JavaScript
+tests/
+  unit/                  # Fast tests, no external dependencies
+  regression/            # Regression tests for fixed bugs
+  integration/           # End-to-end tests against Docker container
 ```
 
-### Reset Previous Value
-```bash
-curl -X POST http://localhost:8001/api/reset
-```
+## Architecture
 
-### Open Web Dashboard
-```bash
-xdg-open http://localhost:8001/
-```
+The service runs a continuous loop driven by MQTT messages. When the AI-on-the-edge ESP32-CAM finishes capturing a new image, it publishes a message to the configured MQTT topic. The service receives this trigger, fetches the meter image from the device over HTTP, and extracts digit and dial regions using the configured ROIs.
 
-## Troubleshooting
+Each extracted region is classified by an OpenVINO model -- digits through an 11-class classifier (0-9 and NAN for unreadable), analog dials through a multi-class classifier with decimal values (e.g. 0.0, 0.5, 1.0 ... 9.5 for a 20-class model). The individual predictions are combined into a total meter value in cubic meters, then validated against the previous reading using reverse detection and rate limiting.
 
-### Common Problems
+The final value and per-image confidence scores are published to Home Assistant via MQTT discovery and displayed on the web dashboard. Images with confidence below the threshold are automatically saved for later labeling and model retraining.
 
-**1. Images not reachable**
-- Check: `curl http://<AIOTE_HOST>/img_tmp/main_dig1.jpg`
-- Ensure AI-on-the-edge device is running
+## Documentation
 
-**2. MQTT Connection Failed**
-- Check MQTT broker: `mosquitto_pub -h <MQTT_BROKER_IP> -t test -m hello`
-- Check firewall rules
+- [QUICKSTART.md](QUICKSTART.md) -- step-by-step setup and first reading
+- [DOCKER.md](DOCKER.md) -- Docker deployment, volume mounts, GPU passthrough
 
-**3. Low Confidence Warnings**
-- Normal with poor lighting
-- Use saved images for re-training
+## License
 
-**4. Reverse Detection**
-- Normal with misclassification
-- Check logs for actual vs. recognized value
-- Consider retraining the model
-
-**5. Consistency Warnings**
-- Indicates classification errors
-- Check affected images in the dashboard
-- Feedback loop for training
+This project is licensed under the [GNU Affero General Public License v3.0](LICENSE).
