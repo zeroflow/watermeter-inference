@@ -47,6 +47,21 @@ class Classifier:
             'confidence': float(probs[idx])
         }
 
+    def predict_detailed(self, image_path, top_k=3):
+        """Return top-K predictions with softmax probabilities."""
+        img = self.preprocess(image_path)
+        result = self.compiled([img])[self.compiled.output(0)][0]
+        result = result - result.max()
+        probs = np.exp(result) / np.exp(result).sum()
+
+        k = min(top_k, len(self.classes))
+        top_indices = probs.argsort()[::-1][:k]
+
+        return [
+            {'class': self.classes[idx], 'confidence': float(probs[idx])}
+            for idx in top_indices
+        ]
+
 
 class InferenceService:
     """Thread-safe inference service with hot-reload support."""
@@ -167,6 +182,16 @@ class InferenceService:
                 return self._digits_classifier.predict(image_path)
             elif model_type == 'arrows':
                 return self._arrows_classifier.predict(image_path)
+            else:
+                raise ValueError(f"Unknown model type: {model_type}")
+
+    def predict_detailed(self, model_type: str, image_path: str, top_k: int = 3) -> list:
+        """Run inference and return top-K predictions."""
+        with self._lock:
+            if model_type == 'digits':
+                return self._digits_classifier.predict_detailed(image_path, top_k)
+            elif model_type == 'arrows':
+                return self._arrows_classifier.predict_detailed(image_path, top_k)
             else:
                 raise ValueError(f"Unknown model type: {model_type}")
 

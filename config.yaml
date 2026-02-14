@@ -129,6 +129,16 @@ plausibility:
   sustained_rate_threshold: 0.05         # m³/h threshold per interval
   sustained_rate_readings: 3             # Consecutive intervals above threshold before warning
 
+# Value Correction (BL-04)
+correction:
+  enabled: false                    # Opt-in; disabled by default for safety
+  confidence_threshold: 0.7         # Only correct positions below this confidence
+  min_signal_agreement: 2           # Minimum signals that must agree on alternative
+  min_alternative_confidence: 0.05  # Ignore softmax alternatives below this probability
+  rate_tolerance_factor: 3.0        # Expected rate window multiplier
+  max_corrections_per_reading: 2    # Max positions to correct per reading
+  top_k: 3                          # Number of softmax alternatives to consider
+
 # Low Confidence Handling
 low_confidence:
   warn_enabled: true  # Show warnings for low confidence predictions

@@ -368,6 +368,52 @@ CONFIG_SCHEMA = {
                 }
             }
         },
+        "correction": {
+            "type": "object",
+            "description": "Value correction using temporal and spatial context (BL-04)",
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "description": "Enable confidence-weighted value correction",
+                    "default": False
+                },
+                "confidence_threshold": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Only correct positions with confidence below this threshold"
+                },
+                "min_signal_agreement": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 4,
+                    "description": "Minimum number of contextual signals that must agree to apply correction"
+                },
+                "min_alternative_confidence": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Minimum softmax probability for an alternative to be considered"
+                },
+                "rate_tolerance_factor": {
+                    "type": "number",
+                    "minimum": 1.0,
+                    "description": "Multiplier for expected rate to define plausible window"
+                },
+                "max_corrections_per_reading": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 7,
+                    "description": "Maximum number of positions to correct per reading"
+                },
+                "top_k": {
+                    "type": "integer",
+                    "minimum": 2,
+                    "maximum": 10,
+                    "description": "Number of softmax alternatives to retrieve from model"
+                }
+            }
+        },
         "low_confidence": {
             "type": "object",
             "description": "Low confidence image handling",

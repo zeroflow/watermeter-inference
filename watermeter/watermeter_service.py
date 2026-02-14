@@ -410,14 +410,30 @@ class WatermeterService:
 
                 # Run prediction via inference service (supports hot-reload)
                 try:
-                    result = get_inference_service().predict(image_class, str(temp_path))
-                    predictions[image_id] = {
-                        'id': image_id,
-                        'class': result['class'],
-                        'confidence': result['confidence'],
-                        'model': image_class,
-                        'image_bytes': image_bytes
-                    }
+                    correction_config = self.config.get('correction', {})
+                    if correction_config.get('enabled', False):
+                        top_k_count = correction_config.get('top_k', 3)
+                        top_k_results = get_inference_service().predict_detailed(
+                            image_class, str(temp_path), top_k=top_k_count
+                        )
+                        result = top_k_results[0]
+                        predictions[image_id] = {
+                            'id': image_id,
+                            'class': result['class'],
+                            'confidence': result['confidence'],
+                            'model': image_class,
+                            'image_bytes': image_bytes,
+                            'top_k': top_k_results,
+                        }
+                    else:
+                        result = get_inference_service().predict(image_class, str(temp_path))
+                        predictions[image_id] = {
+                            'id': image_id,
+                            'class': result['class'],
+                            'confidence': result['confidence'],
+                            'model': image_class,
+                            'image_bytes': image_bytes,
+                        }
                     logger.debug(f"{image_id}: {result['class']} ({result['confidence']:.3f})")
                 except Exception as e:
                     logger.error(f"Inference failed for {image_id}: {e}")
@@ -698,6 +714,242 @@ class WatermeterService:
             f"({min_readings} consecutive readings above {threshold} m\u00b3/h)"
         )
 
+    # ── Value Correction Engine (BL-04) ─────────────────────────────────
+
+    def _get_ordered_position_ids(self) -> List[str]:
+        """Return position IDs in order: digit_1, ..., analog_1, ... (most to least significant)."""
+        process_separate = self.config['images'].get('process_separate', False)
+        if process_separate:
+            digit_ids = self.config['images']['digits']
+            arrow_ids = self.config['images']['arrows']
+        else:
+            detection = self.config.get('detection', {})
+            digit_count = detection.get('digits', {}).get('count', 0)
+            analog_count = detection.get('analogs', {}).get('count', 0)
+            digit_ids = [f"digit_{i + 1}" for i in range(digit_count)]
+            arrow_ids = [f"analog_{i + 1}" for i in range(analog_count)]
+        return digit_ids + arrow_ids
+
+    def _estimate_expected_range(self) -> Optional[Tuple[float, float]]:
+        """Estimate plausible range for next reading based on rate history."""
+        if self.previous_value is None or len(self.rate_history) < 3:
+            return None
+        avg_rate = self._calculate_average_rate_per_hour()
+        if avg_rate is None or avg_rate <= 0:
+            return None
+        hours_elapsed = 0.0
+        if self.last_update_time:
+            hours_elapsed = (datetime.now() - self.last_update_time).total_seconds() / 3600
+        if hours_elapsed <= 0:
+            return None
+        expected_delta = avg_rate * hours_elapsed
+        config = self.config.get('correction', {})
+        tolerance = config.get('rate_tolerance_factor', 3.0)
+        min_expected = self.previous_value
+        max_expected = self.previous_value + expected_delta * tolerance
+        return (min_expected, max_expected)
+
+    def _recalculate_with_replacement(self, predictions: Dict[str, Dict], replace_id: str, replace_class: str, raw_values: Dict) -> float:
+        """Calculate hypothetical total with one position replaced."""
+        process_separate = self.config['images'].get('process_separate', False)
+        if process_separate:
+            digit_ids = self.config['images']['digits']
+            arrow_ids = self.config['images']['arrows']
+        else:
+            detection = self.config.get('detection', {})
+            digit_count = detection.get('digits', {}).get('count', 0)
+            analog_count = detection.get('analogs', {}).get('count', 0)
+            digit_ids = [f"digit_{i + 1}" for i in range(digit_count)]
+            arrow_ids = [f"analog_{i + 1}" for i in range(analog_count)]
+
+        digits = []
+        for image_id in digit_ids:
+            if image_id in predictions:
+                cls = replace_class if image_id == replace_id else predictions[image_id]['class']
+                if cls not in ('NAN', 'ERROR'):
+                    digits.append(int(cls))
+                else:
+                    digits.append(0)
+
+        arrows = []
+        for image_id in arrow_ids:
+            if image_id in predictions:
+                cls = replace_class if image_id == replace_id else predictions[image_id]['class']
+                if cls != 'ERROR':
+                    arrows.append(float(cls))
+                else:
+                    arrows.append(0.0)
+
+        total = 0.0
+        for i, digit in enumerate(digits):
+            total += digit * 10 ** (len(digits) - 1 - i)
+        for i, arrow in enumerate(arrows):
+            total += int(arrow) * 10 ** (-(i + 1))
+        return total
+
+    def _check_consistency_improvement(self, predictions: Dict[str, Dict], replace_id: str, replace_class: str) -> bool:
+        """Check if replacing a position fixes a consistency violation with adjacent positions."""
+        position_ids = self._get_ordered_position_ids()
+        if replace_id not in position_ids:
+            return False
+        idx = position_ids.index(replace_id)
+
+        def get_value(pid, override_id=None, override_class=None):
+            if pid not in predictions:
+                return None
+            cls = override_class if pid == override_id else predictions[pid]['class']
+            if cls in ('NAN', 'ERROR'):
+                return None
+            return float(cls) if predictions[pid]['model'] == 'arrows' else int(cls)
+
+        def has_violation(val_a, val_b):
+            """Check half/upper consistency between adjacent positions."""
+            frac = val_a % 1
+            has_half = frac >= 0.4
+            upper = int(val_b) >= 5
+            return has_half != upper
+
+        current_violations = 0
+        replacement_violations = 0
+
+        # Check pair with previous position (idx-1, idx)
+        if idx > 0:
+            prev_id = position_ids[idx - 1]
+            prev_val = get_value(prev_id)
+            curr_val = get_value(replace_id)
+            alt_val = get_value(replace_id, replace_id, replace_class)
+            if prev_val is not None and curr_val is not None:
+                if has_violation(prev_val, curr_val):
+                    current_violations += 1
+                if alt_val is not None and has_violation(prev_val, alt_val):
+                    replacement_violations += 1
+
+        # Check pair with next position (idx, idx+1)
+        if idx < len(position_ids) - 1:
+            next_id = position_ids[idx + 1]
+            next_val = get_value(next_id)
+            curr_val = get_value(replace_id)
+            alt_val = get_value(replace_id, replace_id, replace_class)
+            if next_val is not None and curr_val is not None:
+                if has_violation(curr_val, next_val):
+                    current_violations += 1
+                if alt_val is not None and has_violation(alt_val, next_val):
+                    replacement_violations += 1
+
+        return current_violations > 0 and replacement_violations < current_violations
+
+    def correct_predictions(self, predictions: Dict[str, Dict], raw_total: float, raw_values: Dict) -> List[str]:
+        """
+        Correct low-confidence predictions using contextual signals.
+        Modifies predictions dict in-place. Returns correction warning strings.
+        """
+        config = self.config.get('correction', {})
+        if not config.get('enabled', False):
+            return []
+
+        correction_threshold = config.get('confidence_threshold', 0.7)
+        min_signal_agreement = config.get('min_signal_agreement', 2)
+        min_alternative_confidence = config.get('min_alternative_confidence', 0.05)
+        max_corrections = config.get('max_corrections_per_reading', 2)
+        corrections = []
+
+        position_ids = self._get_ordered_position_ids()
+
+        # Safety: if all positions are high-confidence, don't touch anything
+        all_confident = all(
+            predictions[pid]['confidence'] >= correction_threshold
+            for pid in position_ids
+            if pid in predictions
+        )
+        if all_confident:
+            return []
+
+        expected_range = self._estimate_expected_range()
+
+        # Meter rollover guard
+        skip_previous_value_signal = False
+        if self.previous_value is not None:
+            digit_ids = [pid for pid in position_ids if pid.startswith('digit_')]
+            if digit_ids:
+                digit_count = len(digit_ids)
+                max_meter = 10 ** digit_count
+                all_near_zero = all(
+                    int(predictions[pid]['class']) <= 1
+                    for pid in digit_ids
+                    if pid in predictions and predictions[pid]['class'] not in ('NAN', 'ERROR')
+                )
+                if all_near_zero and self.previous_value > 0.9 * max_meter:
+                    skip_previous_value_signal = True
+
+        for pid in position_ids:
+            if len(corrections) >= max_corrections:
+                break
+            if pid not in predictions:
+                continue
+
+            pred = predictions[pid]
+            if pred['confidence'] >= correction_threshold:
+                continue
+
+            top_k = pred.get('top_k', [])
+            if not top_k or len(top_k) < 2:
+                continue
+
+            alternatives = [
+                alt for alt in top_k[1:]
+                if alt['confidence'] >= min_alternative_confidence
+                and alt['class'] != 'NAN'
+            ]
+            if not alternatives:
+                continue
+
+            best_alt = None
+            best_score = 0
+
+            for alt in alternatives:
+                score = 0
+                total_with_alt = self._recalculate_with_replacement(
+                    predictions, pid, alt['class'], raw_values
+                )
+
+                # Signal 1: Previous value constraint
+                if not skip_previous_value_signal and self.previous_value is not None:
+                    if raw_total < self.previous_value and total_with_alt >= self.previous_value:
+                        score += 1
+
+                # Signal 2: Expected rate
+                if expected_range is not None:
+                    min_exp, max_exp = expected_range
+                    if (raw_total < min_exp or raw_total > max_exp) and min_exp <= total_with_alt <= max_exp:
+                        score += 1
+
+                # Signal 3: Adjacent position consistency
+                if self._check_consistency_improvement(predictions, pid, alt['class']):
+                    score += 1
+
+                if score > best_score:
+                    best_score = score
+                    best_alt = alt
+
+            if best_alt is not None and best_score >= min_signal_agreement:
+                old_class = pred['class']
+                old_conf = pred['confidence']
+                pred['class'] = best_alt['class']
+                pred['confidence'] = best_alt['confidence']
+                pred['corrected_from'] = old_class
+                pred['corrected_confidence'] = old_conf
+                pred['correction_signals'] = best_score
+
+                msg = (
+                    f"Corrected {pid}: {old_class}\u2192{best_alt['class']} "
+                    f"(conf={old_conf:.2f}\u2192{best_alt['confidence']:.2f}, "
+                    f"signals={best_score}/{min_signal_agreement})"
+                )
+                corrections.append(msg)
+                logger.info(msg)
+
+        return corrections
+
     async def save_low_confidence(self, image_id: str, image_bytes: bytes,
                                   prediction: Dict,
                                   next_image_bytes: bytes = None) -> None:
@@ -834,13 +1086,19 @@ class WatermeterService:
                 # 3. Calculate total
                 total_value, raw_values = self.calculate_total(predictions)
 
+                # 3b. Value correction (BL-04)
+                correction_warnings = self.correct_predictions(predictions, total_value, raw_values)
+                if correction_warnings:
+                    total_value, raw_values = self.calculate_total(predictions)
+                    logger.info(f"Recalculated total after {len(correction_warnings)} correction(s): {total_value:.4f}")
+
                 # 4. Consistency check
                 consistency_warnings = self.check_consistency(predictions)
 
                 # 5. Plausibility check
                 is_valid, plausibility_warnings = self.validate_plausibility(total_value)
 
-                all_warnings = consistency_warnings + plausibility_warnings
+                all_warnings = correction_warnings + consistency_warnings + plausibility_warnings
 
                 # Leak detection (sustained consumption check)
                 leak_msg = self._check_sustained_consumption()
@@ -898,7 +1156,17 @@ class WatermeterService:
                         'class': pred['class'],
                         'confidence': pred['confidence'],
                         'model': pred['model'],
-                        'image_base64': base64.b64encode(pred['image_bytes']).decode('utf-8')
+                        'image_base64': base64.b64encode(pred['image_bytes']).decode('utf-8'),
+                        # Include correction metadata if present
+                        **(
+                            {
+                                'corrected_from': pred['corrected_from'],
+                                'corrected_confidence': pred['corrected_confidence'],
+                                'correction_signals': pred['correction_signals'],
+                            }
+                            if 'corrected_from' in pred
+                            else {}
+                        ),
                     }
                     for pred in predictions.values()
                 ]

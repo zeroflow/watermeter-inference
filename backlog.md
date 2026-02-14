@@ -31,7 +31,7 @@ Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
 
 ## Algorithm / Inference
 
-- **BL-04** `planned` — **Value deduction from rules**: correct misread positions using temporal + spatial context
+- **BL-04** `done` — **Value deduction from rules**: correct misread positions using temporal + spatial context
   - **Where**: new step between `calculate_total()` and `validate_plausibility()` in `process_reading()`
   - **Approach**: confidence-weighted correction
     - Low confidence → easy to override with contextual evidence
