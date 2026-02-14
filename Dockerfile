@@ -18,8 +18,11 @@ RUN pip install --no-cache-dir torch torchvision --index-url https://download.py
 COPY requirements-docker.txt /tmp/requirements-docker.txt
 RUN pip install --no-cache-dir -r /tmp/requirements-docker.txt && rm /tmp/requirements-docker.txt
 
-# Create non-root user
-RUN groupadd -r watermeter && useradd -r -g watermeter -d /app -s /sbin/nologin watermeter
+# Create non-root user (UID 1000 to match typical host user for volume mounts).
+# Base image ships an 'openvino' user/group at UID/GID 1000 — remove it first.
+RUN userdel openvino 2>/dev/null; groupdel openvino 2>/dev/null; \
+    groupadd -g 1000 watermeter && \
+    useradd -u 1000 -g watermeter -d /app -s /sbin/nologin watermeter
 
 # Set up directory structure (owned by watermeter user)
 WORKDIR /app
@@ -29,7 +32,10 @@ RUN mkdir -p /config /config_default /data \
     /training/digits/input \
     /training/digits/ground_truth \
     /app/models \
+    /app/.cache/huggingface \
     && chown -R watermeter:watermeter /app /config /data /training
+
+ENV HF_HOME=/app/.cache/huggingface
 
 # Copy application package
 COPY watermeter/ /app/watermeter/

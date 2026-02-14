@@ -17,7 +17,7 @@ services:
       # Training data: input images and ground truth
       - ./training:/training
       # Model download cache (timm/huggingface pretrained weights)
-      - /home/thomas/.cache/huggingface:/root/.cache/huggingface
+      - /home/thomas/.cache/huggingface:/app/.cache/huggingface
 
     devices:
       # Intel GPU for OpenVINO acceleration
