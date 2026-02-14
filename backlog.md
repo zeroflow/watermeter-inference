@@ -59,18 +59,16 @@ Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
   - **UI**: toggle between discrete/continuous in training form; model filename: `model_arrows_{arch}_continuous_r{res}`
   - **Compare**: benchmark both modes on same ground truth to see which is more accurate
   - **Priority**: implement after BL-05 since it's a bigger change to the training pipeline
-- **BL-06** `planned` — **Stale reading detection**: warn when meter value is flat or system stops producing readings
-  - **Two conditions**:
-    1. **Meter unchanged**: value hasn't changed for N hours despite successful readings → possible broken meter or vacation
-    2. **No readings**: system hasn't produced a reading for N hours → camera offline, inference failing, trigger broken
+- **BL-06** `planned` — **Continuous consumption warning**: detect sustained high water usage (leak detection)
+  - **What it detects**: consumption rate stays elevated over a prolonged period — likely a running toilet, dripping pipe, or open valve
+  - **How**: check `rate_history` — if average rate exceeds a threshold for N consecutive readings, trigger warning
   - **Output**: both dashboard banner + MQTT attribute
-    - Dashboard: warning banner with time since last change / last reading
-    - MQTT: add `stale_warning` attribute to published payload so HA automations can fire notifications
+    - Dashboard: warning banner with current sustained rate and duration
+    - MQTT: add `leak_warning` attribute to published payload so HA automations can fire notifications (e.g. night-time alerts)
   - **Config**: thresholds in `config.yaml` under `plausibility` section
-    - `stale_value_hours: 24` — warn if meter value unchanged for this long
-    - `no_reading_hours: 2` — warn if no reading produced for this long
-  - **State tracking**: needs `last_value_change_time` (distinct from `last_update_time` which tracks last reading)
-  - **Existing infra**: `rate_history` already tracks (value, timestamp) tuples; `consecutive_rejections` tracks stuck inference
+    - `sustained_rate_threshold: 0.05` — m³/h above which consumption is considered "high"
+    - `sustained_rate_readings: 3` — number of consecutive readings above threshold before warning
+  - **Existing infra**: `rate_history` already tracks (value, timestamp) tuples; `_calculate_average_rate_per_hour()` exists
 
 ## User Interaction
 
