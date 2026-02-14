@@ -10,7 +10,13 @@ Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
   - **Method**: perceptual hash (e.g. average hash or dHash) — fast, works well for small grayscale crops
   - **Disposal**: silently skip saving if a near-duplicate already exists (no skipped folder)
   - **Motivation**: input folders grow to 200+ images, most near-identical — wastes significant labeling time
-- **BL-02** `idea` — **Ground-truth pruning**: also remove near-duplicate images from ground truth sets
+- **BL-02** `planned` — **Ground-truth pruning**: remove near-duplicate images from ground truth to reduce dataset size and improve diversity
+  - **Trigger**: UI button on the training page — shows preview of what would be removed, then confirm
+  - **Scope**: per class folder (e.g. `digits/ground_truth/3/`, `arrows/ground_truth/4.5/`)
+  - **Method**: perceptual hash (same as BL-01), cluster near-duplicates, keep the most distinct image from each cluster
+  - **Min threshold**: never prune a class below the median class size — protects thin classes relative to the dataset distribution
+  - **Disposal**: delete silently on confirm
+  - **Current scale**: digits ~453 images (11 classes, 19–109 each), arrows ~4200 images (100 classes, 7–125 each)
 - **BL-03** `idea` — **Ground-truth rework**: move problematic/mislabeled images back into labeling pipeline
 
 ## Algorithm / Inference
