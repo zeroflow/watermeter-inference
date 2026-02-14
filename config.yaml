@@ -2,7 +2,7 @@
 
 # AI-on-the-edge Device
 aiote:
-  host: "192.168.5.136"
+  host: "192.168.x.x"  # Replace with your AI-on-the-edge device IP
   image_path: "/img_tmp"
   timeout: 30  # seconds
   fetch_delay: 0.1  # seconds between image fetches
@@ -10,7 +10,7 @@ aiote:
 # Image IDs
 images:
   process_separate: false  # true: fetch individual images, false: extract ROIs from whole image
-  src: "http://192.168.5.136/img_tmp/alg.jpg"
+  src: "http://192.168.x.x/img_tmp/alg.jpg"  # Replace with your device IP
   digits:
     - "main_dig1"  # x100
     - "main_dig2"  # x10
@@ -69,7 +69,7 @@ detection:
 
 # MQTT Settings
 mqtt:
-  broker: "192.168.4.11"
+  broker: "192.168.x.x"  # Replace with your MQTT broker IP
   port: 1883
   client_id: "watermeter-ai-service-debug"
   keepalive: 60
