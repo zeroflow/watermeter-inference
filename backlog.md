@@ -4,7 +4,7 @@ Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
 
 ## Data Quality
 
-- **BL-01** `planned` — **Label-candidate pruning**: deduplicate low-confidence images inline at save time
+- **BL-01** `done` — **Label-candidate pruning**: deduplicate low-confidence images inline at save time
   - **Trigger**: in `save_low_confidence()`, before writing to disk, compare against existing images in the same ROI's input folder
   - **Scope**: per ROI position only (digit_1 vs digit_1, analog_2 vs analog_2)
   - **Method**: perceptual hash (e.g. average hash or dHash) — fast, works well for small grayscale crops

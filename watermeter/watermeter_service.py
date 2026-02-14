@@ -20,6 +20,7 @@ import yaml
 import paho.mqtt.client as mqtt
 from .inference import get_inference_service
 from .persistence import StateStore
+from .image_hash import compute_dhash, HashCache
 
 # Configure logging
 logging.basicConfig(
@@ -680,14 +681,56 @@ class WatermeterService:
 
         # Determine save path - save to input folder for manual review
         image_class = prediction['model']
-        save_dir = Path(config['save_path']) / image_class / 'input'
+        base_path = Path(config['save_path'])
+        save_dir = base_path / image_class / 'input'
         save_dir.mkdir(parents=True, exist_ok=True)
+
+        # Deduplication check
+        new_hash = None
+        input_cache = None
+        dedup_enabled = config.get('dedup_enabled', True)
+        if dedup_enabled:
+            new_hash = compute_dhash(image_bytes)
+            if new_hash is not None:
+                threshold = config.get('dedup_threshold', 10)
+
+                # Check against input folder
+                input_cache = HashCache(save_dir)
+                dup = input_cache.find_near_duplicate(new_hash, threshold)
+                if dup:
+                    logger.debug(f"Dedup: skipping {image_id}, near-duplicate of {dup} in input")
+                    return
+
+                # Check against ground truth if configured
+                scope = config.get('dedup_scope', 'input+ground_truth')
+                if scope == 'input+ground_truth':
+                    gt_base = base_path / image_class / 'ground_truth'
+                    if gt_base.is_dir():
+                        for class_dir in gt_base.iterdir():
+                            if class_dir.is_dir():
+                                gt_cache = HashCache(class_dir)
+                                dup = gt_cache.find_near_duplicate(new_hash, threshold)
+                                if dup:
+                                    logger.debug(
+                                        f"Dedup: skipping {image_id}, near-duplicate of "
+                                        f"{dup} in ground_truth/{class_dir.name}"
+                                    )
+                                    return
 
         save_path = save_dir / f"{image_id}_{timestamp}.jpg"
 
         # Save image
         save_path.write_bytes(image_bytes)
         logger.info(f"Saved low confidence image: {save_path}")
+
+        # Update input hash cache
+        if dedup_enabled and new_hash is not None:
+            try:
+                if input_cache is None:
+                    input_cache = HashCache(save_dir)
+                input_cache.add(save_path.name, new_hash)
+            except Exception as e:
+                logger.warning(f"Failed to update hash cache: {e}")
 
         # Save next image if provided (helps with annotation)
         if next_image_bytes:
