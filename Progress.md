@@ -390,7 +390,7 @@ ana1=5.5, ana2=7 → OK
 ### Nächste Schritte zum Testen:
 
 1. **Dependencies installieren**: `pip install -r requirements.txt`
-2. **Service starten**: `python app.py`
+2. **Service starten**: `uvicorn watermeter.app:app --host 0.0.0.0 --port 8001`
 3. **Dashboard öffnen**: http://localhost:8001
 4. **Testen**: Siehe [QUICKSTART.md](QUICKSTART.md)
 

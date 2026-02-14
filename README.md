@@ -274,7 +274,7 @@ After=network.target
 Type=simple
 User=watermeter
 WorkingDirectory=/var/ml/openvino-notebooks/watermeter
-ExecStart=/usr/bin/python3 watermeter_service.py
+ExecStart=/usr/bin/python3 -m uvicorn watermeter.app:app --host 0.0.0.0 --port 8001
 Restart=always
 
 [Install]

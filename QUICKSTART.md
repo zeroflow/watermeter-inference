@@ -35,14 +35,14 @@ dashboard:
 
 ```bash
 cd /var/ml/openvino-notebooks/watermeter
-python app.py
+python -m uvicorn watermeter.app:app --host 0.0.0.0 --port 8001
 ```
 
 ### Variante 2: Mit uvicorn (empfohlen für Produktion)
 
 ```bash
 cd /var/ml/openvino-notebooks/watermeter
-uvicorn app:app --host 0.0.0.0 --port 8001 --reload
+uvicorn watermeter.app:app --host 0.0.0.0 --port 8001 --reload
 ```
 
 Der Service startet auf **http://localhost:8001**
