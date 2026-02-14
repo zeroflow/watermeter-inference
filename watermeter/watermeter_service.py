@@ -838,6 +838,54 @@ class WatermeterService:
 
         return current_violations > 0 and replacement_violations < current_violations
 
+    def _check_cross_arrow_consistency(self, predictions: Dict[str, Dict], replace_id: str, replace_class: str) -> bool:
+        """
+        Check if replacing an arrow position improves cross-arrow consistency
+        with the adjacent more-significant arrow.
+
+        Only applies to arrow-arrow pairs. Uses the constraining arrow's
+        confidence as a gate: only fires when the constraining arrow is confident.
+        """
+        position_ids = self._get_ordered_position_ids()
+        if replace_id not in position_ids:
+            return False
+
+        idx = position_ids.index(replace_id)
+        if idx == 0:
+            return False
+
+        prev_id = position_ids[idx - 1]
+        if prev_id not in predictions:
+            return False
+
+        # Both must be arrows
+        if predictions[prev_id]['model'] != 'arrows' or predictions[replace_id]['model'] != 'arrows':
+            return False
+
+        # Confidence gate
+        config = self.config.get('correction', {})
+        confidence_gate = config.get('cross_arrow_confidence_gate', 0.8)
+        if predictions[prev_id]['confidence'] < confidence_gate:
+            return False
+
+        prev_class = predictions[prev_id]['class']
+        if prev_class in ('NAN', 'ERROR'):
+            return False
+
+        curr_class = predictions[replace_id]['class']
+        if curr_class in ('NAN', 'ERROR'):
+            return False
+
+        # If constraining arrow is solidly at integer, less-significant should be in lower half
+        expected_lower_half = True
+        curr_int = int(float(curr_class))
+        alt_int = int(float(replace_class))
+
+        curr_in_expected = (curr_int < 5) == expected_lower_half
+        alt_in_expected = (alt_int < 5) == expected_lower_half
+
+        return (not curr_in_expected) and alt_in_expected
+
     def correct_predictions(self, predictions: Dict[str, Dict], raw_total: float, raw_values: Dict) -> List[str]:
         """
         Correct low-confidence predictions using contextual signals.
@@ -925,6 +973,10 @@ class WatermeterService:
 
                 # Signal 3: Adjacent position consistency
                 if self._check_consistency_improvement(predictions, pid, alt['class']):
+                    score += 1
+
+                # Signal 4: Cross-arrow consistency (BL-05)
+                if self._check_cross_arrow_consistency(predictions, pid, alt['class']):
                     score += 1
 
                 if score > best_score:

@@ -411,6 +411,12 @@ CONFIG_SCHEMA = {
                     "minimum": 2,
                     "maximum": 10,
                     "description": "Number of softmax alternatives to retrieve from model"
+                },
+                "cross_arrow_confidence_gate": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Confidence gate for cross-arrow consistency signal"
                 }
             }
         },

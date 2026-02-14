@@ -45,7 +45,7 @@ Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
   - **Safety**: never correct when all positions are high-confidence and consistent — only intervene when something doesn't add up
   - **API change**: add `predict_detailed()` to `Classifier` returning full softmax vector; keep `predict()` lean for normal use
   - **Depends on**: rate_history (already tracked)
-- **BL-05** `planned` — **Cross-arrow consistency**: use adjacent arrow readings to validate and correct each other
+- **BL-05** `done` — **Cross-arrow consistency**: use adjacent arrow readings to validate and correct each other
   - **Scope**: single-arrow precision first (per user), cross-validation is a later enhancement
   - **Core idea**: if arrow1 reads 1.x and arrow2 reads 6.2, they should be consistent — arrow1's sub-integer can be narrowed
   - **Cave**: parallax error skews images, especially on outer dial positions — may need tolerance

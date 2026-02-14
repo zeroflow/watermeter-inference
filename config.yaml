@@ -138,6 +138,7 @@ correction:
   rate_tolerance_factor: 3.0        # Expected rate window multiplier
   max_corrections_per_reading: 2    # Max positions to correct per reading
   top_k: 3                          # Number of softmax alternatives to consider
+  cross_arrow_confidence_gate: 0.8  # Only use cross-arrow signal when constraining arrow >= this
 
 # Low Confidence Handling
 low_confidence:
