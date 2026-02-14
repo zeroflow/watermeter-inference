@@ -69,3 +69,28 @@ python -m pytest -m integration
 - Reference the task file in commit messages when relevant (e.g., `claude: fix ROI validation — see docs/tasks/2026_02_14_IntegrationRework.md`)
 - Do not keep large file contents in conversation — read, process, reference by path
 - When debugging, log findings in the task file, not in conversation
+
+## Autonomous backlog mode
+
+When told to "work through the backlog" or "autonomous mode":
+
+1. Read `backlog.md` — pick the next `planned` item (priority order below)
+2. Create task doc `docs/tasks/YYYY_MM_DD_BL{NN}_{Name}.md` with architecture + work packages
+3. Set BL status to `in-progress`
+4. For each work package, use the Task tool with the right subagent:
+   - `senior-dev` for complex implementations
+   - `junior-dev` for simple changes
+   - `tester` for writing/running tests
+   - `reviewer` for pre-commit review
+   - `debugger` for test failures
+   - `researcher` for codebase exploration
+5. Commit after each WP. Push after completing a BL item.
+6. Set BL status to `done`, move to next item.
+
+**Priority order**: BL-06 → BL-04 → BL-05 → BL-08 → BL-10 → BL-02 → BL-03 → BL-07
+
+**Constraints**:
+- Do NOT modify `watermeter/templates/` or `watermeter/static/` — another session handles UI
+- Keep your own context clean — delegate file reads and coding to subagents
+- If stuck for 3+ turns on a problem, log it in the task doc and move on
+- If context is lost, recover from: `backlog.md` → active task doc → `git log`
