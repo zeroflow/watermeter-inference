@@ -95,7 +95,7 @@ Bei `confidence < 0.8`:
 
 ### 6. Web Dashboard
 
-**Status-Seite:** `http://localhost:8000/`
+**Status-Seite:** `http://localhost:8001/`
 
 **Anzeige:**
 - **Bilder in Reihenfolge** (dig1, dig2, dig3, ana1-4)
@@ -323,17 +323,17 @@ mosquitto_pub -h 192.168.4.11 -t "watermeter/status" -m "Flow finished"
 
 ### Manual Trigger via Web API
 ```bash
-curl -X POST http://localhost:8000/api/trigger
+curl -X POST http://localhost:8001/api/trigger
 ```
 
 ### Status abfragen
 ```bash
-curl http://localhost:8000/api/status | jq
+curl http://localhost:8001/api/status | jq
 ```
 
 ### Reset Previous Value
 ```bash
-curl -X POST http://localhost:8000/api/reset
+curl -X POST http://localhost:8001/api/reset
 ```
 
 ### Check Logs
@@ -343,7 +343,7 @@ journalctl -u watermeter -f
 
 ### Web Dashboard öffnen
 ```bash
-xdg-open http://localhost:8000/
+xdg-open http://localhost:8001/
 ```
 
 ## Troubleshooting

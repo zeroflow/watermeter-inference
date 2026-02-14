@@ -24,7 +24,7 @@ mqtt:
 
 dashboard:
   host: "0.0.0.0"
-  port: 8000
+  port: 8001
 ```
 
 **Falls nötig, passe diese Werte an!**
@@ -42,14 +42,14 @@ python app.py
 
 ```bash
 cd /var/ml/openvino-notebooks/watermeter
-uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+uvicorn app:app --host 0.0.0.0 --port 8001 --reload
 ```
 
-Der Service startet auf **http://localhost:8000**
+Der Service startet auf **http://localhost:8001**
 
 ## 🌐 Web Dashboard öffnen
 
-Öffne im Browser: **http://localhost:8000**
+Öffne im Browser: **http://localhost:8001**
 
 Du siehst:
 - ✅ Header mit Buttons "Jetzt Auslesen" und "Reset"
@@ -60,7 +60,7 @@ Du siehst:
 
 ### Test 1: Manueller Trigger via Web UI
 
-1. Öffne http://localhost:8000
+1. Öffne http://localhost:8001
 2. Klicke auf **"Jetzt Auslesen"**
 3. Warte ~10 Sekunden (7 Bilder @ 1s delay + Inference)
 4. Status sollte aktualisiert werden mit:
@@ -71,7 +71,7 @@ Du siehst:
 ### Test 2: Manueller Trigger via API
 
 ```bash
-curl -X POST http://localhost:8000/api/trigger
+curl -X POST http://localhost:8001/api/trigger
 ```
 
 Response:
@@ -82,7 +82,7 @@ Response:
 ### Test 3: Status abfragen
 
 ```bash
-curl http://localhost:8000/api/status | jq
+curl http://localhost:8001/api/status | jq
 ```
 
 Response:
@@ -110,7 +110,7 @@ Der Service sollte automatisch eine Messung starten.
 ### Test 5: Reset Previous Value
 
 ```bash
-curl -X POST http://localhost:8000/api/reset
+curl -X POST http://localhost:8001/api/reset
 ```
 
 Setzt die Reverse-Detection zurück (nützlich bei Zählerwechsel).
@@ -210,7 +210,7 @@ Diese können für Re-Training verwendet werden.
 **Ursache:** Wert ist kleiner als vorheriger Wert (unmöglich)
 
 **Lösungen:**
-1. Falls Zählerwechsel: Reset mit `curl -X POST http://localhost:8000/api/reset`
+1. Falls Zählerwechsel: Reset mit `curl -X POST http://localhost:8001/api/reset`
 2. Falls Fehlklassifikation: Warte auf nächste Messung
 3. Prüfe Bilder und Confidence Scores
 

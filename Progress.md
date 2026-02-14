@@ -391,7 +391,7 @@ ana1=5.5, ana2=7 → OK
 
 1. **Dependencies installieren**: `pip install -r requirements.txt`
 2. **Service starten**: `python app.py`
-3. **Dashboard öffnen**: http://localhost:8000
+3. **Dashboard öffnen**: http://localhost:8001
 4. **Testen**: Siehe [QUICKSTART.md](QUICKSTART.md)
 
 ---
