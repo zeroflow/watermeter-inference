@@ -88,3 +88,14 @@ Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
 ## Tech Debt
 
 - **BL-09** `done` — **Fix Pydantic `schema` field shadow**: `SetupRequest` in `inference.py:267` uses field name `schema` which shadows `BaseModel.schema()` → renamed to `label_schema` with `alias="schema"` for wire compatibility
+
+## Legal / Licensing
+
+- **BL-10** `planned` — **Handle upstream data license**: training data from jomjol's repos has no explicit license ([issue #4041](https://github.com/jomjol/AI-on-the-edge-device/issues/4041))
+  - **Impact**: models trained on this data and annotated ground truth derived from it cannot be shipped/redistributed until license is clarified
+  - **Our use is fine**: personal/research use is not restricted
+  - **What can't ship**: pre-trained model weights, annotated datasets, anything derivative of the upstream training data
+  - **Action items**:
+    1. Track the upstream issue for resolution
+    2. Document which local data is self-collected (our own meter photos) vs derived from upstream
+    3. If shipping models is needed later: either get license clarification or retrain purely on self-collected data
