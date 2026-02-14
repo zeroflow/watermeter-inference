@@ -8,6 +8,7 @@
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
 </head>
 <body>
+    {% include '_nav.html' %}
     <div class="container">
         <header>
             <h1>🌊 AI Water Meter Dashboard</h1>
@@ -27,18 +28,6 @@
                     onclick="return confirm('Previous Value zurücksetzen?')">
                     ↺ Reset
                 </button>
-                <a href="/label" class="btn btn-secondary">
-                    🏷️ Label Images
-                </a>
-                <a href="/roi-config" class="btn btn-secondary">
-                    🎯 ROI Config
-                </a>
-                <a href="/config-editor" class="btn btn-secondary">
-                    📝 Config
-                </a>
-                <a href="/training" class="btn btn-secondary">
-                    🧠 Training
-                </a>
                 <label class="toggle">
                     <input type="checkbox" id="auto-refresh" checked onchange="toggleAutoRefresh(this)">
                     <span>Auto-Refresh</span>

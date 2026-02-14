@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+    {% include '_nav.html' %}
     <div class="container">
         <header>
             <h1>ROI Configuration</h1>
@@ -14,9 +15,6 @@
                 <button id="reload-btn" class="btn btn-primary" onclick="fetchAndReload()">
                     Reload Image
                 </button>
-                <a href="/" class="btn btn-secondary">
-                    &larr; Back to Dashboard
-                </a>
             </div>
         </header>
 

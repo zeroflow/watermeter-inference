@@ -17,31 +17,41 @@ templates = Jinja2Templates(directory=str(_pkg_dir / "templates"))
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     """Render the main dashboard page."""
-    return templates.TemplateResponse(request, "dashboard.html")
+    return templates.TemplateResponse(
+        request, "dashboard.html", context={"nav_active": "dashboard"}
+    )
 
 
 @router.get("/label", response_class=HTMLResponse)
 async def label_page(request: Request):
     """Render the labeling interface page."""
-    return templates.TemplateResponse(request, "label.html")
+    return templates.TemplateResponse(
+        request, "label.html", context={"nav_active": "label"}
+    )
 
 
 @router.get("/roi-config", response_class=HTMLResponse)
 async def roi_config_page(request: Request):
     """Render the ROI configuration page."""
-    return templates.TemplateResponse(request, "roi_config.html")
+    return templates.TemplateResponse(
+        request, "roi_config.html", context={"nav_active": "roi"}
+    )
 
 
 @router.get("/config-editor", response_class=HTMLResponse)
 async def config_editor_page(request: Request):
     """Render the config editor page with Monaco editor."""
-    return templates.TemplateResponse(request, "config_editor.html")
+    return templates.TemplateResponse(
+        request, "config_editor.html", context={"nav_active": "config"}
+    )
 
 
 @router.get("/training", response_class=HTMLResponse)
 async def training_page(request: Request):
     """Render the training management page."""
-    return templates.TemplateResponse(request, "training.html")
+    return templates.TemplateResponse(
+        request, "training.html", context={"nav_active": "training"}
+    )
 
 
 @router.get("/api/status/html", response_class=HTMLResponse)

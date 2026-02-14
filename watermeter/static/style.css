@@ -1216,3 +1216,126 @@ main {
     font-weight: 700;
     color: var(--text-dark);
 }
+
+/* ============================================
+   App Navigation — adaptive bottom bar / side rail
+   ============================================ */
+.app-nav {
+    position: fixed;
+    z-index: 900;
+    background: var(--bg-dark);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    color: rgba(255, 255, 255, 0.5);
+    transition: color 0.2s, background 0.2s;
+    gap: 2px;
+    position: relative;
+}
+
+.nav-item:hover {
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.nav-item.active {
+    color: white;
+}
+
+.nav-item.active::after {
+    content: '';
+    position: absolute;
+    background: var(--primary);
+    border-radius: 2px;
+}
+
+.nav-icon {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+}
+
+.nav-label {
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+/* Desktop: left navigation rail */
+@media (min-width: 769px) {
+    .app-nav {
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 72px;
+        flex-direction: column;
+        padding: 20px 0;
+        gap: 4px;
+    }
+
+    .nav-item {
+        width: 56px;
+        height: 48px;
+        border-radius: 12px;
+        padding: 6px 0 2px;
+    }
+
+    .nav-item:hover {
+        background: rgba(255, 255, 255, 0.08);
+    }
+
+    .nav-item.active {
+        background: rgba(37, 99, 235, 0.2);
+    }
+
+    .nav-item.active::after {
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 3px;
+        height: 20px;
+    }
+
+    body {
+        padding-left: 92px; /* 72px nav + 20px gap */
+    }
+}
+
+/* Mobile: bottom tab bar */
+@media (max-width: 768px) {
+    .app-nav {
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 56px;
+        flex-direction: row;
+        padding: 0;
+    }
+
+    .nav-item {
+        flex: 1;
+        height: 100%;
+        padding: 6px 0 4px;
+        border-radius: 0;
+    }
+
+    .nav-item.active::after {
+        top: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 24px;
+        height: 3px;
+    }
+
+    body {
+        padding-bottom: 60px; /* 56px nav + small gap */
+    }
+}
