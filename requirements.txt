@@ -1,45 +1,45 @@
 # PyTorch and Vision
-torch>=2.10.0,<3.0.0
-torchvision>=0.25.0,<1.0.0
+torch>=2.1.0,<3.0.0
+torchvision>=0.16.0,<1.0.0
 
 # Model Zoo
 timm>=1.0.0,<2.0.0
 
 # ONNX Export
-onnx>=1.20.0,<2.0.0
-onnxscript>=0.5.0,<1.0.0
+onnx>=1.15.0,<2.0.0
+onnxscript>=0.1.0,<1.0.0
 
 # OpenVINO
 openvino>=2025.0.0,<2026.0.0
 
 # Computer Vision (headless version for Docker/servers without GUI)
-opencv-python-headless>=4.13.0,<5.0.0
+opencv-python-headless>=4.8.0,<5.0.0
 
 # Scientific Computing
-numpy>=2.3.0,<3.0.0
-scipy>=1.17.0,<2.0.0
+numpy>=1.24.0,<3.0.0
+scipy>=1.11.0,<2.0.0
 
 # Machine Learning
-scikit-learn>=1.8.0,<2.0.0
+scikit-learn>=1.3.0,<2.0.0
 
 # Plotting
-matplotlib>=3.10.0,<4.0.0
+matplotlib>=3.7.0,<4.0.0
 
 # Utilities
-Pillow>=12.0.0,<13.0.0
+Pillow>=10.0.0,<13.0.0
 
 # FastAPI & Web
-fastapi>=0.128.0,<1.0.0
-uvicorn[standard]>=0.40.0,<1.0.0
+fastapi>=0.100.0,<1.0.0
+uvicorn[standard]>=0.23.0,<1.0.0
 jinja2>=3.1.0,<4.0.0
-python-multipart>=0.0.21,<1.0.0
+python-multipart>=0.0.9,<1.0.0
 
 # MQTT
 paho-mqtt>=2.1.0,<3.0.0
 
 # HTTP Client
-httpx>=0.28.0,<1.0.0
+httpx>=0.24.0,<1.0.0
 
 # Configuration
 pyyaml>=6.0.0,<7.0.0
-ruamel.yaml>=0.19.0,<1.0.0  # For comment-preserving YAML editing
+ruamel.yaml>=0.18.0,<1.0.0  # For comment-preserving YAML editing
