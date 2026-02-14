@@ -212,6 +212,16 @@ class ModelManager:
             return False
 
         try:
+            # Read metadata for classes/resolution (if available)
+            metadata = {}
+            metadata_file = model_dir / "metadata.json"
+            if metadata_file.exists():
+                try:
+                    with open(metadata_file, 'r') as f:
+                        metadata = json.load(f)
+                except Exception as e:
+                    logger.warning(f"Could not read metadata for {model_id}: {e}")
+
             def _update(config):
                 if 'inference' not in config:
                     config['inference'] = {}
@@ -219,6 +229,12 @@ class ModelManager:
                     config['inference']['digits_model'] = str(xml_file)
                 elif model_type == "arrows":
                     config['inference']['arrows_model'] = str(xml_file)
+                # Update classes and resolution from model metadata
+                if 'classes' in metadata:
+                    config['inference'][f'{model_type}_classes'] = metadata['classes']
+                    logger.info(f"Updated {model_type}_classes from metadata: {len(metadata['classes'])} classes")
+                if 'resolution' in metadata:
+                    config['inference'][f'{model_type}_resolution'] = metadata['resolution']
 
             _config_utils.update_config(config_path, _update)
 

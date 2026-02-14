@@ -172,6 +172,52 @@ class TestModelManagerActivation:
         config = load_config(config_file)
         assert "model_act" in config['inference']['digits_model']
 
+    def test_activate_model_updates_classes_from_metadata(self, mm, tmp_path):
+        """activate_model writes classes and resolution from metadata to config."""
+        _create_model(mm, "digits", "model_cls",
+                      metadata={"created_at": "2025-01-01",
+                                "classes": ["0", "1", "2", "NAN"],
+                                "resolution": 64})
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            "images:\n  digits: []\n  arrows: []\n"
+            "mqtt:\n  broker: x\n  port: 1883\n"
+            "inference:\n  confidence_threshold: 0.5\n"
+            "  digits_classes: ['0','1','2','3','4','5','6','7','8','9','NAN']\n"
+            "  digits_resolution: 128\n"
+        )
+
+        result = mm.activate_model("digits", "model_cls", config_file)
+        assert result is True
+
+        from watermeter.config_utils import load_config
+        config = load_config(config_file)
+        assert config['inference']['digits_classes'] == ["0", "1", "2", "NAN"]
+        assert config['inference']['digits_resolution'] == 64
+
+    def test_activate_model_preserves_config_without_metadata_classes(self, mm, tmp_path):
+        """activate_model preserves existing config when metadata lacks classes."""
+        _create_model(mm, "digits", "model_nocls",
+                      metadata={"created_at": "2025-01-01"})
+
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            "images:\n  digits: []\n  arrows: []\n"
+            "mqtt:\n  broker: x\n  port: 1883\n"
+            "inference:\n  confidence_threshold: 0.5\n"
+            "  digits_classes:\n    - '0'\n    - '1'\n"
+            "  digits_resolution: 128\n"
+        )
+
+        result = mm.activate_model("digits", "model_nocls", config_file)
+        assert result is True
+
+        from watermeter.config_utils import load_config
+        config = load_config(config_file)
+        assert config['inference']['digits_classes'] == ['0', '1']
+        assert config['inference']['digits_resolution'] == 128
+
     def test_activate_nonexistent_model(self, mm, tmp_path):
         config_file = tmp_path / "config.yaml"
         config_file.write_text("inference:\n  confidence_threshold: 0.5\n")

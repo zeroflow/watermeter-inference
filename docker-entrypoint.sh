@@ -29,7 +29,9 @@ if [ -z "$(ls -A /app/models/digits 2>/dev/null)" ]; then
 {
   "model_type": "digits",
   "created_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "notes": "Default model (shipped with container)"
+  "notes": "Default model (shipped with container)",
+  "classes": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "NAN"],
+  "resolution": 128
 }
 EOF
         fi
@@ -57,7 +59,9 @@ if [ -z "$(ls -A /app/models/arrows 2>/dev/null)" ]; then
 {
   "model_type": "arrows",
   "created_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "notes": "Default model (shipped with container)"
+  "notes": "Default model (shipped with container)",
+  "classes": ["0.0", "1.0", "2.0", "3.0", "4.0", "5.0", "6.0", "7.0", "8.0", "9.0"],
+  "resolution": 128
 }
 EOF
         fi

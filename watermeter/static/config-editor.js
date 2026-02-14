@@ -1,0 +1,167 @@
+let editor = null;
+let originalContent = '';
+let hasUnsavedChanges = false;
+
+// Configure Monaco loader
+require.config({
+    paths: {
+        'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs'
+    }
+});
+
+// Load Monaco and initialize
+require(['vs/editor/editor.main'], function() {
+    initEditor();
+});
+
+function initEditor() {
+    // Register YAML language configuration
+    monaco.languages.register({ id: 'yaml' });
+
+    // Create editor
+    editor = monaco.editor.create(document.getElementById('editor'), {
+        value: '# Loading config...',
+        language: 'yaml',
+        theme: 'vs',  // Use 'vs-dark' for dark theme
+        automaticLayout: true,
+        minimap: { enabled: true },
+        fontSize: 14,
+        lineNumbers: 'on',
+        renderWhitespace: 'selection',
+        scrollBeyondLastLine: false,
+        wordWrap: 'on',
+        tabSize: 2,
+        insertSpaces: true,
+        formatOnPaste: false,  // Don't auto-format to preserve comments
+        formatOnType: false,
+    });
+
+    // Track changes
+    editor.onDidChangeModelContent(() => {
+        const currentContent = editor.getValue();
+        hasUnsavedChanges = currentContent !== originalContent;
+        updateStatus();
+    });
+
+    // Keyboard shortcuts
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+        saveConfig();
+    });
+
+    // Hide loading overlay
+    document.getElementById('loading-overlay').classList.add('hidden');
+
+    // Load config
+    loadConfig();
+}
+
+function updateStatus() {
+    const statusEl = document.getElementById('editor-status');
+    const saveBtn = document.getElementById('save-btn');
+
+    if (hasUnsavedChanges) {
+        statusEl.textContent = 'Unsaved changes';
+        statusEl.className = 'editor-status unsaved';
+        saveBtn.disabled = false;
+    } else {
+        statusEl.textContent = 'Saved';
+        statusEl.className = 'editor-status saved';
+        saveBtn.disabled = true;
+    }
+}
+
+async function loadConfig() {
+    try {
+        const statusEl = document.getElementById('editor-status');
+        statusEl.textContent = 'Loading...';
+        statusEl.className = 'editor-status';
+
+        const response = await fetch('/api/config');
+        const data = await response.json();
+
+        if (data.success) {
+            originalContent = data.content;
+            editor.setValue(data.content);
+            hasUnsavedChanges = false;
+            updateStatus();
+        } else {
+            showMessage('Error loading config: ' + data.message, 'error');
+            statusEl.textContent = 'Error loading';
+            statusEl.className = 'editor-status error';
+        }
+    } catch (error) {
+        console.error('Error loading config:', error);
+        showMessage('Error loading config: ' + error.message, 'error');
+    }
+}
+
+async function saveConfig() {
+    if (!hasUnsavedChanges) return;
+
+    const saveBtn = document.getElementById('save-btn');
+    const statusEl = document.getElementById('editor-status');
+
+    try {
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+        saveBtn.classList.add('saving');
+        statusEl.textContent = 'Saving...';
+        statusEl.className = 'editor-status';
+
+        const content = editor.getValue();
+
+        const response = await fetch('/api/config/save', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                content: content,
+                save_option: 'saveonly'
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            originalContent = content;
+            hasUnsavedChanges = false;
+            updateStatus();
+            showMessage(data.message, 'success');
+        } else {
+            showMessage('Error: ' + data.message, 'error');
+            statusEl.textContent = 'Save failed';
+            statusEl.className = 'editor-status error';
+        }
+    } catch (error) {
+        console.error('Error saving config:', error);
+        showMessage('Error saving config: ' + error.message, 'error');
+        statusEl.textContent = 'Save failed';
+        statusEl.className = 'editor-status error';
+    } finally {
+        saveBtn.textContent = 'Save Config';
+        saveBtn.classList.remove('saving');
+        if (hasUnsavedChanges) {
+            saveBtn.disabled = false;
+        }
+    }
+}
+
+function showMessage(text, type) {
+    const toast = document.getElementById('message-toast');
+    toast.textContent = text;
+    toast.className = 'message-toast ' + type;
+
+    // Auto-hide after 4 seconds
+    setTimeout(() => {
+        toast.className = 'message-toast';
+    }, 4000);
+}
+
+// Warn before leaving with unsaved changes
+window.addEventListener('beforeunload', (e) => {
+    if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+    }
+});

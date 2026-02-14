@@ -1,0 +1,95 @@
+function toggleAutoRefresh(checkbox) {
+    const main = document.querySelector('main');
+    if (checkbox.checked) {
+        // Enable HTMX polling
+        main.setAttribute('hx-trigger', 'load, every 5s');
+        htmx.process(main); // Re-process HTMX attributes
+        console.log('Auto-refresh aktiviert');
+    } else {
+        // Disable HTMX polling
+        main.setAttribute('hx-trigger', 'load');
+        htmx.process(main); // Re-process HTMX attributes
+        console.log('Auto-refresh deaktiviert');
+    }
+}
+
+function toggleHaPublish(checkbox) {
+    const enabled = checkbox.checked;
+    fetch('/api/toggle-ha-publish?enabled=' + enabled, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        const msg = document.getElementById('status-message');
+        msg.textContent = data.message;
+        hideStatusMessage();
+        console.log(data.message);
+    })
+    .catch(error => {
+        console.error('Error toggling HA publish:', error);
+    });
+}
+
+// Status-Message nach 5 Sekunden ausblenden
+function hideStatusMessage() {
+    setTimeout(() => {
+        const msg = document.getElementById('status-message');
+        if (msg) msg.textContent = '';
+    }, 5000);
+}
+
+// HTMX Event Listener
+document.body.addEventListener('htmx:afterSwap', function(evt) {
+    if (evt.detail.target.id === 'status-message') {
+        hideStatusMessage();
+    }
+});
+
+// Submit image for training
+function submitForTraining(id, imageBase64, model, nextImageBase64 = null) {
+    const payload = {
+        id: id,
+        image_base64: imageBase64,
+        model: model
+    };
+    // Include next dial image for arrows (helps with annotation)
+    if (nextImageBase64) {
+        payload.next_image_base64 = nextImageBase64;
+    }
+    fetch('/api/submit-training', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(response => response.json())
+    .then(data => {
+        const msg = document.getElementById('status-message');
+        if (data.success) {
+            msg.textContent = `✅ ${data.message}`;
+        } else {
+            msg.textContent = `⚠️ ${data.message}`;
+        }
+        hideStatusMessage();
+    })
+    .catch(error => {
+        const msg = document.getElementById('status-message');
+        msg.textContent = `❌ Fehler beim Einreichen: ${error}`;
+        hideStatusMessage();
+        console.error('Error submitting for training:', error);
+    });
+}
+
+// Initialize HA publish checkbox on page load
+window.addEventListener('load', function() {
+    fetch('/api/status')
+        .then(response => response.json())
+        .then(data => {
+            const checkbox = document.getElementById('ha-publish');
+            if (checkbox && data.ha_publish_enabled !== undefined) {
+                checkbox.checked = data.ha_publish_enabled;
+            }
+        })
+        .catch(error => console.error('Error loading HA publish status:', error));
+});
