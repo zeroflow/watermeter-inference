@@ -34,6 +34,11 @@ python -m pytest -m integration
 - **Static**: `watermeter/static/`
 - **Tests**: `tests/unit/`, `tests/regression/`, `tests/integration/`
 
+## Common tasks
+
+- New route: create in `watermeter/routes/`, register in `app.py`, add template in `watermeter/templates/`
+- New config field: add to YAML schema, update `config_utils.py`, add migration if needed
+
 ## Conventions
 
 - Use `safe_subpath()` from `watermeter.app` for any path joining with user input
@@ -47,3 +52,20 @@ python -m pytest -m integration
 - Always use git for version control
 - Prefix all commit messages with `claude: ` (e.g., `claude: fix arrow classification threshold`)
 - Never amend or force-push existing commits
+
+## Code quality
+
+- No placeholder or stub implementations — complete every function fully
+- No `# TODO` or `pass` left behind unless explicitly told to defer
+- Do not simplify or skip error handling for brevity
+- Write tests for new functionality before marking done
+- Refactor adjacent code if it's clearly broken or inconsistent with the change
+
+## Context management
+
+- For each task, create `docs/tasks/YYYY_MM_DD_TaskName.md`
+- Structure: Goal, Plan, Progress log, Open items, Done criteria
+- Update the task file as you go — this is your persistent memory
+- Reference the task file in commit messages when relevant (e.g., `claude: fix ROI validation — see docs/tasks/2026_02_14_IntegrationRework.md`)
+- Do not keep large file contents in conversation — read, process, reference by path
+- When debugging, log findings in the task file, not in conversation
