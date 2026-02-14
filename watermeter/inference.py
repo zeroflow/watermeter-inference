@@ -4,7 +4,7 @@ import numpy as np
 from pathlib import Path
 from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 import tempfile
 import httpx
@@ -266,7 +266,7 @@ classifiers = None  # Deprecated: use get_inference_service().predict() instead
 
 class SetupRequest(BaseModel):
     project: Optional[str] = None
-    schema: Optional[str] = None
+    label_schema: Optional[str] = Field(None, alias="schema")
     hostname: Optional[str] = None
     access_token: Optional[str] = None
 

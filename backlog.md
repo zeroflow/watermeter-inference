@@ -87,5 +87,4 @@ Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
 
 ## Tech Debt
 
-- **BL-09** `planned` — **Fix Pydantic `schema` field shadow**: `SetupRequest` in `inference.py:267` uses field name `schema` which shadows `BaseModel.schema()` → rename to e.g. `json_schema` or `config_schema`
-- **BL-10** `planned` — **Replace deprecated `openvino.runtime` import**: `openvino.runtime` is deprecated and will be removed in 2026.0 release → replace with `import openvino` throughout
+- **BL-09** `done` — **Fix Pydantic `schema` field shadow**: `SetupRequest` in `inference.py:267` uses field name `schema` which shadows `BaseModel.schema()` → renamed to `label_schema` with `alias="schema"` for wire compatibility
