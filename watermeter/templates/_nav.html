@@ -1,27 +1,109 @@
 {% set active = nav_active|default('') -%}
+<style>
+/* Nav: mobile-first bottom tab bar, desktop side rail */
+.app-nav {
+    position: fixed;
+    z-index: 900;
+    background: #1e293b;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 56px;
+    padding: 0;
+    margin: 0;
+}
+.app-nav .nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    color: rgba(255,255,255,0.5);
+    transition: color 0.2s, background 0.2s;
+    gap: 2px;
+    position: relative;
+    flex: 1;
+    height: 100%;
+    padding: 4px 0;
+    border-radius: 0;
+    min-width: 0;
+}
+.app-nav .nav-item:hover { color: rgba(255,255,255,0.85); }
+.app-nav .nav-item.active { color: #fff; }
+.app-nav .nav-item.active::after {
+    content: '';
+    position: absolute;
+    background: #2563eb;
+    border-radius: 2px;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 24px;
+    height: 3px;
+}
+.app-nav .nav-icon { width: 20px; height: 20px; flex-shrink: 0; }
+.app-nav .nav-label { font-size: 10px; font-weight: 500; line-height: 1; white-space: nowrap; }
+
+/* Desktop: left rail */
+@media (min-width: 769px) {
+    .app-nav {
+        right: auto;
+        top: 0;
+        width: 72px;
+        height: auto;
+        flex-direction: column;
+        justify-content: flex-start;
+        padding: 20px 0;
+        gap: 4px;
+    }
+    .app-nav .nav-item {
+        flex: none;
+        width: 56px;
+        height: 48px;
+        border-radius: 12px;
+        padding: 6px 0 2px;
+    }
+    .app-nav .nav-item:hover { background: rgba(255,255,255,0.08); }
+    .app-nav .nav-item.active { background: rgba(37,99,235,0.2); }
+    .app-nav .nav-item.active::after {
+        top: 50%; left: 0;
+        transform: translateY(-50%);
+        width: 3px; height: 20px;
+    }
+    .app-nav .nav-icon { width: 22px; height: 22px; }
+    .app-nav .nav-label { font-size: 11px; }
+    body { padding-left: 92px !important; padding-bottom: 20px !important; }
+}
+@media (max-width: 768px) {
+    body { padding-bottom: 60px !important; }
+}
+</style>
 <nav class="app-nav" role="navigation" aria-label="Main">
     <a href="/" class="nav-item{{ ' active' if active == 'dashboard' else '' }}">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg class="nav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
             <polyline points="9 22 9 12 15 12 15 22"/>
         </svg>
         <span class="nav-label">Home</span>
     </a>
     <a href="/label" class="nav-item{{ ' active' if active == 'label' else '' }}">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg class="nav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/>
             <line x1="7" y1="7" x2="7.01" y2="7"/>
         </svg>
         <span class="nav-label">Label</span>
     </a>
     <a href="/training" class="nav-item{{ ' active' if active == 'training' else '' }}">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg class="nav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
         </svg>
         <span class="nav-label">Training</span>
     </a>
     <a href="/roi-config" class="nav-item{{ ' active' if active == 'roi' else '' }}">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg class="nav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"/>
             <line x1="22" y1="12" x2="18" y2="12"/>
             <line x1="6" y1="12" x2="2" y2="12"/>
@@ -31,7 +113,7 @@
         <span class="nav-label">ROI</span>
     </a>
     <a href="/config-editor" class="nav-item{{ ' active' if active == 'config' else '' }}">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg class="nav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"/>
             <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
         </svg>
