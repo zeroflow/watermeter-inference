@@ -17,7 +17,17 @@ Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
   - **Min threshold**: never prune a class below the median class size — protects thin classes relative to the dataset distribution
   - **Disposal**: delete silently on confirm
   - **Current scale**: digits ~453 images (11 classes, 19–109 each), arrows ~4200 images (100 classes, 7–125 each)
-- **BL-03** `idea` — **Ground-truth rework**: move problematic/mislabeled images back into labeling pipeline
+- **BL-03** `planned` — **Ground-truth rework**: benchmark-driven detection of mislabeled ground truth, bulk relabel
+  - **Trigger**: UI button on training page (similar placement to BL-02 prune button) — "Find mislabeled"
+  - **How it works**:
+    1. Runs benchmark on current ground truth using the active model
+    2. Collects per-image results: images where model prediction != folder label are suspects
+    3. Shows gallery of suspect images with current label vs model prediction
+    4. User confirms which to send back (select all / deselect individual)
+    5. Selected images move from `ground_truth/{class}/` back to `input/`
+  - **Pre-filled label**: encode original label in filename (e.g. `digit_1_20260214_label=3.jpg`) so the labeling UI can pre-fill it as suggestion
+  - **Prerequisite**: requires a trained model to run benchmark — button disabled if no active model
+  - **Depends on**: benchmark already computes predictions per image (training_manager.py:976-983), just needs to record image paths alongside results
 
 ## Algorithm / Inference
 
