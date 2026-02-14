@@ -234,6 +234,22 @@ CONFIG_SCHEMA = {
                 }
             }
         },
+        "trigger": {
+            "type": "object",
+            "description": "Trigger mode configuration",
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "enum": ["mqtt", "cyclic", "both"],
+                    "description": "Trigger mode: mqtt (AIOTE triggers), cyclic (periodic polling), or both"
+                },
+                "cyclic_interval": {
+                    "type": "integer",
+                    "minimum": 10,
+                    "description": "Seconds between readings in cyclic/both mode"
+                }
+            }
+        },
         "mqtt": {
             "type": "object",
             "description": "MQTT broker settings",

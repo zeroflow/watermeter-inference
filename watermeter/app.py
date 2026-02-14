@@ -44,8 +44,16 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting Water Meter Dashboard...")
     service = get_service()
+    trigger_mode = service.trigger_mode
+
+    # Start MQTT in all modes (needed for publishing + reset even in cyclic mode)
     service.start_mqtt()
-    logger.info("Water Meter Dashboard started")
+
+    # Start cyclic loop if configured
+    if trigger_mode in ('cyclic', 'both'):
+        service.start_cyclic_loop()
+
+    logger.info(f"Water Meter Dashboard started (trigger_mode={trigger_mode})")
 
     # Initial reading on startup
     logger.info("Triggering initial reading...")
@@ -56,6 +64,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down Water Meter Dashboard...")
     service = get_service()
+    service.stop_cyclic_loop()
     service.stop_mqtt()
     logger.info("Water Meter Dashboard stopped")
 

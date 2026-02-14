@@ -78,6 +78,11 @@ class WatermeterService:
         self.consecutive_rejections = 0
         self.max_consecutive_rejections = 5  # Warn user after this many rejections
 
+        # Trigger mode
+        trigger_config = self.config.get('trigger', {})
+        self.trigger_mode = trigger_config.get('mode', 'mqtt')
+        self.cyclic_interval = trigger_config.get('cyclic_interval', 300)
+
         # Async lock for processing
         self.processing_lock = asyncio.Lock()
 
@@ -87,7 +92,10 @@ class WatermeterService:
         # MQTT client
         self.mqtt_client = None
 
-        logger.info("WatermeterService initialized")
+        # Cyclic loop task
+        self._cyclic_task: Optional[asyncio.Task] = None
+
+        logger.info(f"WatermeterService initialized (trigger_mode={self.trigger_mode})")
 
     async def fetch_images(self) -> Dict[str, Tuple[bytes, str]]:
         """
@@ -880,12 +888,18 @@ class WatermeterService:
         """MQTT connect callback."""
         if rc == 0:
             logger.info("Connected to MQTT broker")
-            # Subscribe to topics
             mqtt_config = self.config['mqtt']
-            client.subscribe(mqtt_config['trigger_topic'], qos=2)
+
+            # Subscribe to trigger topic only in mqtt/both mode
+            if self.trigger_mode in ('mqtt', 'both'):
+                client.subscribe(mqtt_config['trigger_topic'], qos=2)
+                logger.info(f"Subscribed to {mqtt_config['trigger_topic']}")
+            else:
+                logger.info("Cyclic-only mode — skipping trigger topic subscription")
+
+            # Always subscribe to reset and HA status
             client.subscribe(mqtt_config['reset_topic'], qos=2)
             client.subscribe("homeassistant/status", qos=1)
-            logger.info(f"Subscribed to {mqtt_config['trigger_topic']}")
             logger.info(f"Subscribed to {mqtt_config['reset_topic']}")
             logger.info("Subscribed to homeassistant/status")
 
@@ -965,6 +979,32 @@ class WatermeterService:
             self.mqtt_client.loop_stop()
             self.mqtt_client.disconnect()
             logger.info("MQTT client stopped")
+
+    async def _cyclic_loop(self):
+        """Periodically trigger process_reading at the configured interval."""
+        logger.info(f"Cyclic trigger loop started (interval={self.cyclic_interval}s)")
+        try:
+            while True:
+                await asyncio.sleep(self.cyclic_interval)
+                logger.info("Cyclic trigger — starting reading")
+                await self.process_reading()
+        except asyncio.CancelledError:
+            logger.info("Cyclic trigger loop cancelled")
+
+    def start_cyclic_loop(self):
+        """Start the cyclic trigger background task."""
+        if self._cyclic_task is not None:
+            logger.warning("Cyclic loop already running")
+            return
+        self._cyclic_task = asyncio.create_task(self._cyclic_loop())
+        logger.info("Cyclic trigger loop task created")
+
+    def stop_cyclic_loop(self):
+        """Cancel the cyclic trigger background task."""
+        if self._cyclic_task is not None:
+            self._cyclic_task.cancel()
+            self._cyclic_task = None
+            logger.info("Cyclic trigger loop stopped")
 
 
 # Global service instance
