@@ -350,6 +350,21 @@ CONFIG_SCHEMA = {
                 "enable_consistency_check": {
                     "type": "boolean",
                     "description": "Check half/upper consistency between positions"
+                },
+                "enable_leak_detection": {
+                    "type": "boolean",
+                    "description": "Detect sustained high consumption (leak warning)",
+                    "default": True
+                },
+                "sustained_rate_threshold": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "Rate threshold in m³/h for leak detection (each interval must exceed this)"
+                },
+                "sustained_rate_readings": {
+                    "type": "integer",
+                    "minimum": 2,
+                    "description": "Number of consecutive above-threshold intervals before warning fires"
                 }
             }
         },

@@ -125,6 +125,9 @@ plausibility:
   max_rate_per_reading: 0.15  # m³ - maximum change per single reading (immediate rejection)
   rate_history_size: 25  # Number of readings to keep for hourly rate averaging
   enable_consistency_check: false  # Check half/upper consistency between adjacent positions
+  enable_leak_detection: true            # Detect sustained consumption (leak warning)
+  sustained_rate_threshold: 0.05         # m³/h threshold per interval
+  sustained_rate_readings: 3             # Consecutive intervals above threshold before warning
 
 # Low Confidence Handling
 low_confidence:

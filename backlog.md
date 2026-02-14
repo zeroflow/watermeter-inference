@@ -60,7 +60,7 @@ Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
   - **UI**: toggle between discrete/continuous in training form; model filename: `model_arrows_{arch}_continuous_r{res}`
   - **Compare**: benchmark both modes on same ground truth to see which is more accurate
   - **Priority**: implement after BL-05 since it's a bigger change to the training pipeline
-- **BL-06** `planned` — **Continuous consumption warning**: detect sustained high water usage (leak detection)
+- **BL-06** `done` — **Continuous consumption warning**: detect sustained high water usage (leak detection)
   - **What it detects**: consumption rate stays elevated over a prolonged period — likely a running toilet, dripping pipe, or open valve
   - **How**: check `rate_history` — if average rate exceeds a threshold for N consecutive readings, trigger warning
   - **Output**: both dashboard banner + MQTT attribute

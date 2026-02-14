@@ -55,7 +55,8 @@ class WatermeterService:
             'warnings': [],
             'predictions': [],
             'processing': False,
-            'ha_publish_enabled': self.ha_publish_enabled
+            'ha_publish_enabled': self.ha_publish_enabled,
+            'leak_warning': False
         }
 
         # Persistence
@@ -78,6 +79,9 @@ class WatermeterService:
         # Consecutive rejection tracking for stuck state detection
         self.consecutive_rejections = 0
         self.max_consecutive_rejections = 5  # Warn user after this many rejections
+
+        # Leak detection state
+        self.leak_warning: bool = False
 
         # Trigger mode
         trigger_config = self.config.get('trigger', {})
@@ -652,6 +656,48 @@ class WatermeterService:
         rate_per_hour = (value_diff / time_diff) * 3600
         return rate_per_hour
 
+    def _check_sustained_consumption(self) -> Optional[str]:
+        """
+        Check if the last N consecutive readings all show rate above threshold.
+
+        Returns:
+            Warning message string if leak detected, None otherwise.
+        """
+        config = self.config['plausibility']
+
+        if not config.get('enable_leak_detection', True):
+            return None
+
+        threshold = config.get('sustained_rate_threshold', 0.05)
+        min_readings = config.get('sustained_rate_readings', 3)
+
+        if len(self.rate_history) < min_readings + 1:
+            return None
+
+        tail = self.rate_history[-(min_readings + 1):]
+
+        for i in range(len(tail) - 1):
+            val_prev, ts_prev = tail[i]
+            val_curr, ts_curr = tail[i + 1]
+
+            time_diff_s = (ts_curr - ts_prev).total_seconds()
+            if time_diff_s <= 0:
+                return None
+
+            rate_per_hour = ((val_curr - val_prev) / time_diff_s) * 3600
+
+            if rate_per_hour < threshold:
+                return None
+
+        total_time_s = (tail[-1][1] - tail[0][1]).total_seconds()
+        total_time_min = total_time_s / 60
+        avg_rate = ((tail[-1][0] - tail[0][0]) / total_time_s) * 3600
+
+        return (
+            f"Sustained consumption: {avg_rate:.3f} m\u00b3/h over {total_time_min:.0f} min "
+            f"({min_readings} consecutive readings above {threshold} m\u00b3/h)"
+        )
+
     async def save_low_confidence(self, image_id: str, image_bytes: bytes,
                                   prediction: Dict,
                                   next_image_bytes: bytes = None) -> None:
@@ -796,6 +842,14 @@ class WatermeterService:
 
                 all_warnings = consistency_warnings + plausibility_warnings
 
+                # Leak detection (sustained consumption check)
+                leak_msg = self._check_sustained_consumption()
+                self.leak_warning = leak_msg is not None
+                self.current_state['leak_warning'] = self.leak_warning
+                if leak_msg:
+                    all_warnings.append(leak_msg)
+                    logger.warning(leak_msg)
+
                 # 6. Handle low confidence images
                 threshold = self.config['inference']['confidence_threshold']
                 low_conf_config = self.config['low_confidence']
@@ -869,7 +923,8 @@ class WatermeterService:
                     logger.info(f"✓ Reading accepted: {total_value:.4f} m³")
 
                     # Publish to MQTT
-                    await self.publish_to_mqtt(total_value, all_warnings, predictions)
+                    await self.publish_to_mqtt(total_value, all_warnings, predictions,
+                                               leak_warning=self.leak_warning)
                 else:
                     self.consecutive_rejections += 1
                     self.current_state['status'] = 'error'
@@ -915,7 +970,7 @@ class WatermeterService:
         return self.current_state
 
     async def publish_to_mqtt(self, value: float, warnings: List[str],
-                             predictions: Dict) -> None:
+                             predictions: Dict, *, leak_warning: bool = False) -> None:
         """
         Publish reading to Home Assistant via MQTT.
 
@@ -940,6 +995,7 @@ class WatermeterService:
             'attributes': {
                 'last_update': datetime.now().isoformat(),
                 'warnings': warnings,
+                'leak_warning': leak_warning,
                 'confidences': {
                     pred['id']: round(pred['confidence'] * 100, 1)
                     for pred in predictions.values()
@@ -964,6 +1020,8 @@ class WatermeterService:
         self.last_update_time = None
         self.rate_history = []
         self.consecutive_rejections = 0
+        self.leak_warning = False
+        self.current_state['leak_warning'] = False
 
         # Clear persisted state
         if self.state_store:
