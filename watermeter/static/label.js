@@ -51,13 +51,19 @@ async function loadNextImage() {
             badge.className = 'model-type-badge model-type-digits';
             instructions.innerHTML = '<strong>Digits:</strong> Enter 0-9 for the digit, or N for NAN (not a number)';
             input.placeholder = '0-9 or N';
-            input.inputMode = 'text';
+            input.inputMode = 'numeric';
         } else {
             badge.textContent = 'ARROW';
             badge.className = 'model-type-badge model-type-arrows';
             instructions.innerHTML = '<strong>Arrows:</strong> Enter value 0,0 to 9,9 (e.g., 1,2 or 6,9 or 3,3 or just 3 for 3,0). Next dial shows the smaller position for reference.';
             input.placeholder = 'e.g. 3,3 or 6,9';
             input.inputMode = 'decimal';
+        }
+
+        // Show/hide NAN button (only for digits)
+        const nanBtn = document.getElementById('btn-nan');
+        if (nanBtn) {
+            nanBtn.style.display = data.model_type === 'digits' ? '' : 'none';
         }
 
         // Show interface

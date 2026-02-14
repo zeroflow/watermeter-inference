@@ -288,6 +288,18 @@
             cursor: pointer;
         }
 
+        .label-actions .btn-action-nan {
+            flex: 1;
+            padding: 14px 12px;
+            font-size: 14px;
+            font-weight: 700;
+            color: white;
+            background: var(--warning);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
         .label-actions .btn-action-delete {
             flex: 1;
             padding: 14px 12px;
@@ -415,6 +427,7 @@
 
                 <div class="label-actions">
                     <button class="btn-action-submit" onclick="validateAndSubmit(document.getElementById('label-input').value)">Submit</button>
+                    <button class="btn-action-nan" id="btn-nan" onclick="submitLabel('NAN')" style="display: none;">NAN</button>
                     <button class="btn-action-delete" onclick="deleteImage()">Delete</button>
                 </div>
 
