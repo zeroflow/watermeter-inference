@@ -21,11 +21,11 @@ from pydantic import BaseModel
 from typing import List
 import logging
 
-from watermeter_service import get_service
-from inference import get_inference_service
-from model_manager import get_model_manager
-from training_manager import get_training_manager
-import config_utils
+from .watermeter_service import get_service
+from .inference import get_inference_service
+from .model_manager import get_model_manager
+from .training_manager import get_training_manager
+from . import config_utils
 
 logger = logging.getLogger(__name__)
 
@@ -161,11 +161,12 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Mount static files
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# Mount static files and templates relative to this package
+_pkg_dir = Path(__file__).resolve().parent
+app.mount("/static", StaticFiles(directory=str(_pkg_dir / "static")), name="static")
 
 # Setup templates
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory=str(_pkg_dir / "templates"))
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -1781,16 +1782,21 @@ async def get_training_data_stats():
         }, status_code=500)
 
 
-if __name__ == "__main__":
+def main():
+    """Run the application directly (e.g. python -m watermeter)."""
     import uvicorn
-    import yaml
+    import yaml as _yaml
 
     # Load config for port
     with open("config.yaml", 'r') as f:
-        config = yaml.safe_load(f)
+        _config = _yaml.safe_load(f)
 
-    host = config['dashboard']['host']
-    port = config['dashboard']['port']
+    host = _config['dashboard']['host']
+    port = _config['dashboard']['port']
 
     logger.info(f"Starting server on {host}:{port}")
-    uvicorn.run(app, host=host, port=port)
+    uvicorn.run("watermeter.app:app", host=host, port=port)
+
+
+if __name__ == "__main__":
+    main()

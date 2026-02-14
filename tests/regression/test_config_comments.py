@@ -6,7 +6,7 @@ Fix: Using ruamel.yaml with comment preservation.
 
 import pytest
 
-from config_utils import load_config, save_config, load_config_string, dump_config_string
+from watermeter.config_utils import load_config, save_config, load_config_string, dump_config_string
 
 
 def test_inline_comment_preserved():

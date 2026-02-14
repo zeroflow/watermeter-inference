@@ -11,7 +11,7 @@ from datetime import datetime
 from enum import Enum
 import logging
 
-from model_manager import get_model_manager
+from .model_manager import get_model_manager
 
 logger = logging.getLogger(__name__)
 

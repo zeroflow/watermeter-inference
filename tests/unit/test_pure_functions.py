@@ -57,13 +57,13 @@ class TestSafeSubpath:
 # so we patch model_manager to use a temp dir.
 
 from unittest.mock import patch
-from training_manager import TrainingManager
+from watermeter.training_manager import TrainingManager
 
 
 @pytest.fixture
 def tm(tmp_path):
-    with patch('model_manager._model_manager', None):
-        with patch('model_manager.ModelManager.__init__', lambda self, **kw: setattr(self, 'models_base_path', tmp_path)):
+    with patch('watermeter.model_manager._model_manager', None):
+        with patch('watermeter.model_manager.ModelManager.__init__', lambda self, **kw: setattr(self, 'models_base_path', tmp_path)):
             return TrainingManager()
 
 

@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from training_manager import TrainingManager
+from watermeter.training_manager import TrainingManager
 
 
 def test_digit_classes_include_nan():
@@ -23,8 +23,8 @@ def test_digit_classes_include_nan():
 
 def test_arrow_classes_100_do_not_contain_nan(tmp_path):
     """Arrow classes should be numeric, never NAN."""
-    with patch('model_manager._model_manager', None):
-        with patch('model_manager.ModelManager.__init__', lambda self, **kw: setattr(self, 'models_base_path', tmp_path)):
+    with patch('watermeter.model_manager._model_manager', None):
+        with patch('watermeter.model_manager.ModelManager.__init__', lambda self, **kw: setattr(self, 'models_base_path', tmp_path)):
             tm = TrainingManager()
     for num_classes in [10, 20, 50, 100]:
         classes = tm._generate_arrow_classes(num_classes)

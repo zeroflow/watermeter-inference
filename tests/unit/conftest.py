@@ -6,6 +6,8 @@ from unittest.mock import MagicMock, patch
 from pathlib import Path
 
 import pytest
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 # ---- Mock heavy modules BEFORE importing app ----
 # These are not available on the host (only in Docker), or have module-level
@@ -13,7 +15,6 @@ import pytest
 
 _MOCK_MODULES = [
     'cv2',
-    'numpy',
     'paho',
     'paho.mqtt',
     'paho.mqtt.client',
@@ -30,28 +31,26 @@ def _install_mock_modules():
             mock_mod.__name__ = mod_name
             sys.modules[mod_name] = mock_mod
 
-    # numpy needs special attributes
-    np_mock = sys.modules['numpy']
-    np_mock.ndarray = MagicMock
-    np_mock.float32 = float
-    np_mock.uint8 = int
+    # Note: numpy is NOT mocked - it's available in the venv and torch/timm need it at import time
 
 
 _install_mock_modules()
 
 # Mock inference module (has module-level init that reads config.yaml + loads OpenVINO models)
-if 'inference' not in sys.modules:
-    _inference_mock = MagicMock(spec=ModuleType)
-    _inference_mock.__name__ = 'inference'
-    _inference_mock.get_inference_service = MagicMock(return_value=MagicMock())
-    sys.modules['inference'] = _inference_mock
+for _inf_name in ['inference', 'watermeter.inference']:
+    if _inf_name not in sys.modules:
+        _inference_mock = MagicMock(spec=ModuleType)
+        _inference_mock.__name__ = _inf_name
+        _inference_mock.get_inference_service = MagicMock(return_value=MagicMock())
+        sys.modules[_inf_name] = _inference_mock
 
 # Mock watermeter_service module (imports inference, cv2, paho.mqtt, etc.)
-if 'watermeter_service' not in sys.modules:
-    _ws_mock = MagicMock(spec=ModuleType)
-    _ws_mock.__name__ = 'watermeter_service'
-    _ws_mock.get_service = MagicMock()
-    sys.modules['watermeter_service'] = _ws_mock
+for _ws_name in ['watermeter_service', 'watermeter.watermeter_service']:
+    if _ws_name not in sys.modules:
+        _ws_mock = MagicMock(spec=ModuleType)
+        _ws_mock.__name__ = _ws_name
+        _ws_mock.get_service = MagicMock()
+        sys.modules[_ws_name] = _ws_mock
 
 
 @pytest.fixture
@@ -88,14 +87,16 @@ def test_client(mock_service, tmp_path, monkeypatch):
     # Change working directory to tmp_path so config.yaml operations work
     monkeypatch.chdir(tmp_path)
 
-    # Create minimal templates and static dirs for app startup
-    (tmp_path / "templates").mkdir()
-    (tmp_path / "static").mkdir()
+    # Create minimal templates and static dirs for test
+    templates_dir = tmp_path / "templates"
+    static_dir = tmp_path / "static"
+    templates_dir.mkdir()
+    static_dir.mkdir()
 
     # Create minimal template stubs
     for tmpl in ["dashboard.html", "status_fragment.html", "label.html",
                  "roi_config.html", "config_editor.html", "training.html"]:
-        (tmp_path / "templates" / tmpl).write_text("<html>{{ request.url }}</html>")
+        (templates_dir / tmpl).write_text("<html>{{ request.url }}</html>")
 
     # Create a config.yaml
     config_yaml = (
@@ -106,15 +107,23 @@ def test_client(mock_service, tmp_path, monkeypatch):
     (tmp_path / "config.yaml").write_text(config_yaml)
 
     # Wire the mock service into the watermeter_service mock module
-    sys.modules['watermeter_service'].get_service = MagicMock(return_value=mock_service)
-    sys.modules['inference'].get_inference_service = MagicMock(return_value=MagicMock())
+    for _ws_name in ['watermeter_service', 'watermeter.watermeter_service']:
+        if _ws_name in sys.modules:
+            sys.modules[_ws_name].get_service = MagicMock(return_value=mock_service)
+    for _inf_name in ['inference', 'watermeter.inference']:
+        if _inf_name in sys.modules:
+            sys.modules[_inf_name].get_inference_service = MagicMock(return_value=MagicMock())
 
     # Import app after mocking (deferred to avoid import errors at collection time)
-    import app as app_module
+    import watermeter.app as app_module
 
     # Patch the singletons at the app module level too
     monkeypatch.setattr(app_module, "get_service", lambda: mock_service)
     monkeypatch.setattr(app_module, "get_inference_service", lambda: MagicMock())
+
+    # Override template/static dirs to use test stubs
+    monkeypatch.setattr(app_module, "templates", Jinja2Templates(directory=str(templates_dir)))
+    app_module.app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
     from fastapi.testclient import TestClient
 

@@ -18,8 +18,8 @@ import numpy as np
 import httpx
 import yaml
 import paho.mqtt.client as mqtt
-from inference import get_inference_service
-from persistence import StateStore
+from .inference import get_inference_service
+from .persistence import StateStore
 
 # Configure logging
 logging.basicConfig(

@@ -5,7 +5,7 @@ from datetime import datetime
 
 import pytest
 
-from persistence import StateStore
+from watermeter.persistence import StateStore
 
 
 class TestStateStore:

@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from model_manager import ModelManager
+from watermeter.model_manager import ModelManager
 
 
 @pytest.fixture
@@ -168,7 +168,7 @@ class TestModelManagerActivation:
         assert result is True
 
         # Verify config was updated
-        from config_utils import load_config
+        from watermeter.config_utils import load_config
         config = load_config(config_file)
         assert "model_act" in config['inference']['digits_model']
 

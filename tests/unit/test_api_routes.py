@@ -71,7 +71,7 @@ class TestTrainingStatus:
         mock_tm.get_benchmark_status.return_value = {"status": "idle"}
         mock_tm.get_queue.return_value = []
 
-        import app as app_module
+        import watermeter.app as app_module
         monkeypatch.setattr(app_module, "get_training_manager", lambda: mock_tm)
 
         resp = test_client.get("/api/training/status")
@@ -91,7 +91,7 @@ class TestModelEndpoints:
             {"id": "model_a", "created_at": "2025-01-01"}
         ]
 
-        import app as app_module
+        import watermeter.app as app_module
         monkeypatch.setattr(app_module, "get_model_manager", lambda: mock_mm)
 
         resp = test_client.get("/api/models?model_type=digits")
@@ -104,7 +104,7 @@ class TestModelEndpoints:
         mock_mm = MagicMock()
         mock_mm.get_model.return_value = {"id": "model_a", "accuracy": 0.95}
 
-        import app as app_module
+        import watermeter.app as app_module
         monkeypatch.setattr(app_module, "get_model_manager", lambda: mock_mm)
 
         resp = test_client.get("/api/models/digits/model_a")
@@ -117,7 +117,7 @@ class TestModelEndpoints:
         mock_mm = MagicMock()
         mock_mm.get_model.return_value = None
 
-        import app as app_module
+        import watermeter.app as app_module
         monkeypatch.setattr(app_module, "get_model_manager", lambda: mock_mm)
 
         resp = test_client.get("/api/models/digits/nonexistent")
@@ -127,7 +127,7 @@ class TestModelEndpoints:
         mock_mm = MagicMock()
         mock_mm.delete_model.return_value = True
 
-        import app as app_module
+        import watermeter.app as app_module
         monkeypatch.setattr(app_module, "get_model_manager", lambda: mock_mm)
 
         resp = test_client.delete("/api/models/digits/model_a")

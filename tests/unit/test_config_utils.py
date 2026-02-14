@@ -2,7 +2,7 @@
 
 import pytest
 
-from config_utils import (
+from watermeter.config_utils import (
     load_config,
     save_config,
     load_config_string,

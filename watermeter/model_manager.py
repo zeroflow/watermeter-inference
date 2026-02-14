@@ -201,7 +201,7 @@ class ModelManager:
         Returns:
             True if successful, False otherwise
         """
-        import config_utils as _config_utils
+        from . import config_utils as _config_utils
 
         self._validate_model_id(model_id)
         model_dir = self._get_model_types_dir(model_type) / model_id

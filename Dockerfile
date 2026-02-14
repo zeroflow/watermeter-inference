@@ -26,10 +26,8 @@ RUN mkdir -p /config /config_default /data \
     /training/digits/input \
     /training/digits/ground_truth
 
-# Copy application files
-COPY app.py watermeter_service.py persistence.py inference.py config_utils.py model_manager.py training_manager.py /app/
-COPY templates/ /app/templates/
-COPY static/ /app/static/
+# Copy application package
+COPY watermeter/ /app/watermeter/
 
 # Copy selected models to staging area (entrypoint copies to /app/models/ on first run)
 COPY digits/selected/ /app/digits/selected/
@@ -47,4 +45,4 @@ EXPOSE 8001
 
 # Set entrypoint and default command
 ENTRYPOINT ["/docker-entrypoint.sh"]
-CMD ["python3", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8001"]
+CMD ["python3", "-m", "uvicorn", "watermeter.app:app", "--host", "0.0.0.0", "--port", "8001"]
