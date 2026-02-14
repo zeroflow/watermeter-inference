@@ -3,6 +3,9 @@ set -e
 
 echo "=== Water Meter Dashboard Startup ==="
 
+# Fix ownership of mounted volumes (may be owned by root from previous container runs)
+chown -R watermeter:watermeter /app/models /training /config /data 2>/dev/null || true
+
 # Initialize config directory if empty
 if [ ! -f /config/config.yaml ]; then
     echo "No config found, copying defaults..."
@@ -71,4 +74,4 @@ fi
 
 echo "=== Starting application ==="
 cd /app
-exec "$@"
+exec gosu watermeter "$@"

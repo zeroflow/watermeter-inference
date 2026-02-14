@@ -3,6 +3,7 @@ USER root
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    gosu \
     libxcb1 \
     libxcb-shm0 \
     libxcb-randr0 \
@@ -57,9 +58,7 @@ RUN chown -R watermeter:watermeter /app /config_default
 # Expose port
 EXPOSE 8001
 
-# Switch to non-root user
-USER watermeter
-
+# Entrypoint runs as root to fix volume permissions, then drops to watermeter via gosu.
 # Set entrypoint and default command
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["python3", "-m", "uvicorn", "watermeter.app:app", "--host", "0.0.0.0", "--port", "8001"]
