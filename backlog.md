@@ -59,8 +59,30 @@ Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
   - **UI**: toggle between discrete/continuous in training form; model filename: `model_arrows_{arch}_continuous_r{res}`
   - **Compare**: benchmark both modes on same ground truth to see which is more accurate
   - **Priority**: implement after BL-05 since it's a bigger change to the training pipeline
-- **BL-06** `idea` — **Warnings on constant use**: detect and warn when meter reading hasn't changed over time
+- **BL-06** `planned` — **Stale reading detection**: warn when meter value is flat or system stops producing readings
+  - **Two conditions**:
+    1. **Meter unchanged**: value hasn't changed for N hours despite successful readings → possible broken meter or vacation
+    2. **No readings**: system hasn't produced a reading for N hours → camera offline, inference failing, trigger broken
+  - **Output**: both dashboard banner + MQTT attribute
+    - Dashboard: warning banner with time since last change / last reading
+    - MQTT: add `stale_warning` attribute to published payload so HA automations can fire notifications
+  - **Config**: thresholds in `config.yaml` under `plausibility` section
+    - `stale_value_hours: 24` — warn if meter value unchanged for this long
+    - `no_reading_hours: 2` — warn if no reading produced for this long
+  - **State tracking**: needs `last_value_change_time` (distinct from `last_update_time` which tracks last reading)
+  - **Existing infra**: `rate_history` already tracks (value, timestamp) tuples; `consecutive_rejections` tracks stuck inference
 
 ## User Interaction
 
-- **BL-07** `idea` — **Ask user via Telegram**: send uncertain readings for human verification (e.g. "this value seems high — is it correct?")
+- **BL-07** `planned` — **User confirmation via Home Assistant**: route uncertain readings through HA for user verification and response
+  - **Not Telegram-native** — use MQTT to publish actionable events, let HA handle notification channel (Telegram, push, email, etc.)
+  - **One-way (publish)**:
+    - New MQTT topic `watermeter/confirmation_request` with payload: value, confidence, image (base64 or URL), reason for doubt
+    - HA automation picks this up → sends notification via user's preferred channel
+  - **Two-way (subscribe)**:
+    - New MQTT topic `watermeter/confirmation_response` — user replies via HA (e.g. inline Telegram buttons)
+    - Payloads: `confirm` (accept the reading), `reject` (discard it), `correct:{value}` (override with manual value)
+    - Watermeter subscribes and processes the response: update `previous_value`, publish corrected reading
+  - **Trigger conditions**: reading accepted but with warnings, low confidence across multiple positions, large jump from previous
+  - **Timeout**: if no response within N minutes, auto-accept (don't block the pipeline)
+  - **Depends on**: existing MQTT infra (already has publish + subscribe); BL-06 stale detection could also trigger confirmation requests
