@@ -6,10 +6,12 @@ set -e
 
 # Parse flags
 PURGE_MODELS=0
+DETACH=0
 for arg in "$@"; do
     case "$arg" in
         --purge-models) PURGE_MODELS=1 ;;
-        *) echo "Unknown option: $arg"; echo "Usage: $0 [--purge-models]"; exit 1 ;;
+        --detach) DETACH=1 ;;
+        *) echo "Unknown option: $arg"; echo "Usage: $0 [--detach] [--purge-models]"; exit 1 ;;
     esac
 done
 
@@ -91,15 +93,45 @@ else
   echo "No GPU device found, running in CPU-only mode..."
 fi
 
-docker run -it --rm \
-  --name "$CONTAINER_NAME" \
-  $DRI_FLAGS \
-  -p 8002:8001 \
-  -v $(pwd)/config_debug:/config \
-  -v $(pwd)/data_debug:/data \
-  -v $(pwd)/models_debug:/app/models \
-  -v ./arrows/:/training/arrows \
-  -v ./digits/:/training/digits \
-  -v /home/thomas/.cache/huggingface:/root/.cache/huggingface \
-  ${HF_TOKEN:+-e HF_TOKEN="$HF_TOKEN"} \
-  watermeter-dashboard
+if [[ $DETACH -eq 1 ]]; then
+  # Detached mode - run in background and wait for health
+  docker run -d \
+    --name "$CONTAINER_NAME" \
+    $DRI_FLAGS \
+    -p 8002:8001 \
+    -v $(pwd)/config_debug:/config \
+    -v $(pwd)/data_debug:/data \
+    -v $(pwd)/models_debug:/app/models \
+    -v ./arrows/:/training/arrows \
+    -v ./digits/:/training/digits \
+    -v /home/thomas/.cache/huggingface:/root/.cache/huggingface \
+    ${HF_TOKEN:+-e HF_TOKEN="$HF_TOKEN"} \
+    watermeter-dashboard
+
+  echo "Waiting for container to become healthy..."
+  for i in $(seq 1 60); do
+    STATUS=$(docker inspect --format='{{.State.Health.Status}}' "$CONTAINER_NAME" 2>/dev/null || echo "starting")
+    if [ "$STATUS" = "healthy" ]; then
+      echo "Container is healthy and ready on http://localhost:8002"
+      exit 0
+    fi
+    sleep 2
+  done
+  echo "ERROR: Container did not become healthy within 120s"
+  docker logs "$CONTAINER_NAME" --tail 20
+  exit 1
+else
+  # Interactive mode - run in foreground
+  docker run -it --rm \
+    --name "$CONTAINER_NAME" \
+    $DRI_FLAGS \
+    -p 8002:8001 \
+    -v $(pwd)/config_debug:/config \
+    -v $(pwd)/data_debug:/data \
+    -v $(pwd)/models_debug:/app/models \
+    -v ./arrows/:/training/arrows \
+    -v ./digits/:/training/digits \
+    -v /home/thomas/.cache/huggingface:/root/.cache/huggingface \
+    ${HF_TOKEN:+-e HF_TOKEN="$HF_TOKEN"} \
+    watermeter-dashboard
+fi
