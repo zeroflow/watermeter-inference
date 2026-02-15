@@ -97,8 +97,11 @@ def make_service(config=None):
 class TestPredictDetailed:
     """Tests for predict_detailed() softmax + top-K logic.
 
-    Uses standalone _predict / _predict_detailed functions that replicate
-    the identical algorithm from Classifier without OpenVINO dependencies.
+    NOTE: These tests verify the algorithm logic in isolation using standalone
+    _predict / _predict_detailed functions, NOT the actual Classifier class from
+    watermeter.inference (which has OpenVINO dependencies unavailable on host).
+    They validate the mathematical correctness of softmax + top-K, but do not
+    test the real Classifier.predict_detailed() implementation.
     """
 
     DIGIT_CLASSES = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'NAN']

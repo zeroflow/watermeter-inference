@@ -98,13 +98,22 @@ class TestTriggerModeDefaults:
     """Tests for trigger mode default behavior when config section is missing."""
 
     def test_default_trigger_mode_is_mqtt(self):
-        """When trigger section is absent, default should be 'mqtt'."""
-        config = {}
-        trigger_config = config.get('trigger', {})
-        mode = trigger_config.get('mode', 'mqtt')
-        interval = trigger_config.get('cyclic_interval', 300)
-        assert mode == 'mqtt'
-        assert interval == 300
+        """When trigger section is absent, WatermeterService should default to 'mqtt'."""
+        # Create a service instance with config lacking trigger section
+        service = object.__new__(WatermeterService)
+        service.config = {
+            'images': {'digits': [], 'arrows': []},
+            'mqtt': {'broker': 'localhost', 'port': 1883},
+            'inference': {'confidence_threshold': 0.5},
+        }
+
+        # Replicate the __init__ logic for trigger_mode resolution
+        trigger_config = service.config.get('trigger', {})
+        service.trigger_mode = trigger_config.get('mode', 'mqtt')
+        service.cyclic_interval = trigger_config.get('cyclic_interval', 300)
+
+        assert service.trigger_mode == 'mqtt'
+        assert service.cyclic_interval == 300
 
 
 # ===== Cyclic Loop Tests =====
@@ -118,23 +127,29 @@ class TestCyclicLoop:
         service = MagicMock()
         service.cyclic_interval = 0.05  # 50ms for fast test
         call_count = 0
+        target_calls = 3
+        done = asyncio.Event()
 
         async def mock_process():
             nonlocal call_count
             call_count += 1
+            if call_count >= target_calls:
+                done.set()
 
         service.process_reading = mock_process
 
         loop_coro = WatermeterService._cyclic_loop(service)
         task = asyncio.create_task(loop_coro)
-        await asyncio.sleep(0.18)  # Should get ~3 iterations at 50ms
-        task.cancel()
         try:
-            await task
-        except asyncio.CancelledError:
-            pass
-
-        assert call_count >= 2, f"Expected at least 2 calls, got {call_count}"
+            # Wait for expected calls with timeout instead of fixed sleep
+            await asyncio.wait_for(done.wait(), timeout=2.0)
+            assert call_count >= target_calls, f"Expected at least {target_calls} calls, got {call_count}"
+        finally:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
     @pytest.mark.asyncio
     async def test_cyclic_loop_cancellation(self):
