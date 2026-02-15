@@ -11,14 +11,16 @@ You are a **coordinator**. You do NOT read source code, write implementations, o
 
 ## Subagents
 
+Only use **opus** and **sonnet** models. NEVER use haiku.
+
 | Agent | Model | Use for |
 |-------|-------|---------|
 | `planner` | opus | Codebase exploration, task doc creation, architecture decisions |
 | `senior-dev` | opus | Complex multi-file implementations, refactoring, API design |
+| `reviewer` | opus | Pre-commit code review, security checks, convention violations |
 | `junior-dev` | sonnet | Simple changes: add route, fix typo, small refactor |
 | `frontend` | sonnet | Templates (Jinja2), HTMX interactions, CSS styling |
 | `tester` | sonnet | Unit/regression tests, browser testing (Playwright on port 8002) |
-| `reviewer` | sonnet | Pre-commit code review, security checks, convention violations |
 | `debugger` | sonnet | Test failures, stack traces, runtime errors |
 | `researcher` | sonnet | Library docs, API research, best practices, web search |
 
