@@ -1,11 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="auto">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Training - AI Water Meter</title>
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💧</text></svg>">
+    {% include '_theme.html' %}
     <style>
         .back-button {
             color: white;
@@ -25,10 +26,10 @@
         }
 
         .section {
-            background: white;
+            background: var(--bg-surface-raised);
             border-radius: 12px;
             padding: 20px 16px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            box-shadow: 0 2px 8px var(--shadow-color);
         }
 
         .section h2 {
@@ -104,7 +105,7 @@
         .queue-item .btn-remove {
             padding: 4px 10px;
             font-size: 11px;
-            background: #fee2e2;
+            background: var(--danger-bg);
             color: var(--danger);
             border: none;
             border-radius: 4px;
@@ -113,7 +114,8 @@
         }
 
         .queue-item .btn-remove:hover {
-            background: #fecaca;
+            background: var(--danger-bg);
+            filter: brightness(0.95);
         }
 
         /* Log section at bottom */
@@ -387,12 +389,12 @@
             right: 0;
             max-height: 280px;
             overflow-y: auto;
-            background: #ffffff;
+            background: var(--bg-surface);
             border: 2px solid var(--primary);
             border-top: none;
             border-radius: 0 0 8px 8px;
             z-index: 100;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            box-shadow: 0 4px 12px var(--shadow-color);
         }
         .arch-dropdown.open {
             display: block;
@@ -535,14 +537,14 @@
         }
 
         .log-viewer {
-            background: #1e293b;
+            background: var(--bg-inset);
             border-radius: 8px;
             padding: 12px;
             max-height: 200px;
             overflow-y: auto;
             font-family: monospace;
             font-size: 12px;
-            color: #e2e8f0;
+            color: var(--text-dark);
         }
 
         .log-viewer .log-line {
@@ -618,13 +620,13 @@
         }
 
         .model-table .model-type.digits {
-            background: #dcfce7;
-            color: #166534;
+            background: var(--success-bg);
+            color: var(--success-text);
         }
 
         .model-table .model-type.arrows {
-            background: #dbeafe;
-            color: #1e40af;
+            background: var(--info-bg);
+            color: var(--info-text);
         }
 
         .model-actions .btn-viewlog {
@@ -634,7 +636,7 @@
         }
 
         .model-actions .btn-viewlog:hover {
-            background: #e2e8f0;
+            background: var(--bg-light);
         }
 
         /* Log viewer modal */
@@ -656,14 +658,14 @@
         }
 
         .log-modal {
-            background: white;
+            background: var(--bg-surface);
             border-radius: 12px;
             width: 90%;
             max-width: 800px;
             max-height: 80vh;
             display: flex;
             flex-direction: column;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 20px 60px var(--shadow-color);
         }
 
         .log-modal-header {
@@ -699,8 +701,8 @@
             font-family: monospace;
             font-size: 12px;
             line-height: 1.6;
-            background: #1a1a2e;
-            color: #e0e0e0;
+            background: var(--bg-inset);
+            color: var(--text-dark);
         }
 
         .log-modal-body .log-line {
@@ -732,7 +734,7 @@
         }
 
         .model-actions .btn-activate:hover {
-            background: #1d4ed8;
+            background: var(--primary-dark);
         }
 
         .model-actions .btn-activate:disabled {
@@ -742,12 +744,13 @@
         }
 
         .model-actions .btn-delete {
-            background: #fee2e2;
+            background: var(--danger-bg);
             color: var(--danger);
         }
 
         .model-actions .btn-delete:hover:not(:disabled) {
-            background: #fecaca;
+            background: var(--danger-bg);
+            filter: brightness(0.95);
         }
 
         .model-actions .btn-delete:disabled {
@@ -762,7 +765,7 @@
         }
 
         .model-actions .btn-benchmark:hover {
-            background: #b45309;
+            filter: brightness(0.85);
         }
 
         .model-actions .btn-benchmark:disabled {
@@ -837,16 +840,16 @@
         }
 
         .message.success {
-            background: #d4edda;
-            border: 1px solid #c3e6cb;
-            color: #155724;
+            background: var(--success-bg);
+            border: 1px solid var(--success);
+            color: var(--success-text);
             display: block;
         }
 
         .message.error {
-            background: #f8d7da;
-            border: 1px solid #f5c6cb;
-            color: #721c24;
+            background: var(--danger-bg);
+            border: 1px solid var(--danger);
+            color: var(--danger-text);
             display: block;
         }
 

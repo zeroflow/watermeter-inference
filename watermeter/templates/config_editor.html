@@ -1,11 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="auto">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Config Editor - AI Water Meter</title>
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💧</text></svg>">
+    {% include '_theme.html' %}
     <style>
         .editor-container {
             display: flex;
@@ -41,7 +42,7 @@
         }
 
         .editor-status.unsaved {
-            color: #f59e0b;
+            color: var(--warning);
             font-weight: 600;
         }
 
@@ -89,7 +90,7 @@
             font-size: 14px;
             font-weight: 500;
             color: var(--text-dark);
-            background: white;
+            background: var(--bg-surface);
             border: 1px solid var(--border);
             border-radius: 6px;
             cursor: pointer;
@@ -122,7 +123,7 @@
 
         .editor-info kbd {
             padding: 2px 6px;
-            background: #e5e7eb;
+            background: var(--bg-alt);
             border-radius: 4px;
             font-family: monospace;
             font-size: 12px;
@@ -153,16 +154,16 @@
         }
 
         .message-toast.success {
-            background: #d4edda;
-            border: 1px solid #c3e6cb;
-            color: #155724;
+            background: var(--success-bg);
+            border: 1px solid var(--success);
+            color: var(--success-text);
             display: block;
         }
 
         .message-toast.error {
-            background: #f8d7da;
-            border: 1px solid #f5c6cb;
-            color: #721c24;
+            background: var(--danger-bg);
+            border: 1px solid var(--danger);
+            color: var(--danger-text);
             display: block;
         }
 
@@ -172,7 +173,8 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(255, 255, 255, 0.8);
+            background: var(--bg-surface);
+            opacity: 0.9;
             display: flex;
             align-items: center;
             justify-content: center;

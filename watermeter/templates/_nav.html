@@ -4,7 +4,7 @@
 .app-nav {
     position: fixed;
     z-index: 900;
-    background: #1e293b;
+    background: var(--nav-bg);
     display: flex;
     flex-direction: row;
     align-items: center;
@@ -36,7 +36,7 @@
 .app-nav .nav-item.active::after {
     content: '';
     position: absolute;
-    background: #2563eb;
+    background: var(--primary);
     border-radius: 2px;
     top: 0;
     left: 50%;
@@ -80,6 +80,15 @@
 @media (max-width: 768px) {
     body { padding-bottom: 60px !important; }
 }
+.theme-toggle {
+    border: none;
+    cursor: pointer;
+}
+@media (min-width: 769px) {
+    .theme-toggle {
+        margin-top: auto;
+    }
+}
 </style>
 <nav class="app-nav" role="navigation" aria-label="Main">
     <a href="/" class="nav-item{{ ' active' if active == 'dashboard' else '' }}">
@@ -119,4 +128,49 @@
         </svg>
         <span class="nav-label">Config</span>
     </a>
+    <button class="nav-item theme-toggle" onclick="cycleTheme()" aria-label="Toggle theme">
+        <svg class="nav-icon theme-icon-auto" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+            <line x1="8" y1="21" x2="16" y2="21"/>
+            <line x1="12" y1="17" x2="12" y2="21"/>
+        </svg>
+        <svg class="nav-icon theme-icon-light" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/>
+            <line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/>
+            <line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+        <svg class="nav-icon theme-icon-dark" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+        <span class="nav-label theme-label">Auto</span>
+    </button>
 </nav>
+<script>
+function cycleTheme() {
+    var current = localStorage.getItem('theme') || 'auto';
+    var next = current === 'auto' ? 'light' : current === 'light' ? 'dark' : 'auto';
+    localStorage.setItem('theme', next);
+    document.documentElement.setAttribute('data-theme', next);
+    updateThemeIcon(next);
+}
+
+function updateThemeIcon(theme) {
+    document.querySelectorAll('.theme-icon-auto, .theme-icon-light, .theme-icon-dark').forEach(function(el) {
+        el.style.display = 'none';
+    });
+    var active = document.querySelector('.theme-icon-' + theme);
+    if (active) active.style.display = '';
+    var label = document.querySelector('.theme-label');
+    if (label) label.textContent = theme.charAt(0).toUpperCase() + theme.slice(1);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    updateThemeIcon(localStorage.getItem('theme') || 'auto');
+});
+</script>
