@@ -17,7 +17,7 @@ Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
   - **Min threshold**: never prune a class below the median class size — protects thin classes relative to the dataset distribution
   - **Disposal**: delete silently on confirm
   - **Current scale**: digits ~453 images (11 classes, 19–109 each), arrows ~4200 images (100 classes, 7–125 each)
-- **BL-03** `planned` — **Ground-truth rework**: benchmark-driven detection of mislabeled ground truth, bulk relabel
+- **BL-03** `done` — **Ground-truth rework**: benchmark-driven detection of mislabeled ground truth, bulk relabel
   - **Trigger**: UI button on training page (similar placement to BL-02 prune button) — "Find mislabeled"
   - **How it works**:
     1. Runs benchmark on current ground truth using the active model
