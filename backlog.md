@@ -99,11 +99,11 @@ Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
 
 ## UI / Frontend
 
-- **BL-12** `planned` — **Fix console errors**: resolve the 3 browser console errors on the dashboard
+- **BL-12** `done` — **Fix console errors**: resolve the 3 browser console errors on the dashboard
   - `/api/status` returns 500 Internal Server Error → find root cause and fix
   - `dashboard.js:93` JSON parse error (consequence of the 500 above)
   - `/favicon.ico` 404 → add a favicon
-- **BL-13** `planned` — **UI beautification**: visual polish across all pages, focus on dashboard
+- **BL-13** `done` — **UI beautification**: visual polish across all pages, focus on dashboard
   - **Primary**: the status/error badge on the dashboard looks ugly → restyle
   - **Scope**: all pages (dashboard, label, ROI config, config editor, training) — light touch, no redesign
   - **Keep**: existing color scheme (CSS variables), overall layout
