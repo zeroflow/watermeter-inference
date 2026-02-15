@@ -302,22 +302,24 @@ main {
     font-weight: 600;
     font-size: 13px;
     text-transform: uppercase;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .status.ok {
-    background: #059669;
+    background: var(--success);
     color: white;
+    box-shadow: 0 2px 8px rgba(5, 150, 105, 0.5);
 }
 
 .status.warning {
-    background: #d97706;
+    background: var(--warning);
     color: white;
+    box-shadow: 0 2px 8px rgba(217, 119, 6, 0.5);
 }
 
 .status.error {
-    background: #dc2626;
+    background: var(--danger);
     color: white;
+    box-shadow: 0 2px 8px rgba(220, 38, 38, 0.5);
 }
 
 .status.none {
