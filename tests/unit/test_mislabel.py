@@ -285,7 +285,12 @@ class TestConfirmMislabeled:
         """If a selected file doesn't exist, it's counted as an error."""
         from watermeter.routes.models import confirm_mislabeled
 
-        result = confirm_mislabeled("digits", tmp_path, ["/nonexistent/img.jpg"])
+        # Path must be within ground_truth to pass traversal check
+        gt_dir = tmp_path / "digits" / "ground_truth" / "0"
+        gt_dir.mkdir(parents=True)
+        nonexistent = str(gt_dir / "img.jpg")
+
+        result = confirm_mislabeled("digits", tmp_path, [nonexistent])
 
         assert result["moved_count"] == 0
         assert result["error_count"] == 1
@@ -352,6 +357,28 @@ class TestConfirmMislabeled:
 
         assert result["moved_count"] == 1
         assert (tmp_path / "digits" / "input").exists()
+
+    def test_confirm_mislabeled_blocks_path_traversal(self, tmp_path):
+        """Paths outside ground_truth should be blocked and counted as errors."""
+        from watermeter.routes.models import confirm_mislabeled
+
+        # Create a file outside the expected ground_truth directory
+        outside_dir = tmp_path / "other"
+        outside_dir.mkdir(parents=True)
+        outside_file = outside_dir / "secret.jpg"
+        outside_file.write_bytes(b'secret_data')
+
+        # Also create the ground_truth dir so the function doesn't fail
+        gt_dir = tmp_path / "digits" / "ground_truth" / "0"
+        gt_dir.mkdir(parents=True)
+
+        result = confirm_mislabeled("digits", tmp_path, [str(outside_file)])
+
+        assert result["moved_count"] == 0
+        assert result["error_count"] == 1
+        assert "outside ground truth" in result["errors"][0].lower()
+        # The file outside ground_truth must still exist
+        assert outside_file.exists()
 
 
 # ---------------------------------------------------------------------------

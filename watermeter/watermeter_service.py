@@ -789,7 +789,10 @@ class WatermeterService:
         conf = self._get_confirmation_config()
 
         if not self.mqtt_client or not self.mqtt_client.is_connected():
-            logger.warning("MQTT not connected -- cannot request confirmation, auto-accepting")
+            logger.warning("MQTT not connected -- cannot request confirmation, auto-accepting reading")
+            # Clear pending state since we can't actually request confirmation
+            self._pending_confirmation = None
+            self.current_state['status'] = 'warning' if warnings else 'ok'
             return
 
         # Build compact per-position confidence map
@@ -809,17 +812,8 @@ class WatermeterService:
             'timestamp': datetime.now().isoformat(),
         }
 
-        # Store pending state (captures everything needed to finalize later)
-        self._pending_confirmation = {
-            'value': total_value,
-            'warnings': warnings,
-            'predictions': predictions,
-            'reason': reason,
-            'timestamp': datetime.now(),
-            # Snapshot of state before this reading was applied
-            'previous_value_before': self.previous_value,
-            'last_update_time_before': self.last_update_time,
-        }
+        # NOTE: _pending_confirmation is set by the caller (process_reading)
+        # with the correct pre-reading snapshots. Do NOT overwrite it here.
 
         self.mqtt_client.publish(
             conf['request_topic'],
@@ -845,12 +839,14 @@ class WatermeterService:
             self._confirmation_timer = None
 
     def _confirmation_timeout(self) -> None:
-        """
-        Called by the Timer thread when no user response arrives in time.
+        """Called by Timer thread -- routes to event loop for thread safety."""
+        if self.loop:
+            self.loop.call_soon_threadsafe(self._do_confirmation_timeout)
+        else:
+            self._do_confirmation_timeout()
 
-        Auto-rejects: reverts previous_value to its pre-reading snapshot and
-        clears the pending confirmation.
-        """
+    def _do_confirmation_timeout(self) -> None:
+        """Actually process the timeout. Runs on the event loop thread."""
         pending = self._pending_confirmation
         if pending is None:
             return
@@ -865,6 +861,8 @@ class WatermeterService:
         if self.state_store:
             if self.previous_value is not None and self.last_update_time is not None:
                 self.state_store.save(self.previous_value, self.last_update_time)
+            else:
+                self.state_store.clear()
 
         # Remove the last entry from rate_history (it was added optimistically)
         if self.rate_history:
@@ -917,6 +915,8 @@ class WatermeterService:
             if self.state_store:
                 if self.previous_value is not None and self.last_update_time is not None:
                     self.state_store.save(self.previous_value, self.last_update_time)
+                else:
+                    self.state_store.clear()
             # Remove the optimistic rate_history entry
             if self.rate_history:
                 self.rate_history.pop()
@@ -1152,8 +1152,14 @@ class WatermeterService:
         if curr_class in ('NAN', 'ERROR'):
             return False
 
-        # If constraining arrow is solidly at integer, less-significant should be in lower half
-        expected_lower_half = True
+        # Determine expected half for the less-significant arrow based on
+        # the constraining arrow's fractional position.
+        # frac < 0.5 → needle in lower part of dial → next dial in lower half (0-4)
+        # frac >= 0.5 → needle in upper part → next dial in upper half (5-9)
+        prev_value = float(prev_class)
+        prev_frac = prev_value - int(prev_value)
+        expected_lower_half = prev_frac < 0.5
+
         curr_int = int(float(curr_class))
         alt_int = int(float(replace_class))
 
@@ -1382,6 +1388,11 @@ class WatermeterService:
             Current state dict
         """
         async with self.processing_lock:
+            # If a confirmation is pending, skip processing new readings
+            if self._pending_confirmation is not None:
+                logger.info("Skipping reading -- confirmation pending for previous reading")
+                return self.current_state
+
             try:
                 self.current_state['processing'] = True
                 self.current_state['warnings'] = []

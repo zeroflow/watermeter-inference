@@ -469,6 +469,11 @@ def confirm_prune(gt_base: Path, preview: Dict) -> Dict:
     result_classes: Dict[str, Dict] = {}
 
     for class_name, class_info in preview.get("classes", {}).items():
+        # Validate class name to prevent path traversal
+        if '..' in class_name or '/' in class_name or '\\' in class_name:
+            logger.warning(f"Invalid class name blocked: {class_name}")
+            continue
+
         candidates = class_info.get("candidates", [])
         class_dir = gt_base / class_name
         deleted = 0
@@ -476,6 +481,17 @@ def confirm_prune(gt_base: Path, preview: Dict) -> Dict:
 
         for filename in candidates:
             file_path = class_dir / filename
+            # Validate path stays within ground truth directory
+            try:
+                resolved = file_path.resolve()
+                if not resolved.is_relative_to(gt_base.resolve()):
+                    logger.warning(f"Path traversal blocked: {file_path}")
+                    errors += 1
+                    continue
+            except (ValueError, OSError):
+                logger.warning(f"Invalid path: {file_path}")
+                errors += 1
+                continue
             try:
                 if file_path.exists():
                     file_path.unlink()

@@ -142,6 +142,87 @@ class TestCheckCrossArrowConsistency:
         result = svc._check_cross_arrow_consistency(predictions, 'analog_1', '2.0')
         assert result is False
 
+    def test_cross_arrow_continuous_upper_half(self):
+        """analog_1 reads 3.7 (frac=0.7 >= 0.5) -> analog_2 should be in upper half (5-9).
+
+        analog_2 currently reads 2.0 (lower half -- wrong).
+        Replacing with 7.0 (upper half) should return True.
+        """
+        svc = make_service()
+        predictions = {
+            'digit_1': {'id': 'digit_1', 'class': '1', 'confidence': 0.95, 'model': 'digits'},
+            'digit_2': {'id': 'digit_2', 'class': '3', 'confidence': 0.90, 'model': 'digits'},
+            'digit_3': {'id': 'digit_3', 'class': '5', 'confidence': 0.90, 'model': 'digits'},
+            'analog_1': {'id': 'analog_1', 'class': '3.7', 'confidence': 0.95, 'model': 'arrows'},
+            'analog_2': {'id': 'analog_2', 'class': '2.0', 'confidence': 0.40, 'model': 'arrows'},
+            'analog_3': {'id': 'analog_3', 'class': '4.0', 'confidence': 0.80, 'model': 'arrows'},
+            'analog_4': {'id': 'analog_4', 'class': '1.0', 'confidence': 0.80, 'model': 'arrows'},
+        }
+
+        result = svc._check_cross_arrow_consistency(predictions, 'analog_2', '7.0')
+        assert result is True
+
+    def test_cross_arrow_continuous_lower_half(self):
+        """analog_1 reads 3.2 (frac=0.2 < 0.5) -> analog_2 should be in lower half (0-4).
+
+        analog_2 currently reads 7.0 (upper half -- wrong).
+        Replacing with 2.0 (lower half) should return True.
+        """
+        svc = make_service()
+        predictions = {
+            'digit_1': {'id': 'digit_1', 'class': '1', 'confidence': 0.95, 'model': 'digits'},
+            'digit_2': {'id': 'digit_2', 'class': '3', 'confidence': 0.90, 'model': 'digits'},
+            'digit_3': {'id': 'digit_3', 'class': '5', 'confidence': 0.90, 'model': 'digits'},
+            'analog_1': {'id': 'analog_1', 'class': '3.2', 'confidence': 0.95, 'model': 'arrows'},
+            'analog_2': {'id': 'analog_2', 'class': '7.0', 'confidence': 0.40, 'model': 'arrows'},
+            'analog_3': {'id': 'analog_3', 'class': '4.0', 'confidence': 0.80, 'model': 'arrows'},
+            'analog_4': {'id': 'analog_4', 'class': '1.0', 'confidence': 0.80, 'model': 'arrows'},
+        }
+
+        result = svc._check_cross_arrow_consistency(predictions, 'analog_2', '2.0')
+        assert result is True
+
+    def test_cross_arrow_continuous_boundary_exact_half(self):
+        """analog_1 reads 3.5 (frac=0.5, not < 0.5) -> analog_2 should be in upper half (5-9).
+
+        analog_2 currently reads 2.0 (lower half -- wrong).
+        Replacing with 7.0 (upper half) should return True.
+        """
+        svc = make_service()
+        predictions = {
+            'digit_1': {'id': 'digit_1', 'class': '1', 'confidence': 0.95, 'model': 'digits'},
+            'digit_2': {'id': 'digit_2', 'class': '3', 'confidence': 0.90, 'model': 'digits'},
+            'digit_3': {'id': 'digit_3', 'class': '5', 'confidence': 0.90, 'model': 'digits'},
+            'analog_1': {'id': 'analog_1', 'class': '3.5', 'confidence': 0.95, 'model': 'arrows'},
+            'analog_2': {'id': 'analog_2', 'class': '2.0', 'confidence': 0.40, 'model': 'arrows'},
+            'analog_3': {'id': 'analog_3', 'class': '4.0', 'confidence': 0.80, 'model': 'arrows'},
+            'analog_4': {'id': 'analog_4', 'class': '1.0', 'confidence': 0.80, 'model': 'arrows'},
+        }
+
+        result = svc._check_cross_arrow_consistency(predictions, 'analog_2', '7.0')
+        assert result is True
+
+    def test_cross_arrow_integer_still_lower_half(self):
+        """analog_1 reads 3.0 (frac=0.0 < 0.5) -> analog_2 should be in lower half (0-4).
+
+        This is the same scenario as test_cross_arrow_improves_consistency but
+        explicitly documents that integer values (frac=0.0) map to lower half
+        because the needle is solidly at the integer, meaning the next dial is near 0.
+        """
+        svc = make_service()
+        predictions = {
+            'digit_1': {'id': 'digit_1', 'class': '1', 'confidence': 0.95, 'model': 'digits'},
+            'digit_2': {'id': 'digit_2', 'class': '3', 'confidence': 0.90, 'model': 'digits'},
+            'digit_3': {'id': 'digit_3', 'class': '5', 'confidence': 0.90, 'model': 'digits'},
+            'analog_1': {'id': 'analog_1', 'class': '3.0', 'confidence': 0.95, 'model': 'arrows'},
+            'analog_2': {'id': 'analog_2', 'class': '7.0', 'confidence': 0.40, 'model': 'arrows'},
+            'analog_3': {'id': 'analog_3', 'class': '4.0', 'confidence': 0.80, 'model': 'arrows'},
+            'analog_4': {'id': 'analog_4', 'class': '1.0', 'confidence': 0.80, 'model': 'arrows'},
+        }
+
+        result = svc._check_cross_arrow_consistency(predictions, 'analog_2', '2.0')
+        assert result is True
+
     def test_cross_arrow_skipped_first_position(self):
         """First position (digit_1) has no predecessor -> False."""
         svc = make_service()

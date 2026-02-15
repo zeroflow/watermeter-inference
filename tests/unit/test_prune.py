@@ -370,6 +370,88 @@ class TestConfirmPrune:
 
 
 # ---------------------------------------------------------------------------
+# Tests for confirm_prune path traversal protection
+# ---------------------------------------------------------------------------
+
+class TestConfirmPrunePathTraversal:
+    """Test that confirm_prune blocks path traversal attempts."""
+
+    def test_confirm_prune_blocks_path_traversal_filename(self, tmp_path):
+        """Filename containing '../' should be blocked, not deleted, counted as error."""
+        gt_base = tmp_path / "ground_truth"
+        class_dir = gt_base / "3"
+        class_dir.mkdir(parents=True)
+
+        # Create a file that the traversal path would try to reach
+        secret = tmp_path / "secret.txt"
+        secret.write_bytes(b'secret_data')
+
+        # Also create a normal file in the class dir
+        (class_dir / "keep.jpg").write_bytes(b'keep')
+        (class_dir / ".hashes.json").write_text(json.dumps({"keep.jpg": "1"}))
+
+        preview = {
+            "classes": {
+                "3": {
+                    "before": 2,
+                    "after": 1,
+                    "removable": 1,
+                    "candidates": ["../../secret.txt"],
+                }
+            }
+        }
+
+        from watermeter.image_hash import confirm_prune
+        result = confirm_prune(gt_base, preview)
+
+        assert result["total_deleted"] == 0
+        assert result["total_errors"] == 1
+        assert result["classes"]["3"]["errors"] == 1
+        # The secret file outside gt_base must still exist
+        assert secret.exists()
+        # The normal file must still exist
+        assert (class_dir / "keep.jpg").exists()
+
+    def test_confirm_prune_blocks_path_traversal_classname(self, tmp_path):
+        """Class name containing '../' should be skipped entirely."""
+        gt_base = tmp_path / "ground_truth"
+        gt_base.mkdir(parents=True)
+
+        # Create a file outside gt_base that traversal would target
+        outside_dir = tmp_path / "etc"
+        outside_dir.mkdir(parents=True)
+        (outside_dir / "passwd").write_bytes(b'root:x:0:0')
+
+        preview = {
+            "classes": {
+                "../../../etc": {
+                    "before": 1,
+                    "after": 0,
+                    "removable": 1,
+                    "candidates": ["passwd"],
+                },
+                # Also include a backslash variant
+                "..\\etc": {
+                    "before": 1,
+                    "after": 0,
+                    "removable": 1,
+                    "candidates": ["passwd"],
+                },
+            }
+        }
+
+        from watermeter.image_hash import confirm_prune
+        result = confirm_prune(gt_base, preview)
+
+        # Both malicious classes should be skipped entirely (not in result)
+        assert result["total_deleted"] == 0
+        assert result["total_errors"] == 0
+        assert result["classes"] == {}
+        # The file outside gt_base must still exist
+        assert (outside_dir / "passwd").exists()
+
+
+# ---------------------------------------------------------------------------
 # Tests for HashCache additions
 # ---------------------------------------------------------------------------
 

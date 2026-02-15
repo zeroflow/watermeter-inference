@@ -273,22 +273,30 @@ class TestPublishConfirmationRequest:
         assert 'timestamp' in payload
         assert 'digit_1' in payload['positions']
 
-    def test_sets_pending_state(self, service):
-        """After publishing, _pending_confirmation is set with all required fields."""
+    def test_does_not_overwrite_pending_state(self, service):
+        """_publish_confirmation_request does NOT set _pending_confirmation (caller does)."""
         mock_client = MagicMock()
         mock_client.is_connected.return_value = True
         service.mqtt_client = mock_client
-        service.previous_value = 123.0
-        service.last_update_time = datetime(2026, 2, 14, 12, 0)
+
+        # Pre-set pending state (as the caller process_reading would)
+        caller_pending = {
+            'value': 123.456,
+            'warnings': ['w'],
+            'predictions': _make_predictions(),
+            'reason': 'reason',
+            'timestamp': datetime.now(),
+            'previous_value_before': 100.0,
+            'last_update_time_before': datetime(2026, 2, 14, 10, 0),
+        }
+        service._pending_confirmation = caller_pending
 
         preds = _make_predictions()
         service._publish_confirmation_request(123.456, ['w'], preds, 'reason')
 
-        pending = service._pending_confirmation
-        assert pending is not None
-        assert pending['value'] == 123.456
-        assert pending['reason'] == 'reason'
-        assert pending['previous_value_before'] == 123.0
+        # Should still be the exact same object set by the caller
+        assert service._pending_confirmation is caller_pending
+        assert service._pending_confirmation['previous_value_before'] == 100.0
 
     def test_starts_timeout_timer(self, service):
         """A daemon timer is started after publishing."""
@@ -304,14 +312,43 @@ class TestPublishConfirmationRequest:
         # Clean up
         service._cancel_confirmation_timer()
 
-    def test_no_publish_without_mqtt(self, service):
-        """If MQTT is not connected, logs warning and returns without setting pending."""
+    def test_no_publish_without_mqtt_clears_pending(self, service):
+        """If MQTT is not connected, auto-accepts: clears pending and sets status."""
         service.mqtt_client = None
+        # Simulate caller having set pending state
+        service._pending_confirmation = {
+            'value': 123.456,
+            'warnings': [],
+            'predictions': _make_predictions(),
+            'reason': 'reason',
+            'timestamp': datetime.now(),
+            'previous_value_before': 100.0,
+            'last_update_time_before': None,
+        }
         preds = _make_predictions()
         service._publish_confirmation_request(123.456, [], preds, 'reason')
 
-        # Should not have set pending state (auto-accept)
+        # Should have cleared pending state (auto-accept)
         assert service._pending_confirmation is None
+        assert service.current_state['status'] == 'ok'
+
+    def test_no_publish_without_mqtt_warns_with_warnings(self, service):
+        """If MQTT is not connected and there are warnings, status is 'warning'."""
+        service.mqtt_client = None
+        service._pending_confirmation = {
+            'value': 123.456,
+            'warnings': ['spike'],
+            'predictions': _make_predictions(),
+            'reason': 'reason',
+            'timestamp': datetime.now(),
+            'previous_value_before': 100.0,
+            'last_update_time_before': None,
+        }
+        preds = _make_predictions()
+        service._publish_confirmation_request(123.456, ['spike'], preds, 'reason')
+
+        assert service._pending_confirmation is None
+        assert service.current_state['status'] == 'warning'
 
 
 # ---------------------------------------------------------------------------
@@ -488,6 +525,39 @@ class TestConfirmationTimeout:
         service._confirmation_timeout()
         # Should not raise or change state
 
+    def test_timeout_routes_through_event_loop(self, service):
+        """_confirmation_timeout routes to event loop via call_soon_threadsafe."""
+        mock_loop = MagicMock()
+        service.loop = mock_loop
+
+        service._confirmation_timeout()
+
+        mock_loop.call_soon_threadsafe.assert_called_once_with(service._do_confirmation_timeout)
+
+    def test_timeout_with_none_previous_value_clears_store(self, service):
+        """Timeout when previous_value_before is None calls state_store.clear()."""
+        mock_store = MagicMock()
+        service.state_store = mock_store
+        service.previous_value = 123.456
+        service.last_update_time = datetime.now()
+        service.rate_history = [(123.456, datetime.now())]
+        service._pending_confirmation = {
+            'value': 123.456,
+            'warnings': [],
+            'predictions': {},
+            'reason': 'test',
+            'timestamp': datetime.now(),
+            'previous_value_before': None,
+            'last_update_time_before': None,
+        }
+        service._confirmation_timer = None
+
+        service._do_confirmation_timeout()
+
+        assert service.previous_value is None
+        mock_store.clear.assert_called_once()
+        mock_store.save.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # Tests: get_confirmation_status
@@ -652,3 +722,70 @@ class TestDisabledMode:
     def test_get_status_none(self, service_disabled):
         """get_confirmation_status returns None when disabled."""
         assert service_disabled.get_confirmation_status() is None
+
+
+# ---------------------------------------------------------------------------
+# Tests: process_reading skips when confirmation is pending
+# ---------------------------------------------------------------------------
+
+class TestProcessReadingSkipsPending:
+    """Verify that process_reading returns early when a confirmation is pending."""
+
+    @pytest.mark.asyncio
+    async def test_skips_when_pending(self, service):
+        """process_reading returns current_state without processing when pending."""
+        import asyncio
+        service.processing_lock = asyncio.Lock()
+
+        service._pending_confirmation = {
+            'value': 123.0,
+            'warnings': [],
+            'predictions': {},
+            'reason': 'test',
+            'timestamp': datetime.now(),
+            'previous_value_before': 100.0,
+            'last_update_time_before': None,
+        }
+        original_status = service.current_state['status']
+
+        result = await service.process_reading()
+
+        # Should return current_state without changing status
+        assert result is service.current_state
+        # Status should NOT have changed to 'processing'
+        assert service.current_state['status'] == original_status
+        # pending should still be set (untouched)
+        assert service._pending_confirmation is not None
+
+
+# ---------------------------------------------------------------------------
+# Tests: reject with None previous_value calls state_store.clear()
+# ---------------------------------------------------------------------------
+
+class TestRejectWithNonePreviousValue:
+    """Verify reject path clears state_store when previous_value_before is None."""
+
+    def test_reject_with_none_clears_store(self, service):
+        """Reject when previous_value_before is None calls state_store.clear()."""
+        mock_store = MagicMock()
+        service.state_store = mock_store
+        service.previous_value = 123.456
+        service.last_update_time = datetime.now()
+        service.rate_history = [(123.456, datetime.now())]
+        service._pending_confirmation = {
+            'value': 123.456,
+            'warnings': ['test'],
+            'predictions': _make_predictions(),
+            'reason': 'test',
+            'timestamp': datetime.now(),
+            'previous_value_before': None,
+            'last_update_time_before': None,
+        }
+        service._confirmation_timer = None
+
+        service._handle_confirmation_response('reject')
+
+        assert service.previous_value is None
+        mock_store.clear.assert_called_once()
+        mock_store.save.assert_not_called()
+        assert service.current_state['status'] == 'rejected'

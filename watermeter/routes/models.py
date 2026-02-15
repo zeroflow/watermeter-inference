@@ -555,6 +555,7 @@ def confirm_mislabeled(model_type: str, training_path: Path, selected_paths: lis
     Returns:
         dict with moved_count, error_count, errors (list of error messages)
     """
+    gt_dir = training_path / model_type / 'ground_truth'
     input_dir = training_path / model_type / 'input'
     input_dir.mkdir(parents=True, exist_ok=True)
 
@@ -563,6 +564,15 @@ def confirm_mislabeled(model_type: str, training_path: Path, selected_paths: lis
 
     for path_str in selected_paths:
         src = Path(path_str)
+        # Validate path stays within ground truth directory
+        try:
+            resolved = src.resolve()
+            if not resolved.is_relative_to(gt_dir.resolve()):
+                errors.append(f"Path outside ground truth: {path_str}")
+                continue
+        except (ValueError, OSError):
+            errors.append(f"Invalid path: {path_str}")
+            continue
         if not src.exists():
             errors.append(f"File not found: {path_str}")
             continue
