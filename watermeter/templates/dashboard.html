@@ -35,18 +35,10 @@
                     <button class="btn btn-primary btn-small" onclick="setMeterValue()">
                         Set
                     </button>
-                    <button class="btn btn-secondary btn-small"
-                            onclick="if(confirm('Reset previous value to unknown? The next reading will be accepted without plausibility check.')) { fetch('/api/reset', {method:'POST'}).then(r=>r.json()).then(d=>{showStatusMessage(d.message || 'Reset complete'); }); }">
-                        Reset
-                    </button>
                 </div>
                 <label class="toggle">
                     <input type="checkbox" id="auto-refresh" checked onchange="toggleAutoRefresh(this)">
                     <span>Auto-Refresh</span>
-                </label>
-                <label class="toggle">
-                    <input type="checkbox" id="ha-publish" checked onchange="toggleHaPublish(this)">
-                    <span>HA Publish</span>
                 </label>
             </div>
         </header>

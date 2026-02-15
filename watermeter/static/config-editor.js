@@ -51,8 +51,9 @@ function initEditor() {
     // Hide loading overlay
     document.getElementById('loading-overlay').classList.add('hidden');
 
-    // Load config
+    // Load config and HA publish state
     loadConfig();
+    loadHaPublishState();
 }
 
 function updateStatus() {
@@ -156,6 +157,43 @@ function showMessage(text, type) {
     setTimeout(() => {
         toast.className = 'message-toast';
     }, 4000);
+}
+
+function toggleHaPublish() {
+    const checkbox = document.getElementById('ha-publish-toggle');
+    const enabled = checkbox.checked;
+
+    fetch('/api/toggle-ha-publish?enabled=' + enabled, {
+        method: 'POST'
+    })
+    .then(response => {
+        if (!response.ok) throw new Error(`Status ${response.status}`);
+        return response.json();
+    })
+    .then(data => {
+        showMessage(data.message || (enabled ? 'HA publishing enabled' : 'HA publishing disabled'), 'success');
+    })
+    .catch(error => {
+        console.error('Error toggling HA publish:', error);
+        showMessage('Error toggling HA publish: ' + error.message, 'error');
+        // Revert checkbox state on error
+        checkbox.checked = !enabled;
+    });
+}
+
+async function loadHaPublishState() {
+    try {
+        const response = await fetch('/api/status');
+        if (!response.ok) throw new Error(`Status ${response.status}`);
+        const data = await response.json();
+
+        const checkbox = document.getElementById('ha-publish-toggle');
+        if (checkbox && data.ha_publish_enabled !== undefined) {
+            checkbox.checked = data.ha_publish_enabled;
+        }
+    } catch (error) {
+        console.error('Error loading HA publish status:', error);
+    }
 }
 
 // Warn before leaving with unsaved changes

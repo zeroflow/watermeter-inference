@@ -13,23 +13,6 @@ function toggleAutoRefresh(checkbox) {
     }
 }
 
-function toggleHaPublish(checkbox) {
-    const enabled = checkbox.checked;
-    fetch('/api/toggle-ha-publish?enabled=' + enabled, {
-        method: 'POST'
-    })
-    .then(response => response.json())
-    .then(data => {
-        const msg = document.getElementById('status-message');
-        msg.textContent = data.message;
-        hideStatusMessage();
-        console.log(data.message);
-    })
-    .catch(error => {
-        console.error('Error toggling HA publish:', error);
-    });
-}
-
 // Status-Message nach 5 Sekunden ausblenden
 function hideStatusMessage() {
     setTimeout(() => {
@@ -114,19 +97,3 @@ function submitForTraining(id, imageBase64, model, nextImageBase64 = null) {
         console.error('Error submitting for training:', error);
     });
 }
-
-// Initialize HA publish checkbox on page load
-window.addEventListener('load', function() {
-    fetch('/api/status')
-        .then(response => {
-            if (!response.ok) throw new Error(`Status ${response.status}`);
-            return response.json();
-        })
-        .then(data => {
-            const checkbox = document.getElementById('ha-publish');
-            if (checkbox && data.ha_publish_enabled !== undefined) {
-                checkbox.checked = data.ha_publish_enabled;
-            }
-        })
-        .catch(error => console.error('Error loading HA publish status:', error));
-});
