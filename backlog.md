@@ -88,7 +88,7 @@ Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
 
 ## Internationalization
 
-- **BL-11** `in-progress` — **Translate UI to English**: replace remaining German text in templates and backend with English
+- **BL-11** `done` — **Translate UI to English**: replace remaining German text in templates and backend with English
   - **Examples**: "Aktueller Zählerstand", button labels, status messages, tooltips, section headers
   - **Scope**: all templates (`templates/*.html`), flash messages and error strings in `app.py`, any hardcoded German in JS, MQTT topic names, config keys
   - **Not in scope**: comments in code (can stay mixed), log messages (already English)
