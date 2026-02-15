@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from .. import watermeter_service
 from ..inference import get_inference_service
 from ..model_manager import get_model_manager
-from ..image_hash import purge_duplicates
+from ..image_hash import purge_duplicates, compute_prune_preview, confirm_prune
 from ..training_manager import get_training_manager
 
 logger = logging.getLogger(__name__)
@@ -324,6 +324,113 @@ async def dedup_training_data():
 
     except Exception as e:
         logger.error(f"Error deduplicating training data: {e}")
+        return JSONResponse({
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }, status_code=500)
+
+
+# In-memory storage for prune previews (keyed by model type)
+_prune_previews: dict = {}
+
+
+@router.post("/api/training-data/prune/preview")
+async def prune_preview(request: dict):
+    """
+    Scan ground truth for near-duplicate images and return a preview
+    of what would be removed.
+
+    Request body: {"type": "digits" | "arrows"}
+    """
+    try:
+        model_type = request.get("type")
+        if model_type not in ("digits", "arrows"):
+            return JSONResponse({
+                "success": False,
+                "message": "type must be 'digits' or 'arrows'"
+            }, status_code=400)
+
+        service = watermeter_service.get_service()
+        config = service.config.get('low_confidence', {})
+        training_path = Path(config.get('save_path', '/training'))
+        threshold = config.get('dedup_threshold', 10)
+
+        gt_base = training_path / model_type / 'ground_truth'
+        preview = compute_prune_preview(gt_base, threshold)
+
+        # Store preview for confirm step
+        _prune_previews[model_type] = preview
+
+        # Build response (strip internal candidate lists for the API response)
+        response_classes = {}
+        for class_name, info in preview["classes"].items():
+            response_classes[class_name] = {
+                "before": info["before"],
+                "after": info["after"],
+                "removable": info["removable"],
+            }
+
+        return JSONResponse({
+            "success": True,
+            "type": model_type,
+            "threshold": preview["threshold"],
+            "median_class_size": preview["median_class_size"],
+            "total_before": preview["total_before"],
+            "total_after": preview["total_after"],
+            "total_removable": preview["total_removable"],
+            "classes": response_classes,
+        })
+
+    except Exception as e:
+        logger.error(f"Error computing prune preview: {e}")
+        return JSONResponse({
+            "success": False,
+            "message": f"Error: {str(e)}"
+        }, status_code=500)
+
+
+@router.post("/api/training-data/prune/confirm")
+async def prune_confirm(request: dict):
+    """
+    Delete the files identified in the most recent prune preview.
+
+    Request body: {"type": "digits" | "arrows"}
+    """
+    try:
+        model_type = request.get("type")
+        if model_type not in ("digits", "arrows"):
+            return JSONResponse({
+                "success": False,
+                "message": "type must be 'digits' or 'arrows'"
+            }, status_code=400)
+
+        preview = _prune_previews.get(model_type)
+        if not preview:
+            return JSONResponse({
+                "success": False,
+                "message": f"No prune preview found for '{model_type}'. Run preview first."
+            }, status_code=409)
+
+        service = watermeter_service.get_service()
+        config = service.config.get('low_confidence', {})
+        training_path = Path(config.get('save_path', '/training'))
+
+        gt_base = training_path / model_type / 'ground_truth'
+        result = confirm_prune(gt_base, preview)
+
+        # Clear stored preview after confirm
+        _prune_previews.pop(model_type, None)
+
+        return JSONResponse({
+            "success": True,
+            "type": model_type,
+            "total_deleted": result["total_deleted"],
+            "total_errors": result["total_errors"],
+            "classes": result["classes"],
+        })
+
+    except Exception as e:
+        logger.error(f"Error confirming prune: {e}")
         return JSONResponse({
             "success": False,
             "message": f"Error: {str(e)}"

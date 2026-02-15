@@ -1,8 +1,9 @@
 """Perceptual hashing for image deduplication."""
 import json
 import logging
+import statistics
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -105,6 +106,15 @@ class HashCache:
     def get_all_hashes(self) -> List[int]:
         """Return all cached hash values as integers."""
         return [int(v, 16) for v in self._hashes.values()]
+
+    def get_hashes_dict(self) -> Dict[str, int]:
+        """Return dict mapping filename -> integer hash for all cached entries."""
+        return {k: int(v, 16) for k, v in self._hashes.items()}
+
+    def remove(self, filename: str) -> None:
+        """Remove a hash entry and save."""
+        self._hashes.pop(filename, None)
+        self._save()
 
     def find_near_duplicate(self, new_hash: int, threshold: int) -> Optional[str]:
         """
@@ -227,3 +237,271 @@ def purge_duplicates(input_dir: Path, threshold: int = 10,
         f"Purge {input_dir}: kept={kept}, removed={removed}, errors={errors}"
     )
     return {"kept": kept, "removed": removed, "errors": errors}
+
+
+# ---------------------------------------------------------------------------
+# BL-02: Ground-truth pruning
+# ---------------------------------------------------------------------------
+
+def cluster_images_by_hash(
+    hashes: Dict[str, int],
+    threshold: int = 10,
+) -> List[List[str]]:
+    """
+    Cluster filenames by perceptual hash similarity (single-linkage).
+
+    Two images end up in the same cluster if any path of pairwise distances
+    <= threshold connects them.
+
+    Args:
+        hashes: Mapping of filename -> integer dHash
+        threshold: Maximum hamming distance to consider two images similar
+
+    Returns:
+        List of clusters, each cluster is a list of filenames.
+        Singletons (clusters of size 1) are included.
+    """
+    filenames = list(hashes.keys())
+    if not filenames:
+        return []
+
+    # Union-Find for single-linkage clustering
+    parent: Dict[str, str] = {f: f for f in filenames}
+
+    def find(x: str) -> str:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]  # path compression
+            x = parent[x]
+        return x
+
+    def union(a: str, b: str) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    # Compare all pairs — O(n^2) but n is small per class (< 200 images)
+    for i in range(len(filenames)):
+        for j in range(i + 1, len(filenames)):
+            if hamming_distance(hashes[filenames[i]], hashes[filenames[j]]) <= threshold:
+                union(filenames[i], filenames[j])
+
+    # Group by root
+    clusters_map: Dict[str, List[str]] = {}
+    for f in filenames:
+        root = find(f)
+        clusters_map.setdefault(root, []).append(f)
+
+    return list(clusters_map.values())
+
+
+def select_prune_candidates(
+    clusters: List[List[str]],
+    hashes: Dict[str, int],
+) -> List[str]:
+    """
+    From each cluster with 2+ images, keep the most distinct image and
+    return the rest as prune candidates.
+
+    "Most distinct" = highest average hamming distance to the other members
+    of its cluster (i.e. the image that is least similar to its neighbours).
+
+    Args:
+        clusters: List of clusters (each a list of filenames)
+        hashes: Mapping of filename -> integer dHash
+
+    Returns:
+        List of filenames to remove
+    """
+    candidates: List[str] = []
+
+    for cluster in clusters:
+        if len(cluster) <= 1:
+            continue
+
+        # Find the most distinct member
+        best_file = None
+        best_avg_dist = -1.0
+
+        for fname in cluster:
+            distances = [
+                hamming_distance(hashes[fname], hashes[other])
+                for other in cluster
+                if other != fname
+            ]
+            avg_dist = sum(distances) / len(distances) if distances else 0
+            if avg_dist > best_avg_dist:
+                best_avg_dist = avg_dist
+                best_file = fname
+
+        # Everything except the keeper is a candidate
+        for fname in cluster:
+            if fname != best_file:
+                candidates.append(fname)
+
+    return candidates
+
+
+def compute_prune_preview(
+    gt_base: Path,
+    threshold: int = 10,
+) -> Dict:
+    """
+    Scan all class folders under gt_base, find near-duplicate images,
+    and return a preview of what would be pruned.
+
+    Applies median protection: no class is pruned below the median class size.
+
+    Args:
+        gt_base: Path to ground_truth directory (e.g. /training/digits/ground_truth)
+        threshold: Hamming distance threshold for clustering
+
+    Returns:
+        Dict with structure:
+        {
+            "threshold": int,
+            "median_class_size": int,
+            "total_before": int,
+            "total_after": int,
+            "total_removable": int,
+            "classes": {
+                "<class_name>": {
+                    "before": int,
+                    "after": int,
+                    "removable": int,
+                    "candidates": ["file1.jpg", ...]
+                },
+                ...
+            }
+        }
+    """
+    if not gt_base.is_dir():
+        return {
+            "threshold": threshold,
+            "median_class_size": 0,
+            "total_before": 0,
+            "total_after": 0,
+            "total_removable": 0,
+            "classes": {},
+        }
+
+    # Phase 1: scan all classes and compute raw candidates
+    class_data: Dict[str, Dict] = {}
+    class_sizes: List[int] = []
+
+    for class_dir in sorted(gt_base.iterdir()):
+        if not class_dir.is_dir():
+            continue
+
+        cache = HashCache(class_dir)
+        cache.scan_and_update()
+        hashes = cache.get_hashes_dict()
+
+        class_size = len(hashes)
+        class_sizes.append(class_size)
+
+        clusters = cluster_images_by_hash(hashes, threshold)
+        raw_candidates = select_prune_candidates(clusters, hashes)
+
+        class_data[class_dir.name] = {
+            "dir": class_dir,
+            "before": class_size,
+            "raw_candidates": raw_candidates,
+        }
+
+    # Phase 2: compute median and apply protection
+    median_size = int(statistics.median(class_sizes)) if class_sizes else 0
+
+    result_classes: Dict[str, Dict] = {}
+    total_before = 0
+    total_removable = 0
+
+    for class_name, data in class_data.items():
+        before = data["before"]
+        raw_candidates = data["raw_candidates"]
+
+        # How many can we actually remove without going below median?
+        max_removable = max(0, before - median_size)
+        actual_candidates = raw_candidates[:max_removable]
+
+        after = before - len(actual_candidates)
+
+        result_classes[class_name] = {
+            "before": before,
+            "after": after,
+            "removable": len(actual_candidates),
+            "candidates": actual_candidates,
+        }
+
+        total_before += before
+        total_removable += len(actual_candidates)
+
+    return {
+        "threshold": threshold,
+        "median_class_size": median_size,
+        "total_before": total_before,
+        "total_after": total_before - total_removable,
+        "total_removable": total_removable,
+        "classes": result_classes,
+    }
+
+
+def confirm_prune(gt_base: Path, preview: Dict) -> Dict:
+    """
+    Delete the files listed in a prune preview.
+
+    Args:
+        gt_base: Path to ground_truth directory
+        preview: The preview dict returned by compute_prune_preview()
+
+    Returns:
+        Dict with per-class and total deletion counts:
+        {
+            "total_deleted": int,
+            "total_errors": int,
+            "classes": {
+                "<class_name>": {"deleted": int, "errors": int},
+                ...
+            }
+        }
+    """
+    total_deleted = 0
+    total_errors = 0
+    result_classes: Dict[str, Dict] = {}
+
+    for class_name, class_info in preview.get("classes", {}).items():
+        candidates = class_info.get("candidates", [])
+        class_dir = gt_base / class_name
+        deleted = 0
+        errors = 0
+
+        for filename in candidates:
+            file_path = class_dir / filename
+            try:
+                if file_path.exists():
+                    file_path.unlink()
+                    deleted += 1
+                else:
+                    # File already gone (e.g. manually deleted between preview and confirm)
+                    errors += 1
+            except Exception as e:
+                logger.warning(f"Failed to delete {file_path}: {e}")
+                errors += 1
+
+        # Rebuild hash cache for remaining files
+        if deleted > 0 and class_dir.is_dir():
+            cache = HashCache(class_dir)
+            cache.scan_and_update()
+
+        result_classes[class_name] = {"deleted": deleted, "errors": errors}
+        total_deleted += deleted
+        total_errors += errors
+
+    logger.info(
+        f"Ground-truth prune {gt_base}: deleted={total_deleted}, errors={total_errors}"
+    )
+
+    return {
+        "total_deleted": total_deleted,
+        "total_errors": total_errors,
+        "classes": result_classes,
+    }
