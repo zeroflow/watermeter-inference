@@ -127,6 +127,49 @@ Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
   - **Keep**: existing color scheme (CSS variables), overall layout
   - **Approach**: send `frontend` agent with Playwright to screenshot each page, identify rough spots, propose improvements
 
+## Release Preparation
+
+- **BL-17** `planned` — **Secrets scan**: audit git history for leaked credentials
+  - Scan for: API keys, tokens (HF_TOKEN), MQTT passwords, IP addresses, private URLs
+  - Tools: `git log -p | grep -i`, trufflehog, or manual grep
+  - If found: clean with BFG Repo Cleaner + force push
+- **BL-18** `planned` — **Add LICENSE file**: choose and add an open source license
+  - License: **AGPL-3.0** (user preference)
+  - Add `LICENSE` file to repo root
+  - Add license header reference in README
+- **BL-19** `planned` — **README**: create a proper README.md for the project
+  - Sections: project description, screenshot, features, setup (Docker Compose), configuration, API overview, development, license
+  - Include dashboard screenshot
+  - Example config (`config.example.yaml`) without real credentials
+  - Link to upstream project (jomjol/AI-on-the-edge-device) for context
+- **BL-20** `planned` — **.gitignore audit**: ensure all generated/private files are excluded
+  - Check: model binaries (`*.bin`), `data_debug/`, `config_debug/`, `models_debug/`, `.env`, `__pycache__/`, `*.pyc`, `.playwright-mcp/`
+  - Verify no large binaries are tracked in git history
+- **BL-21** `planned` — **Docker Compose for end users**: single `docker-compose.yml` for easy deployment
+  - Services: watermeter app, optional MQTT broker (mosquitto)
+  - Volume mounts for config, models, training data
+  - Environment variables for HF_TOKEN, MQTT credentials
+  - `.env.example` template
+
+## Code Quality
+
+- **BL-22** `planned` — **OpenAPI / Swagger cleanup**: improve auto-generated API docs
+  - Add descriptions and tags to all FastAPI endpoints
+  - Group endpoints by category (status, training, models, config, etc.)
+  - Verify `/docs` is accessible and useful
+  - Add request/response examples where helpful
+- **BL-23** `planned` — **Linting & formatting**: enforce consistent code style
+  - Run ruff + black across entire codebase
+  - Fix all findings
+  - Add `pyproject.toml` config for ruff/black settings
+  - Single pass — no pre-commit hook yet (that's CI's job)
+- **BL-24** `planned` — **GitHub Actions CI**: automated testing on push
+  - Workflow: pytest (unit tests only, no Docker/integration)
+  - Workflow: ruff lint check
+  - Trigger: push to main, PRs
+  - Prepare for both GitHub Actions and Gitea Actions
+  - Badge in README
+
 ## Tech Debt
 
 - **BL-16** `done` — **Test suite audit**: analyze the full test suite for unnecessary, incorrect, or broken tests
