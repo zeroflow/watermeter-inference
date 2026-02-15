@@ -18,11 +18,17 @@ function initEditor() {
     // Register YAML language configuration
     monaco.languages.register({ id: 'yaml' });
 
+    // Determine theme based on current data-theme
+    const currentTheme = document.documentElement.getAttribute('data-theme');
+    const isDark = currentTheme === 'dark' ||
+                  (currentTheme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const monacoTheme = isDark ? 'vs-dark' : 'vs';
+
     // Create editor
     editor = monaco.editor.create(document.getElementById('editor'), {
         value: '# Loading config...',
         language: 'yaml',
-        theme: 'vs',  // Use 'vs-dark' for dark theme
+        theme: monacoTheme,
         automaticLayout: true,
         minimap: { enabled: true },
         fontSize: 14,
@@ -35,6 +41,19 @@ function initEditor() {
         formatOnPaste: false,  // Don't auto-format to preserve comments
         formatOnType: false,
     });
+
+    // Listen for theme changes and update Monaco editor
+    const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            if (mutation.type === 'attributes' && mutation.attributeName === 'data-theme') {
+                const newTheme = document.documentElement.getAttribute('data-theme');
+                const newIsDark = newTheme === 'dark' ||
+                                 (newTheme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+                monaco.editor.setTheme(newIsDark ? 'vs-dark' : 'vs');
+            }
+        });
+    });
+    observer.observe(document.documentElement, { attributes: true });
 
     // Track changes
     editor.onDidChangeModelContent(() => {
