@@ -293,9 +293,53 @@ async function loadTrainingStats() {
         const unlabeled = (data.unlabeled.digits || 0) + (data.unlabeled.arrows || 0);
         document.getElementById('total-unlabeled').textContent = unlabeled;
 
+        // Show "Getting Started" section only if there are classes with 0 images
+        const hasEmptyClasses = checkForEmptyClasses(digitsStats, arrowsStats, totalDigits, totalArrows);
+        const gettingStartedSection = document.getElementById('getting-started-section');
+        if (hasEmptyClasses) {
+            gettingStartedSection.style.display = 'block';
+        } else {
+            gettingStartedSection.style.display = 'none';
+        }
+
     } catch (error) {
         console.error('Error loading training stats:', error);
     }
+}
+
+// Check if there are any classes with 0 images or if there's no data at all
+function checkForEmptyClasses(digitsStats, arrowsStats, totalDigits, totalArrows) {
+    // Show if no data at all (fresh install)
+    if (totalDigits === 0 && totalArrows === 0) {
+        return true;
+    }
+
+    // Show if any digit class has 0 images (but only check if there's some digit data)
+    if (totalDigits > 0) {
+        const digitsClasses = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'NAN'];
+        for (const cls of digitsClasses) {
+            if (!digitsStats[cls] || digitsStats[cls] === 0) {
+                return true;
+            }
+        }
+    }
+
+    // Show if any arrow class has 0 images (but only check if there's some arrow data)
+    if (totalArrows > 0) {
+        const arrowClasses = [];
+        for (let i = 0; i < 10; i++) {
+            for (let j = 0; j < 10; j++) {
+                arrowClasses.push(`${i}.${j}`);
+            }
+        }
+        for (const cls of arrowClasses) {
+            if (!arrowsStats[cls] || arrowsStats[cls] === 0) {
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
 
 // Poll training and benchmark status
