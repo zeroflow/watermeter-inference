@@ -121,7 +121,7 @@ async def set_value(request: SetValueRequest):
             status_code=409,
         )
 
-    mqtt_published = service.set_manual_value(request.value)
+    mqtt_published = await service.set_manual_value(request.value)
     return JSONResponse(
         {
             "success": True,

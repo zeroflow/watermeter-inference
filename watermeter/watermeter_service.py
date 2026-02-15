@@ -62,7 +62,7 @@ _HA_ENTITIES = [
         "component": "sensor",
         "icon": "mdi:water-outline",
         "device_class": "water",
-        "state_class": "total_increasing",
+        "state_class": "total",
         "unit_of_measurement": "m\u00b3",
     },
     {
@@ -89,7 +89,7 @@ _HA_ENTITIES = [
         "icon": "mdi:information-outline",
         "entity_category": "diagnostic",
         "device_class": "enum",
-        "options": ["idle", "ok", "warning", "error", "no_models", "pending_confirmation", "processing"],
+        "options": ["idle", "ok", "warning", "error", "no_models", "pending_confirmation", "processing", "timeout", "rejected"],
     },
     {
         "object_id": "consecutive_rejections",
@@ -1085,6 +1085,19 @@ class WatermeterService:
         self._confirmation_timer = None
         self.current_state["status"] = "timeout"
         self.current_state["warnings"] = ["Confirmation timed out -- reading discarded"]
+
+        # Publish diagnostic state update so HA reflects the timeout
+        if self.previous_value is not None and self.loop:
+            asyncio.run_coroutine_threadsafe(
+                self.publish_to_mqtt(
+                    self.previous_value,
+                    self.current_state["warnings"],
+                    {},
+                    leak_warning=self.leak_warning,
+                ),
+                self.loop,
+            )
+
         logger.info("Pending confirmation cleared after timeout")
 
     def _handle_confirmation_response(self, payload: str) -> None:
@@ -1137,6 +1150,18 @@ class WatermeterService:
                 self.rate_history.pop()
             self.current_state["status"] = "rejected"
             self.current_state["warnings"] = ["Reading rejected by user"]
+
+            # Publish diagnostic state update so HA reflects the rejection
+            if self.previous_value is not None and self.loop:
+                asyncio.run_coroutine_threadsafe(
+                    self.publish_to_mqtt(
+                        self.previous_value,
+                        self.current_state["warnings"],
+                        {},
+                        leak_warning=self.leak_warning,
+                    ),
+                    self.loop,
+                )
 
         elif payload.startswith("correct:"):
             corrected_str = payload[len("correct:") :]
@@ -1813,6 +1838,16 @@ class WatermeterService:
                         self.current_state["warnings"] = all_warnings
                         logger.error(stuck_msg)
 
+                    # Publish diagnostic state update so HA sees rejection
+                    # info immediately (consecutive_rejections, last_rejected_*).
+                    # Use the last accepted value -- the rejected reading must
+                    # NOT change water_usage / water_usage_raw.
+                    if self.previous_value is not None:
+                        await self.publish_to_mqtt(
+                            self.previous_value, all_warnings, predictions,
+                            leak_warning=self.leak_warning,
+                        )
+
                 logger.info("=" * 60)
 
             except Exception as e:
@@ -1962,7 +1997,7 @@ class WatermeterService:
         if self.state_store:
             self.state_store.clear()
 
-    def set_manual_value(self, value: float) -> bool:
+    async def set_manual_value(self, value: float) -> bool:
         """Manually set the meter value (BL-15).
 
         Updates all internal state as if a reading was accepted, seeds rate
@@ -2009,41 +2044,27 @@ class WatermeterService:
         self.current_state["last_rejected_timestamp"] = None
         self.current_state["last_rejected_reasons"] = []
 
-        # Publish to MQTT using the same payload structure as publish_to_mqtt()
-        mqtt_published = False
-        if self.ha_publish_enabled and self.mqtt_client and self.mqtt_client.is_connected():
+        # Publish to MQTT via shared method (raw_value=value since no raw
+        # predictions exist for a manual set)
+        can_publish = (
+            self.ha_publish_enabled
+            and self.mqtt_client
+            and self.mqtt_client.is_connected()
+        )
+        if can_publish:
             try:
-                ha_config = self.config["homeassistant"]
-                avg_rate = self._calculate_average_rate_per_hour()
-                payload = {
-                    "water_usage": round(value, 4),
-                    "water_usage_raw": round(value, 4),
-                    "leak_warning": False,
-                    "min_confidence": None,
-                    "status": self.current_state.get("status", "ok"),
-                    "consecutive_rejections": self.consecutive_rejections,
-                    "last_rejected_value": self.current_state.get("last_rejected_value"),
-                    "last_rejected_reason": "",
-                    "average_rate": round(avg_rate, 4) if avg_rate is not None else None,
-                    "last_update": now.isoformat(),
-                    "mqtt_connected": True,
-                    "processing": False,
-                    "confirmation_pending": False,
-                    "inference_duration": self._last_inference_duration_ms,
-                    "processing_duration": self._last_processing_duration_s,
-                    "active_digits_model": self._get_active_model_name("digits"),
-                    "active_arrows_model": self._get_active_model_name("arrows"),
-                }
-                topic = ha_config["publish_topic"]
-                self.mqtt_client.publish(topic, json.dumps(payload), qos=2, retain=True)
-                mqtt_published = True
-                logger.info(f"Published manual value {value:.4f} to MQTT: {topic}")
+                await self.publish_to_mqtt(
+                    value, [], {}, leak_warning=False, raw_value=value,
+                )
+                logger.info(f"Published manual value {value:.4f} to MQTT")
+                return True
             except Exception as e:
                 logger.error(f"Failed to publish manual value to MQTT: {e}")
+                return False
         elif self.ha_publish_enabled:
             logger.warning("MQTT not connected, manual value not published to Home Assistant")
 
-        return mqtt_published
+        return False
 
     def toggle_ha_publish(self, enabled: bool) -> None:
         """Toggle Home Assistant MQTT publishing."""
