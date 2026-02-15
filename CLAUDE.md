@@ -24,6 +24,14 @@ Only use **opus** and **sonnet** models. Haiku only as last-resort fallback (e.g
 | `debugger` | sonnet | Test failures, stack traces, runtime errors |
 | `researcher` | sonnet | Library docs, API research, best practices, web search |
 
+## Codebase Map
+
+`docs/codebase_map.md` contains every function, class, route, and template with line numbers. **Every subagent prompt MUST start with:**
+
+> Read `docs/codebase_map.md` first. Use it to jump directly to the right file and line number — do NOT glob or grep to find things that are already in the map.
+
+This saves significant tokens by eliminating exploration overhead.
+
 ## Workflow for Any Task
 
 ### 1. Plan
@@ -31,6 +39,7 @@ Send `planner` to explore the codebase and create a task document at `docs/tasks
 
 ### 2. Implement
 For each WP, send the assigned agent with:
+- Instruction to read `docs/codebase_map.md` first
 - The WP description from the task doc (copy it into the prompt)
 - The task doc path for reference
 - Clear instruction to run tests after changes
