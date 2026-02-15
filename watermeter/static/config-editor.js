@@ -215,6 +215,31 @@ async function loadHaPublishState() {
     }
 }
 
+// Set meter value manually
+function setMeterValue() {
+    const input = document.getElementById('meter-value-input');
+    const value = parseFloat(input.value);
+    if (isNaN(value) || value < 0) {
+        showMessage('Please enter a valid positive number', 'error');
+        return;
+    }
+    if (!confirm(`Set meter to ${value.toFixed(4)} m³?`)) return;
+    fetch('/api/set-value', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({value: value})
+    })
+    .then(response => {
+        if (!response.ok) throw new Error(`Status ${response.status}`);
+        return response.json();
+    })
+    .then(data => {
+        showMessage(data.message || `Meter set to ${value.toFixed(4)} m³`, 'success');
+        input.value = '';
+    })
+    .catch(error => showMessage('Error: ' + error.message, 'error'));
+}
+
 // Warn before leaving with unsaved changes
 window.addEventListener('beforeunload', (e) => {
     if (hasUnsavedChanges) {

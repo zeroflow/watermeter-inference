@@ -309,6 +309,48 @@
         </header>
 
         <main style="padding: 24px;">
+            <div class="settings-section">
+                <h3>Settings</h3>
+                <div class="settings-item">
+                    <div>
+                        <strong>Home Assistant Publishing</strong>
+                        <p>Enable or disable MQTT publishing to Home Assistant.</p>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="ha-publish-toggle" onchange="toggleHaPublish()">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="danger-zone">
+                <h3>Danger Zone</h3>
+                <div class="danger-zone-item">
+                    <div>
+                        <strong>Set Meter Value</strong>
+                        <p>Manually override the current meter reading. Use this to initialize or correct the meter value.</p>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <input type="number" id="meter-value-input"
+                               step="0.0001" min="0" placeholder="e.g. 34.8961"
+                               style="width: 160px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; color: var(--text-dark); background: var(--bg-surface);">
+                        <button class="btn-danger" onclick="setMeterValue()">
+                            Set Value
+                        </button>
+                    </div>
+                </div>
+                <div class="danger-zone-item" style="margin-top: 16px;">
+                    <div>
+                        <strong>Reset Previous Value</strong>
+                        <p>Clear the stored previous meter reading and all historical state. The next reading will be accepted without plausibility checks.</p>
+                    </div>
+                    <button class="btn-danger"
+                            onclick="if(confirm('Reset previous value to unknown? The next reading will be accepted without plausibility check.')) { fetch('/api/reset', {method:'POST'}).then(r=>r.json()).then(d=>{ showMessage(d.message || 'Reset complete', 'success'); }); }">
+                        Reset Readings
+                    </button>
+                </div>
+            </div>
+
             <div class="editor-container">
                 <div class="editor-toolbar">
                     <div class="editor-toolbar-left">
@@ -334,34 +376,6 @@
                     <div id="loading-overlay" class="loading-overlay">
                         Loading editor...
                     </div>
-                </div>
-            </div>
-
-            <div class="settings-section">
-                <h3>Settings</h3>
-                <div class="settings-item">
-                    <div>
-                        <strong>Home Assistant Publishing</strong>
-                        <p>Enable or disable MQTT publishing to Home Assistant.</p>
-                    </div>
-                    <label class="toggle-switch">
-                        <input type="checkbox" id="ha-publish-toggle" onchange="toggleHaPublish()">
-                        <span class="toggle-slider"></span>
-                    </label>
-                </div>
-            </div>
-
-            <div class="danger-zone">
-                <h3>Danger Zone</h3>
-                <div class="danger-zone-item">
-                    <div>
-                        <strong>Reset Previous Value</strong>
-                        <p>Clear the stored previous meter reading and all historical state. The next reading will be accepted without plausibility checks.</p>
-                    </div>
-                    <button class="btn-danger"
-                            onclick="if(confirm('Reset previous value to unknown? The next reading will be accepted without plausibility check.')) { fetch('/api/reset', {method:'POST'}).then(r=>r.json()).then(d=>{ showMessage(d.message || 'Reset complete', 'success'); }); }">
-                        Reset Readings
-                    </button>
                 </div>
             </div>
         </main>
