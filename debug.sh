@@ -70,16 +70,22 @@ if [[ $DETACH -eq 1 ]]; then
     ${HF_TOKEN:+-e HF_TOKEN="$HF_TOKEN"} \
     watermeter-dashboard
 
-  echo "Waiting for container to become healthy..."
+  echo "Waiting for container to become ready..."
   for i in $(seq 1 60); do
-    STATUS=$(docker inspect --format='{{.State.Health.Status}}' "$CONTAINER_NAME" 2>/dev/null || echo "starting")
-    if [ "$STATUS" = "healthy" ]; then
-      echo "Container is healthy and ready on http://localhost:8002"
+    # Check if container is still running
+    if ! docker ps -q -f name="$CONTAINER_NAME" | grep -q .; then
+      echo "ERROR: Container exited unexpectedly"
+      docker logs "$CONTAINER_NAME" --tail 20
+      exit 1
+    fi
+    # Check if app responds on HTTP
+    if curl -sf http://localhost:8002/ >/dev/null 2>&1; then
+      echo "Container is ready on http://localhost:8002"
       exit 0
     fi
     sleep 2
   done
-  echo "ERROR: Container did not become healthy within 120s"
+  echo "ERROR: Container did not become ready within 120s"
   docker logs "$CONTAINER_NAME" --tail 20
   exit 1
 else
