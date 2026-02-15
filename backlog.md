@@ -92,7 +92,7 @@ Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
 
 ## Legal / Licensing
 
-- **BL-10** `planned` — **Handle upstream data license**: training data from jomjol's repos has no explicit license ([issue #4041](https://github.com/jomjol/AI-on-the-edge-device/issues/4041))
+- **BL-10** `done` — **Handle upstream data license**: training data from jomjol's repos has no explicit license ([issue #4041](https://github.com/jomjol/AI-on-the-edge-device/issues/4041))
   - **Solution**: ship our own data, add a script to pull his — models are trained locally by the user, no derivative works distributed
   - **What ships**: our self-collected meter photos + ground truth, pre-trained models from our data only
   - **Script**: `scripts/fetch_upstream_data.sh` — downloads jomjol's training data into the right directory structure on the user's machine
