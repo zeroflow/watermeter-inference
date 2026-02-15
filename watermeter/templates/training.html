@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Training - AI Water Meter</title>
     <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💧</text></svg>">
     <style>
         .back-button {
             color: white;
@@ -134,11 +135,23 @@
         .badge-running {
             background: var(--warning);
             color: white;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.8; }
         }
 
         .badge-idle {
-            background: var(--bg-light);
-            color: var(--text-light);
+            background: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .badge-completed {
+            background: var(--success);
+            color: white;
         }
 
         /* Training Data Stats */
@@ -1029,7 +1042,7 @@
     {% include '_nav.html' %}
     <div class="container">
         <header>
-            <h1>AI Water Meter Dashboard</h1>
+            <h1>Training</h1>
             <div class="header-actions">
                 <span id="training-status-badge" class="badge badge-idle">Training: Idle</span>
             </div>

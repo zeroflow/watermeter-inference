@@ -41,7 +41,9 @@ class TrainingSubmission(BaseModel):
 async def get_status():
     """Get current status as JSON."""
     service = watermeter_service.get_service()
-    return JSONResponse(service.current_state)
+    state = dict(service.current_state)
+    state.pop("request", None)  # Remove if leaked from TemplateResponse context
+    return JSONResponse(state)
 
 
 @router.post("/api/trigger")

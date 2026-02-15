@@ -97,6 +97,18 @@ Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
   - **Approach**: systematic sweep — grep for common German patterns (umlauts, known German words), replace with English equivalents
   - **Assigned**: `frontend` (templates/CSS) + `junior-dev` (backend strings + config keys + MQTT topics)
 
+## UI / Frontend
+
+- **BL-12** `planned` — **Fix console errors**: resolve the 3 browser console errors on the dashboard
+  - `/api/status` returns 500 Internal Server Error → find root cause and fix
+  - `dashboard.js:93` JSON parse error (consequence of the 500 above)
+  - `/favicon.ico` 404 → add a favicon
+- **BL-13** `planned` — **UI beautification**: visual polish across all pages, focus on dashboard
+  - **Primary**: the status/error badge on the dashboard looks ugly → restyle
+  - **Scope**: all pages (dashboard, label, ROI config, config editor, training) — light touch, no redesign
+  - **Keep**: existing color scheme (CSS variables), overall layout
+  - **Approach**: send `frontend` agent with Playwright to screenshot each page, identify rough spots, propose improvements
+
 ## Tech Debt
 
 - **BL-09** `done` — **Fix Pydantic `schema` field shadow**: `SetupRequest` in `inference.py:267` uses field name `schema` which shadows `BaseModel.schema()` → renamed to `label_schema` with `alias="schema"` for wire compatibility

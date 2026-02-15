@@ -84,7 +84,10 @@ function submitForTraining(id, imageBase64, model, nextImageBase64 = null) {
 // Initialize HA publish checkbox on page load
 window.addEventListener('load', function() {
     fetch('/api/status')
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) throw new Error(`Status ${response.status}`);
+            return response.json();
+        })
         .then(data => {
             const checkbox = document.getElementById('ha-publish');
             if (checkbox && data.ha_publish_enabled !== undefined) {
