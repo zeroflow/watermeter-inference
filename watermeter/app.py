@@ -85,12 +85,55 @@ async def lifespan(app: FastAPI):
     logger.info("Water Meter Dashboard stopped")
 
 
+# Define OpenAPI tags for grouping endpoints
+tags_metadata = [
+    {
+        "name": "Pages",
+        "description": "HTML page routes for the web interface",
+    },
+    {
+        "name": "Status & Reading",
+        "description": "Meter reading status, manual triggering, and value management",
+    },
+    {
+        "name": "Configuration",
+        "description": "Configuration file management (read, edit, validate)",
+    },
+    {
+        "name": "ROI Setup",
+        "description": "Region of Interest configuration (rotation, markers, digits, analog dials)",
+    },
+    {
+        "name": "Labeling",
+        "description": "Manual labeling interface for training data",
+    },
+    {
+        "name": "Training",
+        "description": "Model training job management and queue operations",
+    },
+    {
+        "name": "Models",
+        "description": "Model management, activation, archival, and deletion",
+    },
+    {
+        "name": "Benchmarking",
+        "description": "Model benchmarking against ground truth datasets",
+    },
+    {
+        "name": "Training Data",
+        "description": "Training data statistics, deduplication, pruning, and mislabel detection",
+    },
+]
+
 # Create FastAPI app
 app = FastAPI(
-    title="Water Meter AI Dashboard",
-    description="OpenVINO-based water meter reading with live dashboard",
+    title="AI Water Meter API",
+    description="OpenVINO-based AI water meter reading system with automated training, "
+                "benchmarking, and live dashboard. Supports both analog dial and digital "
+                "display recognition with active learning workflows.",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    openapi_tags=tags_metadata
 )
 
 # Mount static files relative to this package

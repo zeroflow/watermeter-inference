@@ -1,24 +1,64 @@
+# Python bytecode and cache
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# Jupyter
 .ipynb_checkpoints/
-venv
+
+# Testing and linting
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Playwright MCP
+.playwright-mcp/
+
+# Python packaging
+*.egg-info/
+dist/
+build/
+
+# Node modules (just in case)
+node_modules/
 
 # Training data and models (in any subfolder)
 **/dataset/
 **/ov_model/
-models_debug/
 **/ground_truth/
 **/input/
 dataset_temp/
-# **/selected/ the one selected model is uploaded.
 
-# Build artifacts
-*.onnx
+# Debug container volumes
+models_debug/
+data_debug/
+config_debug/
+
+# Generated selected models (created by debug.sh)
+/digits/selected/
+/arrows/selected/
 
 # Files from inside the running container
 data/*
 config/*
-data_debug/*
-config_debug/*
+
+# Model files (large binaries)
+*.bin
+*.onnx
+*.xml
+
+# Screenshots and images in root (not in templates/static)
+/*.png
+/*.jpg
+/*.jpeg
 
 # Claude Code (local settings are personal, agents are shared)
 .claude/settings.local.json

@@ -43,7 +43,12 @@ class SetValueRequest(BaseModel):
     value: float
 
 
-@router.get("/api/status")
+@router.get(
+    "/api/status",
+    tags=["Status & Reading"],
+    summary="Get meter status",
+    description="Get current meter reading, processing state, and system status as JSON"
+)
 async def get_status():
     """Get current status as JSON."""
     service = watermeter_service.get_service()
@@ -52,7 +57,12 @@ async def get_status():
     return JSONResponse(state)
 
 
-@router.post("/api/trigger")
+@router.post(
+    "/api/trigger",
+    tags=["Status & Reading"],
+    summary="Trigger reading",
+    description="Manually trigger a new meter reading cycle"
+)
 async def trigger_reading():
     """Manually trigger a new reading."""
     service = watermeter_service.get_service()
@@ -69,7 +79,12 @@ async def trigger_reading():
     return JSONResponse({"message": "Reading triggered successfully"})
 
 
-@router.post("/api/reset")
+@router.post(
+    "/api/reset",
+    tags=["Status & Reading"],
+    summary="Reset previous value",
+    description="Reset the stored previous meter value used for change detection"
+)
 async def reset_previous_value():
     """Reset the previous value."""
     service = watermeter_service.get_service()
@@ -77,7 +92,12 @@ async def reset_previous_value():
     return JSONResponse({"message": "Previous value reset successfully"})
 
 
-@router.post("/api/set-value")
+@router.post(
+    "/api/set-value",
+    tags=["Status & Reading"],
+    summary="Set meter value manually",
+    description="Manually set the meter value (e.g., after physical meter replacement or correction)"
+)
 async def set_value(request: SetValueRequest):
     """Manually set the meter value (BL-15)."""
     if request.value < 0:
@@ -113,7 +133,12 @@ async def set_value(request: SetValueRequest):
     })
 
 
-@router.post("/api/toggle-ha-publish")
+@router.post(
+    "/api/toggle-ha-publish",
+    tags=["Status & Reading"],
+    summary="Toggle Home Assistant publishing",
+    description="Enable or disable MQTT publishing to Home Assistant"
+)
 async def toggle_ha_publish(enabled: bool):
     """Toggle Home Assistant MQTT publishing."""
     service = watermeter_service.get_service()
@@ -122,7 +147,12 @@ async def toggle_ha_publish(enabled: bool):
     return JSONResponse({"message": f"Home Assistant publishing {status}"})
 
 
-@router.post("/api/submit-training")
+@router.post(
+    "/api/submit-training",
+    tags=["Status & Reading"],
+    summary="Submit image for training",
+    description="Submit a low-confidence reading image to the training input folder for later labeling"
+)
 async def submit_for_training(submission: TrainingSubmission):
     """Submit an image for manual training/correction."""
     try:
@@ -172,7 +202,12 @@ async def submit_for_training(submission: TrainingSubmission):
         }, status_code=500)
 
 
-@router.get("/api/confirmation/status")
+@router.get(
+    "/api/confirmation/status",
+    tags=["Status & Reading"],
+    summary="Get confirmation status",
+    description="Get the current pending confirmation status for critical reading changes"
+)
 async def confirmation_status():
     """Get the current pending confirmation status, if any."""
     service = watermeter_service.get_service()
@@ -183,7 +218,12 @@ async def confirmation_status():
     })
 
 
-@router.get("/health")
+@router.get(
+    "/health",
+    tags=["Status & Reading"],
+    summary="Health check",
+    description="Health check endpoint for monitoring system availability"
+)
 def health():
     """Health check endpoint."""
     service = watermeter_service.get_service()

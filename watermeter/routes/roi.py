@@ -92,7 +92,12 @@ def _load_rotated_reference():
 
 # --- Routes ---
 
-@router.post("/api/roi/fetch-image")
+@router.post(
+    "/api/roi/fetch-image",
+    tags=["ROI Setup"],
+    summary="Fetch reference image",
+    description="Fetch the reference image from configured remote URL and save locally for ROI configuration"
+)
 async def fetch_roi_reference_image():
     """Fetch the reference image from remote URL and save locally."""
     try:
@@ -139,7 +144,12 @@ async def fetch_roi_reference_image():
         }, status_code=500)
 
 
-@router.get("/api/roi/reference-image")
+@router.get(
+    "/api/roi/reference-image",
+    tags=["ROI Setup"],
+    summary="Get reference image",
+    description="Serve the locally stored reference image for ROI drawing interface"
+)
 async def get_roi_reference_image():
     """Serve the locally stored reference image."""
     reference_path = Path('/data/reference_raw.jpg')
@@ -157,7 +167,12 @@ async def get_roi_reference_image():
     )
 
 
-@router.get("/api/roi/config")
+@router.get(
+    "/api/roi/config",
+    tags=["ROI Setup"],
+    summary="Get ROI configuration",
+    description="Get the current ROI configuration (rotation, markers, digits, analogs)"
+)
 async def get_roi_config():
     """Get the current ROI configuration."""
     service = watermeter_service.get_service()
@@ -170,7 +185,12 @@ async def get_roi_config():
     })
 
 
-@router.post("/api/roi/rotation")
+@router.post(
+    "/api/roi/rotation",
+    tags=["ROI Setup"],
+    summary="Save rotation",
+    description="Save image rotation angle to configuration"
+)
 async def save_rotation(submission: RotationSubmission):
     """Save rotation value to config."""
     try:
@@ -202,7 +222,12 @@ async def save_rotation(submission: RotationSubmission):
         }, status_code=500)
 
 
-@router.delete("/api/roi/rotation")
+@router.delete(
+    "/api/roi/rotation",
+    tags=["ROI Setup"],
+    summary="Delete rotation",
+    description="Remove rotation configuration (reset to 0 degrees)"
+)
 async def delete_rotation():
     """Delete rotation value from config."""
     try:
@@ -234,7 +259,12 @@ async def delete_rotation():
         }, status_code=500)
 
 
-@router.post("/api/roi/markers")
+@router.post(
+    "/api/roi/markers",
+    tags=["ROI Setup"],
+    summary="Save alignment markers",
+    description="Save marker box coordinates to config and extract marker reference images"
+)
 async def save_markers(submission: MarkersSubmission):
     """Save marker boxes to config and extract marker images."""
     try:
@@ -308,7 +338,12 @@ async def save_markers(submission: MarkersSubmission):
         }, status_code=500)
 
 
-@router.delete("/api/roi/markers")
+@router.delete(
+    "/api/roi/markers",
+    tags=["ROI Setup"],
+    summary="Delete markers",
+    description="Delete all marker configurations and reference images"
+)
 async def delete_markers():
     """Delete markers from config."""
     try:
@@ -349,7 +384,12 @@ async def delete_markers():
         }, status_code=500)
 
 
-@router.get("/api/roi/marker-image/{marker_id}")
+@router.get(
+    "/api/roi/marker-image/{marker_id}",
+    tags=["ROI Setup"],
+    summary="Get marker image",
+    description="Serve a specific marker reference image by ID"
+)
 async def get_marker_image(marker_id: int):
     """Serve a marker image."""
     marker_path = Path(f'/data/marker_{marker_id}.jpg')
@@ -367,7 +407,12 @@ async def get_marker_image(marker_id: int):
     )
 
 
-@router.post("/api/roi/digits")
+@router.post(
+    "/api/roi/digits",
+    tags=["ROI Setup"],
+    summary="Save digit ROIs",
+    description="Save digit region coordinates to config and extract digit preview images"
+)
 async def save_digits(submission: DigitsSubmission):
     """Save digit ROIs to config and extract digit images."""
     try:
@@ -438,7 +483,12 @@ async def save_digits(submission: DigitsSubmission):
         }, status_code=500)
 
 
-@router.delete("/api/roi/digits")
+@router.delete(
+    "/api/roi/digits",
+    tags=["ROI Setup"],
+    summary="Delete digit ROIs",
+    description="Delete all digit ROI configurations and preview images"
+)
 async def delete_digits():
     """Delete digit ROIs from config."""
     try:
@@ -477,7 +527,12 @@ async def delete_digits():
         }, status_code=500)
 
 
-@router.get("/api/roi/digit-image/{digit_id}")
+@router.get(
+    "/api/roi/digit-image/{digit_id}",
+    tags=["ROI Setup"],
+    summary="Get digit preview image",
+    description="Serve a specific digit preview image by ID"
+)
 async def get_digit_image(digit_id: int):
     """Serve a digit image."""
     digit_path = Path(f'/data/digit_{digit_id}.jpg')
@@ -495,7 +550,12 @@ async def get_digit_image(digit_id: int):
     )
 
 
-@router.post("/api/roi/digit-preview")
+@router.post(
+    "/api/roi/digit-preview",
+    tags=["ROI Setup"],
+    summary="Preview digit inference",
+    description="Run inference on a single digit ROI and return the prediction for validation"
+)
 async def preview_digit_inference(submission: SingleRoiSubmission):
     """Run inference on a single ROI and return the prediction."""
     try:
@@ -551,7 +611,12 @@ async def preview_digit_inference(submission: SingleRoiSubmission):
         }, status_code=500)
 
 
-@router.post("/api/roi/analogs")
+@router.post(
+    "/api/roi/analogs",
+    tags=["ROI Setup"],
+    summary="Save analog dial ROIs",
+    description="Save analog dial region coordinates to config and extract preview images"
+)
 async def save_analogs(submission: AnalogsSubmission):
     """Save analog ROIs to config and extract analog images."""
     try:
@@ -620,7 +685,12 @@ async def save_analogs(submission: AnalogsSubmission):
         }, status_code=500)
 
 
-@router.delete("/api/roi/analogs")
+@router.delete(
+    "/api/roi/analogs",
+    tags=["ROI Setup"],
+    summary="Delete analog dial ROIs",
+    description="Delete all analog dial ROI configurations and preview images"
+)
 async def delete_analogs():
     """Delete analog ROIs from config."""
     try:
@@ -659,7 +729,12 @@ async def delete_analogs():
         }, status_code=500)
 
 
-@router.get("/api/roi/analog-image/{analog_id}")
+@router.get(
+    "/api/roi/analog-image/{analog_id}",
+    tags=["ROI Setup"],
+    summary="Get analog dial preview image",
+    description="Serve a specific analog dial preview image by ID"
+)
 async def get_analog_image(analog_id: int):
     """Serve an analog image."""
     analog_path = Path(f'/data/analog_{analog_id}.jpg')
@@ -677,7 +752,12 @@ async def get_analog_image(analog_id: int):
     )
 
 
-@router.post("/api/roi/analog-preview")
+@router.post(
+    "/api/roi/analog-preview",
+    tags=["ROI Setup"],
+    summary="Preview analog dial inference",
+    description="Run inference on a single analog dial ROI and return the prediction for validation"
+)
 async def preview_analog_inference(submission: SingleRoiSubmission):
     """Run inference on a single analog ROI and return the prediction."""
     try:

@@ -14,7 +14,13 @@ _pkg_dir = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(_pkg_dir / "templates"))
 
 
-@router.get("/", response_class=HTMLResponse)
+@router.get(
+    "/",
+    response_class=HTMLResponse,
+    tags=["Pages"],
+    summary="Dashboard page",
+    description="Render the main dashboard page showing current meter reading and status"
+)
 async def dashboard(request: Request):
     """Render the main dashboard page."""
     return templates.TemplateResponse(
@@ -22,7 +28,13 @@ async def dashboard(request: Request):
     )
 
 
-@router.get("/label", response_class=HTMLResponse)
+@router.get(
+    "/label",
+    response_class=HTMLResponse,
+    tags=["Pages"],
+    summary="Labeling interface",
+    description="Render the labeling interface page for manually labeling training images"
+)
 async def label_page(request: Request):
     """Render the labeling interface page."""
     return templates.TemplateResponse(
@@ -30,7 +42,13 @@ async def label_page(request: Request):
     )
 
 
-@router.get("/roi-config", response_class=HTMLResponse)
+@router.get(
+    "/roi-config",
+    response_class=HTMLResponse,
+    tags=["Pages"],
+    summary="ROI configuration page",
+    description="Render the ROI configuration page for setting up detection regions"
+)
 async def roi_config_page(request: Request):
     """Render the ROI configuration page."""
     return templates.TemplateResponse(
@@ -38,7 +56,13 @@ async def roi_config_page(request: Request):
     )
 
 
-@router.get("/config-editor", response_class=HTMLResponse)
+@router.get(
+    "/config-editor",
+    response_class=HTMLResponse,
+    tags=["Pages"],
+    summary="Configuration editor",
+    description="Render the config editor page with Monaco editor for YAML editing"
+)
 async def config_editor_page(request: Request):
     """Render the config editor page with Monaco editor."""
     return templates.TemplateResponse(
@@ -46,7 +70,13 @@ async def config_editor_page(request: Request):
     )
 
 
-@router.get("/training", response_class=HTMLResponse)
+@router.get(
+    "/training",
+    response_class=HTMLResponse,
+    tags=["Pages"],
+    summary="Training management page",
+    description="Render the training management page for model training and benchmarking"
+)
 async def training_page(request: Request):
     """Render the training management page."""
     return templates.TemplateResponse(
@@ -54,7 +84,13 @@ async def training_page(request: Request):
     )
 
 
-@router.get("/api/status/html", response_class=HTMLResponse)
+@router.get(
+    "/api/status/html",
+    response_class=HTMLResponse,
+    tags=["Status & Reading"],
+    summary="Get status HTML fragment",
+    description="Get current status as HTML fragment for HTMX dynamic updates"
+)
 async def get_status_html(request: Request):
     """Get current status as HTML fragment for HTMX."""
     service = watermeter_service.get_service()

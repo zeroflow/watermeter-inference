@@ -1,32 +1,60 @@
+version: '3.8'
+
 services:
   watermeter:
     build: .
     image: watermeter-dashboard:latest
     container_name: watermeter-dashboard
+    restart: unless-stopped
 
     ports:
       - "8001:8001"
 
     volumes:
-      # Configuration (will be auto-populated with defaults if empty)
+      # Configuration (config.yaml - auto-created from defaults on first run)
       - ./config:/config
-      # Data persistence (state.json)
+
+      # Persistent data (state.json, readings history)
       - ./data:/data
-      # Trained models (will be auto-populated with defaults if empty)
+
+      # Trained models storage (default models auto-installed on first run)
       - ./models:/app/models
-      # Training data: input images and ground truth
-      - ./training:/training
-      # Model download cache (timm/huggingface pretrained weights)
+
+      # Training data structure:
+      # ./training/digits/input/         - Auto-saved low-confidence digit images
+      # ./training/digits/ground_truth/  - Labeled training data (0/, 1/, ..., 9/, NAN/)
+      # ./training/arrows/input/         - Auto-saved low-confidence arrow images
+      # ./training/arrows/ground_truth/  - Labeled training data (0.0/, 1.0/, ..., 9.0/)
+      - ./training/arrows:/training/arrows
+      - ./training/digits:/training/digits
+
+      # Hugging Face model cache (timm pretrained weights for training)
+      # Using named volume for better performance and automatic cleanup
       - hf_cache:/app/.cache/huggingface
 
     environment:
-      # Optional: Override logging level
-      - LOG_LEVEL=INFO
-      # Optional: HuggingFace API token (avoids download rate limits)
-      # Get yours at https://huggingface.co/settings/tokens
+      # Hugging Face token for downloading model weights during training
+      # Create .env file from .env.example and set your token there
+      # Get your token from: https://huggingface.co/settings/tokens
       - HF_TOKEN=${HF_TOKEN:-}
 
-    restart: unless-stopped
+      # Optional: MQTT credentials (if not using anonymous access)
+      # Uncomment these if your MQTT broker requires authentication
+      # - MQTT_USERNAME=${MQTT_USERNAME:-}
+      # - MQTT_PASSWORD=${MQTT_PASSWORD:-}
+
+      # Optional: Override logging level (DEBUG, INFO, WARNING, ERROR)
+      # - LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+    # Optional: Intel GPU hardware acceleration
+    # Uncomment the following lines to enable GPU inference acceleration
+    # 1. Check your GPU device exists: ls -l /dev/dri/renderD128
+    # 2. Get the render group ID: stat -c "%g" /dev/dri/renderD128
+    # 3. Uncomment and update the group_add value below
+    # devices:
+    #   - /dev/dri/renderD128:/dev/dri/renderD128
+    # group_add:
+    #   - "44"  # Replace with your render group ID
 
     healthcheck:
       test: ["CMD", "python3", "-c", "import httpx; httpx.get('http://localhost:8001/health').raise_for_status()"]
@@ -34,6 +62,50 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+    networks:
+      - watermeter-net
+
+    # Optional: Resource limits
+    # Uncomment and adjust based on your system resources
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '2.0'
+    #       memory: 2G
+    #     reservations:
+    #       cpus: '0.5'
+    #       memory: 512M
+
+  # Optional: Local MQTT broker (Eclipse Mosquitto)
+  # Uncomment this entire section if you don't have an existing MQTT broker
+  # and want to run one locally alongside the watermeter service
+  #
+  # mosquitto:
+  #   image: eclipse-mosquitto:2
+  #   container_name: watermeter-mqtt
+  #   restart: unless-stopped
+  #
+  #   ports:
+  #     - "1883:1883"      # MQTT
+  #     - "9001:9001"      # WebSocket (optional)
+  #
+  #   volumes:
+  #     # Create mosquitto.conf in ./mosquitto/config/ before starting:
+  #     # listener 1883
+  #     # allow_anonymous true
+  #     # persistence true
+  #     # persistence_location /mosquitto/data/
+  #     - ./mosquitto/config:/mosquitto/config
+  #     - ./mosquitto/data:/mosquitto/data
+  #     - ./mosquitto/log:/mosquitto/log
+  #
+  #   networks:
+  #     - watermeter-net
+
+networks:
+  watermeter-net:
+    driver: bridge
 
 volumes:
   hf_cache:

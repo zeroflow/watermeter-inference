@@ -29,7 +29,12 @@ class DeleteSubmission(BaseModel):
     model_type: str
 
 
-@router.get("/api/label/next-image")
+@router.get(
+    "/api/label/next-image",
+    tags=["Labeling"],
+    summary="Get next unlabeled image",
+    description="Get the next unlabeled image from input folders, prioritizing digits over arrows"
+)
 async def get_next_unlabeled_image():
     """Get the next unlabeled image, prioritizing digits over arrows."""
     service = watermeter_service.get_service()
@@ -89,7 +94,12 @@ async def get_next_unlabeled_image():
     return JSONResponse(response_data)
 
 
-@router.post("/api/label/submit")
+@router.post(
+    "/api/label/submit",
+    tags=["Labeling"],
+    summary="Submit label",
+    description="Submit a label for an image and move it to the appropriate ground truth folder"
+)
 async def submit_label(submission: LabelSubmission):
     """Submit a label and move the image to the ground truth folder."""
     try:
@@ -175,7 +185,12 @@ async def submit_label(submission: LabelSubmission):
         }, status_code=500)
 
 
-@router.post("/api/label/delete")
+@router.post(
+    "/api/label/delete",
+    tags=["Labeling"],
+    summary="Delete unusable image",
+    description="Delete an image that is unusable or garbage (not suitable for training)"
+)
 async def delete_image(submission: DeleteSubmission):
     """Delete an image (garbage/unusable)."""
     try:

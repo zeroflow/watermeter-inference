@@ -35,7 +35,12 @@ class TrainingConfig(BaseModel):
         return v
 
 
-@router.get("/api/training/status")
+@router.get(
+    "/api/training/status",
+    tags=["Training"],
+    summary="Get training status",
+    description="Get the status of active training job, benchmark job, and training queue"
+)
 async def get_training_status():
     """Get the status of the active training job, benchmark, and queue."""
     training_mgr = get_training_manager()
@@ -51,7 +56,12 @@ async def get_training_status():
     })
 
 
-@router.post("/api/training/start")
+@router.post(
+    "/api/training/start",
+    tags=["Training"],
+    summary="Start training job",
+    description="Start a new model training job or queue it if one is already running"
+)
 async def start_training(config: TrainingConfig):
     """Start a new training job or queue it if one is already running."""
     try:
@@ -74,7 +84,12 @@ async def start_training(config: TrainingConfig):
         }, status_code=500)
 
 
-@router.post("/api/training/cancel")
+@router.post(
+    "/api/training/cancel",
+    tags=["Training"],
+    summary="Cancel training job",
+    description="Cancel a running training job and optionally clear the training queue"
+)
 async def cancel_training(job_id: str, clear_queue: bool = True):
     """Cancel a running training job and optionally clear the queue."""
     try:
@@ -100,7 +115,12 @@ async def cancel_training(job_id: str, clear_queue: bool = True):
         }, status_code=500)
 
 
-@router.delete("/api/training/queue/{index}")
+@router.delete(
+    "/api/training/queue/{index}",
+    tags=["Training"],
+    summary="Remove item from queue",
+    description="Remove a specific item from the training queue by index"
+)
 async def remove_from_queue(index: int):
     """Remove a specific item from the training queue."""
     try:
@@ -114,7 +134,12 @@ async def remove_from_queue(index: int):
         return JSONResponse({"success": False, "message": str(e)}, status_code=500)
 
 
-@router.delete("/api/training/queue")
+@router.delete(
+    "/api/training/queue",
+    tags=["Training"],
+    summary="Clear training queue",
+    description="Clear the entire training queue (removes all queued jobs)"
+)
 async def clear_queue():
     """Clear the entire training queue."""
     try:
@@ -125,7 +150,12 @@ async def clear_queue():
         return JSONResponse({"success": False, "message": str(e)}, status_code=500)
 
 
-@router.post("/api/benchmark/cancel")
+@router.post(
+    "/api/benchmark/cancel",
+    tags=["Benchmarking"],
+    summary="Cancel benchmark job",
+    description="Cancel a running benchmark job"
+)
 async def cancel_benchmark(job_id: str):
     """Cancel a running benchmark job."""
     try:
@@ -151,7 +181,12 @@ async def cancel_benchmark(job_id: str):
         }, status_code=500)
 
 
-@router.get("/api/training/logs/{job_id}")
+@router.get(
+    "/api/training/logs/{job_id}",
+    tags=["Training"],
+    summary="Get training logs",
+    description="Get logs for a specific training job by job ID"
+)
 async def get_training_logs(job_id: str):
     """Get logs for a specific training job."""
     try:
@@ -171,7 +206,12 @@ async def get_training_logs(job_id: str):
         }, status_code=500)
 
 
-@router.get("/api/training/progress/{job_id}")
+@router.get(
+    "/api/training/progress/{job_id}",
+    tags=["Training"],
+    summary="Get training progress",
+    description="Get progress information for a specific training job by job ID"
+)
 async def get_training_progress(job_id: str):
     """Get progress for a specific training job."""
     try:

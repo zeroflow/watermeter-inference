@@ -20,7 +20,12 @@ class ConfigSaveSubmission(BaseModel):
     save_option: str = "saveonly"  # "saveonly" or "restart"
 
 
-@router.get("/api/config")
+@router.get(
+    "/api/config",
+    tags=["Configuration"],
+    summary="Get configuration",
+    description="Get the current config.yaml file content with comments preserved"
+)
 async def get_config():
     """Get the current config as YAML string (with comments preserved)."""
     try:
@@ -47,7 +52,12 @@ async def get_config():
         }, status_code=500)
 
 
-@router.post("/api/config/save")
+@router.post(
+    "/api/config/save",
+    tags=["Configuration"],
+    summary="Save configuration",
+    description="Save modified config.yaml with validation and optional service restart"
+)
 async def save_config(submission: ConfigSaveSubmission):
     """Save config with comment preservation."""
     try:
@@ -86,7 +96,12 @@ async def save_config(submission: ConfigSaveSubmission):
         }, status_code=500)
 
 
-@router.get("/api/config/schema.json")
+@router.get(
+    "/api/config/schema.json",
+    tags=["Configuration"],
+    summary="Get configuration schema",
+    description="Get JSON schema for config validation (used by Monaco editor for autocomplete)"
+)
 async def get_config_schema():
     """Get JSON schema for config validation (used by Monaco editor)."""
     return JSONResponse(config_utils.get_config_schema())

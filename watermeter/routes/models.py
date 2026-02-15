@@ -21,7 +21,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/api/models/architectures")
+@router.get(
+    "/api/models/architectures",
+    tags=["Models"],
+    summary="Search model architectures",
+    description="Search available timm model architectures by name substring"
+)
 async def list_architectures(q: str = ""):
     """Search available timm model architectures."""
     if len(q) < 2:
@@ -30,7 +35,12 @@ async def list_architectures(q: str = ""):
     return JSONResponse(models[:50])
 
 
-@router.get("/api/models")
+@router.get(
+    "/api/models",
+    tags=["Models"],
+    summary="List models",
+    description="List all trained models, optionally filtered by type (digits or arrows)"
+)
 async def list_models(model_type: str = None):
     """List all models, optionally filtered by type."""
     try:
@@ -72,7 +82,12 @@ async def list_models(model_type: str = None):
         }, status_code=500)
 
 
-@router.get("/api/models/{model_type}/{model_id}")
+@router.get(
+    "/api/models/{model_type}/{model_id}",
+    tags=["Models"],
+    summary="Get model details",
+    description="Get detailed information about a specific model including metadata and performance metrics"
+)
 async def get_model_details(model_type: str, model_id: str):
     """Get detailed information about a specific model."""
     try:
@@ -98,7 +113,12 @@ async def get_model_details(model_type: str, model_id: str):
         }, status_code=500)
 
 
-@router.post("/api/models/{model_type}/{model_id}/activate")
+@router.post(
+    "/api/models/{model_type}/{model_id}/activate",
+    tags=["Models"],
+    summary="Activate model",
+    description="Activate a model as the active inference model (updates config and reloads)"
+)
 async def activate_model(model_type: str, model_id: str):
     """Activate a model (set it as the active model in config and reload)."""
     try:
@@ -141,7 +161,12 @@ async def activate_model(model_type: str, model_id: str):
         }, status_code=500)
 
 
-@router.post("/api/models/{model_type}/{model_id}/archive")
+@router.post(
+    "/api/models/{model_type}/{model_id}/archive",
+    tags=["Models"],
+    summary="Archive model",
+    description="Archive a model (mark as archived in metadata, hide from active list)"
+)
 async def archive_model(model_type: str, model_id: str):
     """Archive a model (mark as archived in metadata)."""
     try:
@@ -167,7 +192,12 @@ async def archive_model(model_type: str, model_id: str):
         }, status_code=500)
 
 
-@router.delete("/api/models/{model_type}/{model_id}")
+@router.delete(
+    "/api/models/{model_type}/{model_id}",
+    tags=["Models"],
+    summary="Delete model",
+    description="Permanently delete a model and all its associated files"
+)
 async def delete_model(model_type: str, model_id: str):
     """Delete a model and all its files."""
     try:
@@ -193,7 +223,12 @@ async def delete_model(model_type: str, model_id: str):
         }, status_code=500)
 
 
-@router.get("/api/models/{model_type}/{model_id}/logs")
+@router.get(
+    "/api/models/{model_type}/{model_id}/logs",
+    tags=["Models"],
+    summary="Get model training logs",
+    description="Get persisted training logs for a model (successful or failed)"
+)
 async def get_model_logs(model_type: str, model_id: str):
     """Get persisted training logs for a model (successful or failed)."""
     try:
@@ -221,7 +256,12 @@ async def get_model_logs(model_type: str, model_id: str):
         }, status_code=500)
 
 
-@router.post("/api/models/{model_type}/{model_id}/benchmark")
+@router.post(
+    "/api/models/{model_type}/{model_id}/benchmark",
+    tags=["Benchmarking"],
+    summary="Start benchmark",
+    description="Start a benchmark job to evaluate a specific model against ground truth data"
+)
 async def start_benchmark(model_type: str, model_id: str):
     """Start a benchmark job for a specific model."""
     try:
@@ -247,7 +287,12 @@ async def start_benchmark(model_type: str, model_id: str):
         }, status_code=500)
 
 
-@router.get("/api/training-data/stats")
+@router.get(
+    "/api/training-data/stats",
+    tags=["Training Data"],
+    summary="Get training data statistics",
+    description="Get statistics about available training data (ground truth counts, unlabeled images)"
+)
 async def get_training_data_stats():
     """Get statistics about available training data."""
     try:
@@ -298,7 +343,12 @@ async def get_training_data_stats():
         }, status_code=500)
 
 
-@router.post("/api/training-data/dedup")
+@router.post(
+    "/api/training-data/dedup",
+    tags=["Training Data"],
+    summary="Deduplicate training data",
+    description="Purge near-duplicate images from input folders using perceptual hashing"
+)
 async def dedup_training_data():
     """Purge near-duplicate images from input folders."""
     try:
@@ -336,7 +386,12 @@ async def dedup_training_data():
 _prune_previews: dict = {}
 
 
-@router.post("/api/training-data/prune/preview")
+@router.post(
+    "/api/training-data/prune/preview",
+    tags=["Training Data"],
+    summary="Preview ground truth pruning",
+    description="Scan ground truth for near-duplicate images and return a preview of what would be removed"
+)
 async def prune_preview(request: dict):
     """
     Scan ground truth for near-duplicate images and return a preview
@@ -391,7 +446,12 @@ async def prune_preview(request: dict):
         }, status_code=500)
 
 
-@router.post("/api/training-data/prune/confirm")
+@router.post(
+    "/api/training-data/prune/confirm",
+    tags=["Training Data"],
+    summary="Confirm ground truth pruning",
+    description="Delete the files identified in the most recent prune preview"
+)
 async def prune_confirm(request: dict):
     """
     Delete the files identified in the most recent prune preview.
@@ -605,7 +665,12 @@ def confirm_mislabeled(model_type: str, training_path: Path, selected_paths: lis
     }
 
 
-@router.post("/api/training-data/mislabel/scan")
+@router.post(
+    "/api/training-data/mislabel/scan",
+    tags=["Training Data"],
+    summary="Scan for mislabeled images",
+    description="Scan ground truth for mislabeled images using the active model. Flags images where prediction disagrees with folder label."
+)
 async def mislabel_scan(request: dict):
     """
     Scan ground truth for mislabeled images using the active model.
@@ -657,7 +722,12 @@ async def mislabel_scan(request: dict):
         }, status_code=500)
 
 
-@router.post("/api/training-data/mislabel/confirm")
+@router.post(
+    "/api/training-data/mislabel/confirm",
+    tags=["Training Data"],
+    summary="Confirm mislabel rework",
+    description="Move selected suspect images from ground truth back to input for relabeling with label hints"
+)
 async def mislabel_confirm(request: dict):
     """
     Move selected suspect images from ground truth back to input for relabeling.
