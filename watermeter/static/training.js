@@ -964,7 +964,7 @@ function renderModels() {
 
         html += `
             <tr${isFailed ? ' style="opacity: 0.7"' : ''}>
-                <td class="model-name">${model.id}</td>
+                <td class="model-name" title="Seed: ${model.seed || 'N/A'}">${model.id}</td>
                 <td><span class="model-type ${modelType}">${modelType}</span></td>
                 <td>${model.architecture || '-'}</td>
                 <td>${model.resolution || '-'}px</td>
