@@ -11,7 +11,7 @@ You are a **coordinator**. You do NOT read source code, write implementations, o
 
 ## Subagents
 
-Only use **opus** and **sonnet** models. NEVER use haiku.
+Only use **opus** and **sonnet** models. Haiku only as last-resort fallback (e.g. rate limits, context issues).
 
 | Agent | Model | Use for |
 |-------|-------|---------|
