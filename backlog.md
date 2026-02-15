@@ -88,12 +88,14 @@ Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
 
 ## Internationalization
 
-- **BL-11** `planned` — **Translate UI to English**: replace remaining German text in templates and backend with English
+- **BL-11** `in-progress` — **Translate UI to English**: replace remaining German text in templates and backend with English
   - **Examples**: "Aktueller Zählerstand", button labels, status messages, tooltips, section headers
-  - **Scope**: all templates (`templates/*.html`), flash messages and error strings in `app.py`, any hardcoded German in JS
-  - **Not in scope**: comments in code (can stay mixed), config keys, log messages (already English)
+  - **Scope**: all templates (`templates/*.html`), flash messages and error strings in `app.py`, any hardcoded German in JS, MQTT topic names, config keys
+  - **Not in scope**: comments in code (can stay mixed), log messages (already English)
+  - **Breaking changes OK**: app is unreleased, so MQTT topics and config keys can change freely
+  - **Terminology**: "Zählerstand" → "Meter Reading", hardcoded English (no i18n framework)
   - **Approach**: systematic sweep — grep for common German patterns (umlauts, known German words), replace with English equivalents
-  - **Assigned**: `frontend` (templates/CSS) + `junior-dev` (backend strings)
+  - **Assigned**: `frontend` (templates/CSS) + `junior-dev` (backend strings + config keys + MQTT topics)
 
 ## Tech Debt
 

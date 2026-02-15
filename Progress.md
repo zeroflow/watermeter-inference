@@ -1,190 +1,190 @@
 # Water Meter Service - Implementation Progress
 
-## Übersicht
-Zusammenführung des Node-Red Flows in einen Python-Service mit Web Dashboard.
+## Overview
+Consolidation of the Node-RED flow into a Python service with a web dashboard.
 
-## Status Legende
-- ✅ Erledigt
-- 🔄 In Arbeit
-- ⏳ Ausstehend
-- ❌ Blockiert
+## Status Legend
+- ✅ Completed
+- 🔄 In Progress
+- ⏳ Pending
+- ❌ Blocked
 
 ---
 
-## 1. Dokumentation
+## 1. Documentation
 
 ### README.md
-- ✅ Architektur dokumentiert
-- ✅ Komponenten beschrieben
-- ✅ Web Dashboard Konzept
-- ✅ Konfiguration definiert
-- ✅ API Endpoints dokumentiert
-- ✅ Testing Guide
-- ✅ Migration Guide
+- ✅ Architecture documented
+- ✅ Components described
+- ✅ Web Dashboard concept
+- ✅ Configuration defined
+- ✅ API endpoints documented
+- ✅ Testing guide
+- ✅ Migration guide
 
 ### Progress.md
-- ✅ Datei erstellt
-- 🔄 Wird während Entwicklung aktualisiert
+- ✅ File created
+- 🔄 Being updated during development
 
 ---
 
 ## 2. Frontend (Web Dashboard)
 
 ### templates/dashboard.html
-- ✅ HTML Template erstellt
-- ✅ HTMX Integration
-- ✅ Auto-Refresh Toggle
-- ✅ Buttons: "Jetzt Auslesen", "Reset"
-- ⏳ Status-Anzeige Template (dynamisch von API geladen)
+- ✅ HTML template created
+- ✅ HTMX integration
+- ✅ Auto-refresh toggle
+- ✅ Buttons: "Read Now", "Reset"
+- ⏳ Status display template (dynamically loaded from API)
 
 ### static/style.css
-- ✅ Base Styles
-- ✅ Header & Navigation
-- ✅ Button Styles
-- ✅ Toggle Switch
-- ✅ Total Value Display
-- ✅ Warnings Section
-- ✅ Images Grid
-- ✅ Confidence Color Coding
-- ✅ Responsive Design
-- ✅ Loading States
+- ✅ Base styles
+- ✅ Header & navigation
+- ✅ Button styles
+- ✅ Toggle switch
+- ✅ Total value display
+- ✅ Warnings section
+- ✅ Images grid
+- ✅ Confidence color coding
+- ✅ Responsive design
+- ✅ Loading states
 
-**Notizen:**
-- HTMX polling alle 5 Sekunden
-- Responsive Grid für Bilder (7 Karten)
-- Farb-Codierung: Grün (≥0.95), Gelb (0.80-0.95), Rot (<0.80)
+**Notes:**
+- HTMX polling every 5 seconds
+- Responsive grid for images (7 cards)
+- Color coding: Green (≥0.95), Yellow (0.80-0.95), Red (<0.80)
 
 ---
 
 ## 3. Backend - Core Service
 
 ### config.yaml
-- ⏳ Konfigurationsdatei erstellen
-- ⏳ AI-on-the-edge Settings
-- ⏳ MQTT Settings
-- ⏳ Home Assistant Settings
-- ⏳ Threshold Values
+- ⏳ Create configuration file
+- ⏳ AI-on-the-edge settings
+- ⏳ MQTT settings
+- ⏳ Home Assistant settings
+- ⏳ Threshold values
 
-### watermeter_service.py (Neuer Hauptservice)
+### watermeter_service.py (New Main Service)
 
-#### 3.1 Konfiguration & Setup
-- ⏳ Config laden (YAML)
-- ⏳ Environment Variables Support
-- ⏳ Logging Setup
-- ⏳ Klassendefinition `WatermeterService`
+#### 3.1 Configuration & Setup
+- ⏳ Load config (YAML)
+- ⏳ Environment variables support
+- ⏳ Logging setup
+- ⏳ `WatermeterService` class definition
 
 #### 3.2 MQTT Integration
-- ⏳ MQTT Client Init
-- ⏳ Connect zu Broker (192.168.4.11)
-- ⏳ Subscribe zu "watermeter/status"
-- ⏳ Callback für Trigger ("Flow finished")
-- ⏳ Publish zu Home Assistant
-- ⏳ MQTT Discovery für HA Sensor
+- ⏳ MQTT client initialization
+- ⏳ Connect to broker (192.168.4.11)
+- ⏳ Subscribe to "watermeter/status"
+- ⏳ Callback for trigger ("Flow finished")
+- ⏳ Publish to Home Assistant
+- ⏳ MQTT discovery for HA sensor
 
-#### 3.3 Bild-Loader
-**Funktion:** `async def fetch_images()`
-- ⏳ Sequenzielles Laden (mit 1s delay)
-- ⏳ HTTP GET von AI-on-the-edge
-- ⏳ URL-Building: `http://192.168.5.136/img_tmp/{id}.jpg`
-- ⏳ Fehlerbehandlung (Timeout, 404, etc.)
-- ⏳ Temporäre Speicherung
-- ⏳ Rückgabe: Dict[id, image_data]
+#### 3.3 Image Loader
+**Function:** `async def fetch_images()`
+- ⏳ Sequential loading (with 1s delay)
+- ⏳ HTTP GET from AI-on-the-edge
+- ⏳ URL building: `http://192.168.5.136/img_tmp/{id}.jpg`
+- ⏳ Error handling (timeout, 404, etc.)
+- ⏳ Temporary storage
+- ⏳ Return: Dict[id, image_data]
 
 **IDs:**
 - main_dig1, main_dig2, main_dig3 (digits)
 - main_ana1, main_ana2, main_ana3, main_ana4 (arrows)
 
 #### 3.4 Inference Engine
-**Funktion:** `async def run_inference(images: Dict)`
-- ⏳ Integration mit bestehenden Classifiers
-- ⏳ Parallele Inference für alle 7 Bilder
+**Function:** `async def run_inference(images: Dict)`
+- ⏳ Integration with existing classifiers
+- ⏳ Parallel inference for all 7 images
 - ⏳ Mapping: ID → Classifier (digits/arrows)
-- ⏳ Rückgabe: Dict[id, {class, confidence, image}]
+- ⏳ Return: Dict[id, {class, confidence, image}]
 
-**Bestehende Classifier nutzen:**
-- `digits_classifier` (aus inference.py)
-- `arrows_classifier` (aus inference.py)
+**Use existing classifiers:**
+- `digits_classifier` (from inference.py)
+- `arrows_classifier` (from inference.py)
 
-#### 3.5 Wert-Berechnung
-**Funktion:** `def calculate_total(predictions: Dict) -> Dict`
-- ⏳ Formel implementieren:
+#### 3.5 Value Calculation
+**Function:** `def calculate_total(predictions: Dict) -> Dict`
+- ⏳ Implement formula:
   ```
   total = (dig1 × 100) + (dig2 × 10) + (dig3 × 1) +
           (⌊ana1⌋ × 0.1) + (⌊ana2⌋ × 0.01) +
           (⌊ana3⌋ × 0.001) + (⌊ana4⌋ × 0.0001)
   ```
-- ⏳ Sortierung nach Position
-- ⏳ Integer-Extraktion für Arrows (⌊value⌋)
-- ⏳ Rückgabe: `{total: float, raw_values: Dict}`
+- ⏳ Sort by position
+- ⏳ Integer extraction for arrows (⌊value⌋)
+- ⏳ Return: `{total: float, raw_values: Dict}`
 
 #### 3.6 Consistency Check
-**Funktion:** `def check_consistency(predictions: Dict) -> List[str]`
-- ⏳ Für jede Position i:
-  - Wenn Wert[i] hat .5 (Halbposition)
-  - Prüfe: Wert[i+1] sollte ≥ 5 sein
-- ⏳ Warnings sammeln
-- ⏳ Rückgabe: Liste von Warning-Strings
+**Function:** `def check_consistency(predictions: Dict) -> List[str]`
+- ⏳ For each position i:
+  - If value[i] is at .5 (half position)
+  - Check: value[i+1] should be ≥ 5
+- ⏳ Collect warnings
+- ⏳ Return: List of warning strings
 
-**Beispiel:**
+**Example:**
 ```
 dig1=2.5, dig2=3 → WARNING: "dig1 half-position but dig2=3 (expected ≥5)"
 ana1=5.5, ana2=7 → OK
 ```
 
-#### 3.7 Plausibilitätsprüfung
-**Funktion:** `def validate_plausibility(new_value: float) -> Dict`
-- ⏳ Reverse Detection:
-  - Vergleich mit `self.previous_value`
-  - Falls `new_value < previous_value` → reject
-- ⏳ Rate Check:
-  - Max. Differenz pro Zeiteinheit
-  - Konfigurierbar (z.B. max +5 m³/Stunde)
-- ⏳ Rückgabe: `{valid: bool, reason: str}`
+#### 3.7 Plausibility Check
+**Function:** `def validate_plausibility(new_value: float) -> Dict`
+- ⏳ Reverse detection:
+  - Compare with `self.previous_value`
+  - If `new_value < previous_value` → reject
+- ⏳ Rate check:
+  - Maximum difference per time unit
+  - Configurable (e.g., max +5 m³/hour)
+- ⏳ Return: `{valid: bool, reason: str}`
 
-**State Management:**
-- ⏳ `previous_value` speichern (in-memory)
-- ⏳ `last_update_time` speichern
-- ⏳ Reset-Funktion für Zählerwechsel
+**State management:**
+- ⏳ Store `previous_value` (in-memory)
+- ⏳ Store `last_update_time`
+- ⏳ Reset function for meter replacement
 
 #### 3.8 Low Confidence Handling
-**Funktion:** `async def save_low_confidence(id: str, image, prediction: Dict)`
-- ⏳ Threshold Check (< 0.8)
-- ⏳ Rate Limiting (max 1/Stunde pro ID)
-- ⏳ Timestamp generieren: `YYYYMMDDHHMMSS`
-- ⏳ Speichern: `/media/import/{class}/{id}_{ts}.jpg`
-- ⏳ Optional: Label Studio Sync triggern
+**Function:** `async def save_low_confidence(id: str, image, prediction: Dict)`
+- ⏳ Threshold check (< 0.8)
+- ⏳ Rate limiting (max 1/hour per ID)
+- ⏳ Generate timestamp: `YYYYMMDDHHMMSS`
+- ⏳ Save: `/media/import/{class}/{id}_{ts}.jpg`
+- ⏳ Optional: Trigger Label Studio sync
 
 **Label Studio Sync:**
-- ⏳ HTTP POST zu Storage ID 1 (digits)
-- ⏳ HTTP POST zu Storage ID 3 (arrows)
-- ⏳ 60s delay zwischen Syncs
-- ⏳ Fehlerbehandlung
+- ⏳ HTTP POST to Storage ID 1 (digits)
+- ⏳ HTTP POST to Storage ID 3 (arrows)
+- ⏳ 60s delay between syncs
+- ⏳ Error handling
 
-#### 3.9 Hauptworkflow
-**Funktion:** `async def process_reading()`
-- ⏳ 1. Bilder laden
-- ⏳ 2. Inference durchführen
-- ⏳ 3. Wert berechnen
-- ⏳ 4. Consistency Check
-- ⏳ 5. Plausibilitätsprüfung
-- ⏳ 6. Low Confidence Handling
-- ⏳ 7. State aktualisieren
-- ⏳ 8. MQTT Publish
-- ⏳ 9. Dashboard State aktualisieren
+#### 3.9 Main Workflow
+**Function:** `async def process_reading()`
+- ⏳ 1. Load images
+- ⏳ 2. Run inference
+- ⏳ 3. Calculate value
+- ⏳ 4. Consistency check
+- ⏳ 5. Plausibility validation
+- ⏳ 6. Low confidence handling
+- ⏳ 7. Update state
+- ⏳ 8. MQTT publish
+- ⏳ 9. Update dashboard state
 
 ---
 
 ## 4. Backend - FastAPI Integration
 
-### inference.py (Erweitern)
+### inference.py (Extend)
 
 #### 4.1 Web Dashboard Endpoints
 **GET /**
-- ⏳ Jinja2 Template rendern
-- ⏳ dashboard.html zurückgeben
+- ⏳ Render Jinja2 template
+- ⏳ Return dashboard.html
 
 **GET /api/status**
-- ⏳ Aktuellen State als JSON zurückgeben
+- ⏳ Return current state as JSON
 - ⏳ Format:
   ```json
   {
@@ -206,65 +206,65 @@ ana1=5.5, ana2=7 → OK
   ```
 
 **POST /api/trigger**
-- ⏳ Manuelle Messung starten
-- ⏳ `process_reading()` aufrufen (async)
-- ⏳ Response: Status-Message
+- ⏳ Start manual reading
+- ⏳ Call `process_reading()` (async)
+- ⏳ Response: Status message
 
 **POST /api/reset**
-- ⏳ `previous_value` zurücksetzen
-- ⏳ Response: Bestätigung
+- ⏳ Reset `previous_value`
+- ⏳ Response: Confirmation
 
 **GET /api/image/{id}**
-- ⏳ Letztes Bild für ID zurückgeben
-- ⏳ Als JPEG mit base64 oder direkt als Image Response
+- ⏳ Return last image for ID
+- ⏳ As JPEG with base64 or directly as image response
 
 #### 4.2 Shared State
-- ⏳ Global State Dictionary für Dashboard
-- ⏳ Lock/Mutex für Thread-Safety
-- ⏳ Aktualisierung nach jeder Messung
+- ⏳ Global state dictionary for dashboard
+- ⏳ Lock/Mutex for thread safety
+- ⏳ Update after each reading
 
 #### 4.3 Static Files & Templates
 - ⏳ `app.mount("/static", StaticFiles(directory="static"))`
-- ⏳ Jinja2Templates Setup
-- ⏳ Template-Rendering konfigurieren
+- ⏳ Jinja2Templates setup
+- ⏳ Configure template rendering
 
 ---
 
 ## 5. Integration & Testing
 
 ### 5.1 Service Integration
-- ⏳ WatermeterService in FastAPI einbinden
-- ⏳ Lifecycle Management (Startup/Shutdown)
-- ⏳ MQTT Client im Background starten
-- ⏳ Shared State zwischen MQTT und FastAPI
+- ⏳ Integrate WatermeterService into FastAPI
+- ⏳ Lifecycle management (startup/shutdown)
+- ⏳ Start MQTT client in background
+- ⏳ Shared state between MQTT and FastAPI
 
 ### 5.2 Error Handling
-- ⏳ Try-Catch für alle async Funktionen
-- ⏳ Logging auf allen Ebenen
-- ⏳ Graceful Degradation
-- ⏳ Fehler im Dashboard anzeigen
+- ⏳ Try-catch for all async functions
+- ⏳ Logging at all levels
+- ⏳ Graceful degradation
+- ⏳ Display errors in dashboard
 
 ### 5.3 Manual Testing
-- ⏳ MQTT Trigger Test
-- ⏳ Web Dashboard Test (Browser)
-- ⏳ API Endpoint Tests (curl)
-- ⏳ Consistency Check Tests
-- ⏳ Plausibility Tests
-- ⏳ Low Confidence Tests
+- ⏳ MQTT trigger test
+- ⏳ Web dashboard test (browser)
+- ⏳ API endpoint tests (curl)
+- ⏳ Consistency check tests
+- ⏳ Plausibility tests
+- ⏳ Low confidence tests
 
 ### 5.4 Edge Cases
-- ⏳ AI-on-the-edge nicht erreichbar
-- ⏳ Bilder fehlen (404)
-- ⏳ MQTT Connection Lost
-- ⏳ Alle Predictions low confidence
-- ⏳ NAN Klasse erkannt
+- ⏳ AI-on-the-edge unreachable
+- ⏳ Images missing (404)
+- ⏳ MQTT connection lost
+- ⏳ All predictions low confidence
+- ⏳ NAN class detected
 
 ---
 
 ## 6. Deployment
 
 ### 6.1 Dependencies
-- ✅ requirements.txt vorbereitet
+- ✅ requirements.txt prepared
   - openvino
   - opencv-python
   - numpy
@@ -277,23 +277,23 @@ ana1=5.5, ana2=7 → OK
   - python-multipart
 
 ### 6.2 Systemd Service
-- ⏳ systemd Unit File erstellen
-- ⏳ Service installieren
-- ⏳ Auto-Start konfigurieren
+- ⏳ Create systemd unit file
+- ⏳ Install service
+- ⏳ Configure auto-start
 
-### 6.3 Verzeichnisse
-- ⏳ /media/import/digits/ erstellen
-- ⏳ /media/import/arrows/ erstellen
-- ⏳ Berechtigungen setzen
+### 6.3 Directories
+- ⏳ Create /media/import/digits/
+- ⏳ Create /media/import/arrows/
+- ⏳ Set permissions
 
 ---
 
-## 7. Migration von Node-Red
+## 7. Migration from Node-RED
 
-### 7.1 Node-Red Flow analysieren
-- ✅ flows.json gelesen
-- ✅ Logik verstanden
-- ✅ Nodes identifiziert
+### 7.1 Analyze Node-RED Flow
+- ✅ Read flows.json
+- ✅ Understood logic
+- ✅ Identified nodes
 
 ### 7.2 Feature Mapping
 - ✅ MQTT Trigger → WatermeterService.on_mqtt_message()
@@ -306,94 +306,94 @@ ana1=5.5, ana2=7 → OK
 - ✅ HA Sensor → MQTT Publish
 
 ### 7.3 Cutover Plan
-- ⏳ Parallel-Test (Node-Red + Python Service)
-- ⏳ Vergleich der Ergebnisse
-- ⏳ Node-Red Flow deaktivieren
-- ⏳ Python Service alleine laufen lassen
+- ⏳ Parallel testing (Node-RED + Python Service)
+- ⏳ Compare results
+- ⏳ Deactivate Node-RED flow
+- ⏳ Run Python service standalone
 
 ---
 
-## 8. Optimierungen (Optional, später)
+## 8. Optimizations (Optional, Later)
 
-- ⏳ WebSocket statt Polling
-- ⏳ Historie in SQLite speichern
-- ⏳ Grafana Dashboard
-- ⏳ Prometheus Metrics
-- ⏳ Docker Container
-- ⏳ Automatisches Re-Training mit neuen Bildern
+- ⏳ WebSocket instead of polling
+- ⏳ Store history in SQLite
+- ⏳ Grafana dashboard
+- ⏳ Prometheus metrics
+- ⏳ Docker container
+- ⏳ Automatic re-training with new images
 
 ---
 
-## Nächste Schritte (Priorisiert)
+## Next Steps (Prioritized)
 
-1. **config.yaml erstellen** ← START HIER
-2. **watermeter_service.py Grundgerüst**
-3. **Bild-Loader implementieren**
-4. **Inference Integration**
-5. **Wert-Berechnung + Consistency Check**
-6. **FastAPI Dashboard Endpoints**
-7. **MQTT Integration**
+1. **Create config.yaml** ← START HERE
+2. **watermeter_service.py skeleton**
+3. **Implement image loader**
+4. **Inference integration**
+5. **Value calculation + consistency check**
+6. **FastAPI dashboard endpoints**
+7. **MQTT integration**
 8. **Testing**
 9. **Deployment**
 
 ---
 
-## Notizen & Fragen
+## Notes & Questions
 
-### Offene Fragen:
-- [ ] Soll History in DB gespeichert werden oder nur in-memory?
-- [ ] WebSocket vs. HTMX Polling für Dashboard?
-- [ ] Grafana Integration gewünscht?
+### Open Questions:
+- [ ] Should history be stored in DB or only in-memory?
+- [ ] WebSocket vs. HTMX polling for dashboard?
+- [ ] Grafana integration desired?
 
-### Technische Entscheidungen:
-- ✅ HTMX für Frontend (lightweight, kein JS-Framework nötig)
-- ✅ Jinja2 für Templates
-- ✅ Paho-MQTT für MQTT Client
-- ✅ AsyncIO für non-blocking Operations
-- ✅ Bestehende OpenVINO Classifier wiederverwenden
+### Technical Decisions:
+- ✅ HTMX for frontend (lightweight, no JS framework needed)
+- ✅ Jinja2 for templates
+- ✅ Paho-MQTT for MQTT client
+- ✅ AsyncIO for non-blocking operations
+- ✅ Reuse existing OpenVINO classifiers
 
-### Bekannte Limitierungen:
-- Rate Limit: 1 Bild/Sekunde (AI-on-the-edge Schutz)
+### Known Limitations:
+- Rate limit: 1 image/second (AI-on-the-edge protection)
 - MQTT QoS: 2 (exactly once)
-- Keine Persistenz (restart → State verloren) - akzeptabel für MVP
+- No persistence (restart → state lost) - acceptable for MVP
 
 ---
 
-## ✅ IMPLEMENTIERUNG ABGESCHLOSSEN!
+## ✅ IMPLEMENTATION COMPLETE!
 
-### Was wurde implementiert:
+### What Was Implemented:
 
-1. ✅ **config.yaml** - Vollständige Konfiguration
-2. ✅ **watermeter_service.py** - Core Service mit:
-   - Bild-Loader (sequenziell, rate-limited)
-   - Inference Integration (OpenVINO)
-   - Wert-Berechnung
-   - Consistency Check
-   - Plausibilitätsprüfung (Reverse/Rate)
-   - Low Confidence Handling
-   - MQTT Integration (Trigger + Publish)
-3. ✅ **app.py** - FastAPI Web Application mit:
-   - Dashboard Endpoint
+1. ✅ **config.yaml** - Complete configuration
+2. ✅ **watermeter_service.py** - Core service with:
+   - Image loader (sequential, rate-limited)
+   - Inference integration (OpenVINO)
+   - Value calculation
+   - Consistency check
+   - Plausibility validation (reverse/rate)
+   - Low confidence handling
+   - MQTT integration (trigger + publish)
+3. ✅ **app.py** - FastAPI web application with:
+   - Dashboard endpoint
    - Status API (JSON + HTML)
-   - Trigger Endpoint
-   - Reset Endpoint
-   - Health Check
-4. ✅ **Templates** - Web Dashboard:
-   - dashboard.html (Haupt-Seite)
-   - status_fragment.html (HTMX Status-Fragment)
-5. ✅ **static/style.css** - Vollständiges Styling
+   - Trigger endpoint
+   - Reset endpoint
+   - Health check
+4. ✅ **Templates** - Web dashboard:
+   - dashboard.html (main page)
+   - status_fragment.html (HTMX status fragment)
+5. ✅ **static/style.css** - Complete styling
 6. ✅ **requirements.txt** - Dependencies
-7. ✅ **QUICKSTART.md** - Start & Test Anleitung
-8. ✅ **Verzeichnisse** - import/digits & import/arrows
-9. ✅ **Modell-Pfade korrigiert** - digits/ov_model & arrows/ov_model
+7. ✅ **QUICKSTART.md** - Start & test instructions
+8. ✅ **Directories** - import/digits & import/arrows
+9. ✅ **Model paths corrected** - digits/ov_model & arrows/ov_model
 
-### Nächste Schritte zum Testen:
+### Next Steps for Testing:
 
-1. **Dependencies installieren**: `pip install -r requirements.txt`
-2. **Service starten**: `uvicorn watermeter.app:app --host 0.0.0.0 --port 8001`
-3. **Dashboard öffnen**: http://localhost:8001
-4. **Testen**: Siehe [QUICKSTART.md](QUICKSTART.md)
+1. **Install dependencies**: `pip install -r requirements.txt`
+2. **Start service**: `uvicorn watermeter.app:app --host 0.0.0.0 --port 8001`
+3. **Open dashboard**: http://localhost:8001
+4. **Test**: See [QUICKSTART.md](QUICKSTART.md)
 
 ---
 
-**Letzte Aktualisierung:** 2026-01-24 (Implementation Complete)
+**Last Updated:** 2026-01-24 (Implementation Complete)

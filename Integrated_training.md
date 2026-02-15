@@ -1,18 +1,18 @@
 # Integrated Model Training
 
-## Übersicht
+## Overview
 
-Integration von Model-Training direkt in die Watermeter-Anwendung. Ermöglicht Training und Benchmarking von custom Modellen über eine Web-UI, ohne manuell Python-Scripts ausführen zu müssen.
+Integration of model training directly into the watermeter application. Enables training and benchmarking of custom models via a web UI, without having to manually execute Python scripts.
 
 ---
 
-## 1. Architektur
+## 1. Architecture
 
 ### 1.1 Model Storage
-- **Volume Mount**: Model-Ordner wird als Volume gemountet
-  - `/app/models/digits/` für Digit-Modelle
-  - `/app/models/arrows/` für Arrow-Modelle
-- **Struktur**:
+- **Volume Mount**: Model folder mounted as volume
+  - `/app/models/digits/` for digit models
+  - `/app/models/arrows/` for arrow models
+- **Structure**:
   ```
   /app/models/
   ├── digits/
@@ -31,25 +31,25 @@ Integration von Model-Training direkt in die Watermeter-Anwendung. Ermöglicht T
   ```
 
 ### 1.2 Training Data Storage
-- **Volume Mount**: Training-Daten als Volume gemountet
-  - `/training/digits/ground_truth/{0,1,...,9,NAN}/*.jpg` für Digit-Training-Daten
-  - `/training/arrows/ground_truth/{0.0,0.1,...,9.9}/*.jpg` für Arrow-Training-Daten
-- Neue low-confidence Bilder werden automatisch hinzugefügt (existierendes Feature)
+- **Volume Mount**: Training data mounted as volume
+  - `/training/digits/ground_truth/{0,1,...,9,NAN}/*.jpg` for digit training data
+  - `/training/arrows/ground_truth/{0.0,0.1,...,9.9}/*.jpg` for arrow training data
+- New low-confidence images are automatically added (existing feature)
 
 ### 1.3 Model Naming Convention
 ```
 model_{type}_{architecture}[_c{classes}][_r{resolution}][_s{seed}]
 ```
-Beispiele:
-- `model_digits_resnext50_32x4d_r128` (default, kein Seed)
-- `model_arrows_efficientnetv2_rw_s_c10_r128_s8820` (mit Klassen und Seed)
+Examples:
+- `model_digits_resnext50_32x4d_r128` (default, no seed)
+- `model_arrows_efficientnetv2_rw_s_c10_r128_s8820` (with classes and seed)
 
 ---
 
-## 2. Metadaten
+## 2. Metadata
 
 ### 2.1 Metadata Format (metadata.json)
-Jedes Modell hat eine `metadata.json` Datei mit folgenden Informationen:
+Each model has a `metadata.json` file with the following information:
 
 ```json
 {
@@ -86,86 +86,86 @@ Jedes Modell hat eine `metadata.json` Datei mit folgenden Informationen:
 ```
 
 ### 2.2 Model Selection
-- Aktives Modell wird in `config.yaml` referenziert
-- Dropdown in UI zeigt alle verfügbaren Modelle mit Key-Metriken
-- Modelle können als "active" oder "archived" markiert werden
+- Active model is referenced in `config.yaml`
+- Dropdown in UI shows all available models with key metrics
+- Models can be marked as "active" or "archived"
 
 ---
 
 ## 3. Training UI
 
-### 3.1 Layout (von oben nach unten)
+### 3.1 Layout (from top to bottom)
 **Route**: `/training`
 
-1. **Dataset Statistics** (kompakt) - Klassenverteilung für Digits und Arrows
-2. **Training Form** - Konfiguration + Start/Queue Button
-3. **Training Queue** - Liste der wartenden Jobs (nur sichtbar wenn Queue nicht leer)
-4. **Training Progress** - Fortschrittsanzeige des aktiven Jobs
-5. **Trained Models** - Tabelle aller Modelle mit All/Digits/Arrows Tabs
-6. **Benchmark Progress** - Fortschrittsanzeige des aktiven Benchmarks
-7. **Benchmark Results** - Persistente Ergebnisse mit All/Digits/Arrows Tabs
-8. **Log Output** - Training- und Benchmark-Logs (nur sichtbar wenn Jobs aktiv)
+1. **Dataset Statistics** (compact) - Class distribution for digits and arrows
+2. **Training Form** - Configuration + Start/Queue button
+3. **Training Queue** - List of pending jobs (only visible when queue is not empty)
+4. **Training Progress** - Progress display of active job
+5. **Trained Models** - Table of all models with All/Digits/Arrows tabs
+6. **Benchmark Progress** - Progress display of active benchmark
+7. **Benchmark Results** - Persistent results with All/Digits/Arrows tabs
+8. **Log Output** - Training and benchmark logs (only visible when jobs are active)
 
 ### 3.2 Start Training
-**Form-Felder**:
+**Form Fields**:
 - **Model Type**: Dropdown (digits/arrows)
-- **Architecture**: Dropdown mit 3 Gruppen, sortiert nach Parameteranzahl:
+- **Architecture**: Dropdown with 3 groups, sorted by parameter count:
   - **Lightweight**: MobileNetV3 Small, MobileOne S0, EfficientNet B0, MobileNetV3 Large, MobileOne S1, ResNet18
   - **Medium**: GhostNet, EdgeNeXt Small, EfficientNet B2, EfficientNetV2-T, DenseNet121, ResNet34
   - **Heavy**: DenseNet169, EfficientNetV2-S, ResNeXt50 32x4d (default), ConvNeXt Tiny
 - **Resolution**: Dropdown (96, 128, 144, 160, 192)
-- **Seeds**: Text (kommasepariert, z.B. "42, 67, 69")
+- **Seeds**: Text (comma-separated, e.g., "42, 67, 69")
 - **Epochs**: Number (default: 20)
 - **Notes**: Textarea (optional)
 - **Auto-benchmark after training**: Checkbox (default: checked)
 
 **Start Button**:
-- Wenn kein Training läuft: "Start Training" - startet sofort
-- Wenn Training läuft: "Add to Queue" - fügt zur Warteschlange hinzu
+- When no training is running: "Start Training" - starts immediately
+- When training is running: "Add to Queue" - adds to queue
 
 ### 3.3 Training Queue
-- Zeigt alle wartenden Trainings-Jobs
-- Pro Eintrag: Architektur, Typ, Resolution, Seeds
-- "Remove" Button pro Eintrag
-- "Clear Queue" Button zum Leeren der gesamten Queue
-- Wird automatisch per Polling aktualisiert (alle 2 Sekunden)
+- Shows all pending training jobs
+- Per entry: Architecture, type, resolution, seeds
+- "Remove" button per entry
+- "Clear Queue" button to clear entire queue
+- Automatically updated via polling (every 2 seconds)
 
 ### 3.4 Training Progress
-Während Training läuft:
-- Progress Bar: Aktuelle Epoche / Gesamt-Epochen
-- Live-Updates: Aktuelle Epoche, Training Loss, Validation Accuracy
-- Log-Output (scrollable, Epoch-Zeilen werden gefiltert um Redundanz zu vermeiden)
-- "Cancel Training" Button (stoppt auch Queue und Auto-Benchmark)
+During training:
+- Progress bar: Current epoch / Total epochs
+- Live updates: Current epoch, training loss, validation accuracy
+- Log output (scrollable, epoch lines are filtered to avoid redundancy)
+- "Cancel Training" button (also stops queue and auto-benchmark)
 
 ### 3.5 Model Management
-- **Model List**: Tabelle mit All/Digits/Arrows Tabs
+- **Model List**: Table with All/Digits/Arrows tabs
   - Columns: Name, Architecture, Resolution, Accuracy, Date, Actions
 - **Actions**:
-  - "Activate": Modell als aktives Modell setzen (updated config.yaml, hot-reload)
-  - "Benchmark": Benchmark gegen Ground-Truth Daten laufen lassen
-  - "Delete": Modell löschen (mit Bestätigung, nicht für aktive Modelle)
+  - "Activate": Set model as active model (updates config.yaml, hot-reload)
+  - "Benchmark": Run benchmark against ground-truth data
+  - "Delete": Delete model (with confirmation, not for active models)
 
 ### 3.6 Benchmark Results (Persistent)
-- **Immer sichtbar** (nicht nur während Benchmark läuft)
+- **Always visible** (not only while benchmark is running)
 - **Tabs**: All / Digits / Arrows
-- **Datenquelle**: Wird aus `metadata.json` aller Modelle geladen (persistiert über Neustarts)
-- **Tabellen-Columns**: Model, Type, Accuracy, Confidence, Low Conf, Inference, Images, Date, Actions
-- **Actions**: "Delete" Button (nur für nicht-aktive Modelle), "Active" Badge für aktive Modelle
-- **Sortierung**: Nach Accuracy absteigend, bester Eintrag hervorgehoben
+- **Data source**: Loaded from `metadata.json` of all models (persists across restarts)
+- **Table Columns**: Model, Type, Accuracy, Confidence, Low Conf, Inference, Images, Date, Actions
+- **Actions**: "Delete" button (only for non-active models), "Active" badge for active models
+- **Sorting**: By accuracy descending, best entry highlighted
 
 ---
 
 ## 4. Training Backend
 
 ### 4.1 Training Pipeline
-1. Daten-Validierung (genug Bilder pro Klasse?)
-2. Model erstellen (PyTorch + timm)
-3. Training Loop mit Progress-Callbacks
-4. ONNX Export
-5. OpenVINO Conversion
-6. Metadaten + Training-Plot speichern
-7. Nächsten Job aus Queue starten (wenn vorhanden)
-8. Auto-Benchmark ausführen (wenn aktiviert und Queue leer)
+1. Data validation (enough images per class?)
+2. Create model (PyTorch + timm)
+3. Training loop with progress callbacks
+4. ONNX export
+5. OpenVINO conversion
+6. Save metadata + training plot
+7. Start next job from queue (if available)
+8. Execute auto-benchmark (if enabled and queue empty)
 
 ### 4.2 Training Manager
 
@@ -196,124 +196,124 @@ class TrainingManager:
 ```
 
 ### 4.3 Training Queue
-- Wenn Training läuft und neuer Job submitted wird → Job wird in Queue eingefügt
-- Nach Abschluss eines Trainings → nächster Job wird automatisch gestartet
-- Queue kann über UI verwaltet werden (einzelne Items entfernen, komplett leeren)
-- Cancel bricht aktuelles Training ab UND leert die Queue
+- When training is running and new job is submitted → job is added to queue
+- After training completes → next job is automatically started
+- Queue can be managed via UI (remove individual items, clear completely)
+- Cancel aborts current training AND clears queue
 
 ### 4.4 Auto-Benchmark
-- Checkbox "Auto-benchmark after training" im Form (default: an)
-- Model-IDs werden während Training gesammelt
-- Wenn alle Queue-Jobs abgearbeitet sind → Benchmarks werden sequentiell ausgeführt
-- Läuft in separatem Daemon-Thread
-- Nutzt existierende `_run_benchmark()` Methode
+- Checkbox "Auto-benchmark after training" in form (default: on)
+- Model IDs are collected during training
+- When all queue jobs are processed → benchmarks are executed sequentially
+- Runs in separate daemon thread
+- Uses existing `_run_benchmark()` method
 
-### 4.5 Parallelität
-- **Ein Training** gleichzeitig (weitere werden gequeued)
-- **Ein Benchmark** gleichzeitig
-- Training und Benchmark können parallel laufen
-- Auto-Benchmark wartet bis Queue komplett abgearbeitet
+### 4.5 Parallelism
+- **One training** at a time (additional ones are queued)
+- **One benchmark** at a time
+- Training and benchmark can run in parallel
+- Auto-benchmark waits until queue is completely processed
 
 ---
 
 ## 5. Benchmark Integration
 
 ### 5.1 Benchmark Process
-- Verwendet OpenVINO für Inferenz
-- Läuft gegen alle Ground-Truth Daten
-- Output: Overall Accuracy, Per-Class Accuracy, Mean Confidence, Low-Confidence %, Inference Time
+- Uses OpenVINO for inference
+- Runs against all ground-truth data
+- Output: Overall accuracy, per-class accuracy, mean confidence, low-confidence %, inference time
 
 ### 5.2 Benchmark Trigger
-- **Manuell**: "Benchmark" Button in der Model-Tabelle
-- **Automatisch**: Nach Training wenn "Auto-benchmark" aktiviert (nach Queue-Abarbeitung)
+- **Manual**: "Benchmark" button in model table
+- **Automatic**: After training when "Auto-benchmark" is enabled (after queue processing)
 
-### 5.3 Persistente Ergebnisse
-- Benchmark-Ergebnisse werden in `metadata.json` des jeweiligen Modells gespeichert
-- Beim Laden der Seite werden alle Ergebnisse aus den Model-Metadaten extrahiert
-- Ergebnisse bleiben über Container-Neustarts erhalten (Volume Mount)
+### 5.3 Persistent Results
+- Benchmark results are saved in `metadata.json` of respective model
+- When loading the page, all results are extracted from model metadata
+- Results persist across container restarts (volume mount)
 
 ---
 
 ## 6. REST API Endpoints
 
 ### Training
-- `GET /api/training/status` - Training/Benchmark Status + Queue + Auto-Benchmark Pending
-- `POST /api/training/start` - Training starten oder in Queue einreihen
-- `POST /api/training/cancel?clear_queue=true` - Training abbrechen (optional Queue leeren)
-- `GET /api/training/logs/{job_id}` - Training Logs
+- `GET /api/training/status` - Training/benchmark status + queue + auto-benchmark pending
+- `POST /api/training/start` - Start training or add to queue
+- `POST /api/training/cancel?clear_queue=true` - Cancel training (optionally clear queue)
+- `GET /api/training/logs/{job_id}` - Training logs
 
 ### Training Queue
-- `DELETE /api/training/queue/{index}` - Einzelnen Queue-Eintrag entfernen
-- `DELETE /api/training/queue` - Gesamte Queue leeren
+- `DELETE /api/training/queue/{index}` - Remove individual queue entry
+- `DELETE /api/training/queue` - Clear entire queue
 
 ### Models
-- `GET /api/models?type={digits|arrows}` - Alle Modelle auflisten
-- `POST /api/models/{type}/{id}/activate` - Modell aktivieren
-- `DELETE /api/models/{type}/{id}` - Modell löschen
-- `POST /api/models/{type}/{id}/benchmark` - Benchmark starten
+- `GET /api/models?type={digits|arrows}` - List all models
+- `POST /api/models/{type}/{id}/activate` - Activate model
+- `DELETE /api/models/{type}/{id}` - Delete model
+- `POST /api/models/{type}/{id}/benchmark` - Start benchmark
 
 ### Benchmark
-- `POST /api/benchmark/cancel` - Benchmark abbrechen
+- `POST /api/benchmark/cancel` - Cancel benchmark
 
 ### Data
-- `GET /api/training-data/stats` - Training-Daten Statistiken
+- `GET /api/training-data/stats` - Training data statistics
 
 ---
 
 ## 7. Implementation Roadmap
 
 ### ✅ Phase 1: Backend Foundation (Completed)
-- `training_manager.py` - Training orchestration mit Queue + Auto-Benchmark
+- `training_manager.py` - Training orchestration with queue + auto-benchmark
 - `model_manager.py` - Model metadata & file management
-- API Endpoints in `app.py`
-- Updated `docker-entrypoint.sh` - Default model copy mit metadata.json Erzeugung
+- API endpoints in `app.py`
+- Updated `docker-entrypoint.sh` - Default model copy with metadata.json generation
 - Updated `Dockerfile` & `docker-compose.yml` - Volume mounts
 
 ### ✅ Phase 2: Training UI (Completed)
-- `templates/training.html` - Vollständige Training-UI (~1700 Zeilen)
+- `templates/training.html` - Complete training UI (~1700 lines)
 - Route `/training` in `app.py`
-- JavaScript für Polling, Form-Handling, Model-Verwaltung
+- JavaScript for polling, form handling, model management
 
 ### ✅ Phase 3: Benchmark Integration (Completed)
-- `_execute_benchmark()` - Echte Benchmark-Logik mit OpenVINO
-- Benchmark Progress Section in UI
-- Persistente Benchmark Results Section mit Tabs
+- `_execute_benchmark()` - Real benchmark logic with OpenVINO
+- Benchmark progress section in UI
+- Persistent benchmark results section with tabs
 
 ### ✅ Phase 4: Queue & Auto-Benchmark (Completed)
-- Training Queue Backend (start → queue wenn busy, auto-chain)
-- Training Queue UI (Anzeige, Remove, Clear)
-- Auto-Benchmark nach Queue-Abarbeitung
-- Benchmark Results Rework (persistent, Tabs, Delete-Button)
-- Erweiterte Architektur-Auswahl (18 Modelle in 3 Gruppen)
-- UI Layout Rework (kompakte Stats, Queue-Section, Log-Section am Ende)
+- Training queue backend (start → queue when busy, auto-chain)
+- Training queue UI (display, remove, clear)
+- Auto-benchmark after queue processing
+- Benchmark results rework (persistent, tabs, delete button)
+- Extended architecture selection (18 models in 3 groups)
+- UI layout rework (compact stats, queue section, log section at end)
 
 ---
 
-## 8. Technische Entscheidungen
+## 8. Technical Decisions
 
-### Storage & Architektur
-- **Docker**: Training läuft im Container (CPU)
-- **Model Storage**: Modelle werden persistiert über Volume Mount (`/app/models/`)
-  - Startup: wenn leer → Default-Modelle aus `digits/selected/` und `arrows/selected/` kopieren
-- **Training Data**: Volume Mount für `/training/` (digits/arrows jeweils mit `ground_truth/`)
+### Storage & Architecture
+- **Docker**: Training runs in container (CPU)
+- **Model Storage**: Models are persisted via volume mount (`/app/models/`)
+  - Startup: if empty → copy default models from `digits/selected/` and `arrows/selected/`
+- **Training Data**: Volume mount for `/training/` (digits/arrows each with `ground_truth/`)
 - **Model Files**: XML/BIN + metadata.json + training_plot.png
-- **Cleanup**: Manuelles Aufräumen über UI (Delete-Button in Model-Tabelle und Benchmark-Tabelle)
+- **Cleanup**: Manual cleanup via UI (delete button in model table and benchmark table)
 
 ### Training
-- **Parallel Execution**: Training und Inference gleichzeitig OK
-  - Training auf CPU (torch device='cpu')
-  - Inference auf GPU (OpenVINO device='AUTO')
-- **Training Queue**: Mehrere Trainings können eingereicht werden, werden sequentiell abgearbeitet
-- **Auto-Benchmark**: Optional nach Training (wenn alle Queue-Jobs fertig)
-- **Seed-based Training**: Seeds als kommaseparierte Liste (z.B. `42, 67, 69`)
-- **Arrows Step-Size**: Dropdown mit 1.0, 0.5, 0.2, 0.1
-- **Batch-Training**: Parameter Ranges (cross-product aller Kombinationen)
-- **Error Handling**: Error log anzeigen, Auto-Cleanup von failed trainings
-- **Abbruch**: Cancel stoppt Training + leert Queue + cancelt Auto-Benchmark
+- **Parallel Execution**: Training and inference simultaneously OK
+  - Training on CPU (torch device='cpu')
+  - Inference on GPU (OpenVINO device='AUTO')
+- **Training Queue**: Multiple trainings can be submitted, are processed sequentially
+- **Auto-Benchmark**: Optional after training (when all queue jobs finished)
+- **Seed-based Training**: Seeds as comma-separated list (e.g., `42, 67, 69`)
+- **Arrows Step-Size**: Dropdown with 1.0, 0.5, 0.2, 0.1
+- **Batch Training**: Parameter ranges (cross-product of all combinations)
+- **Error Handling**: Show error log, auto-cleanup of failed trainings
+- **Cancellation**: Cancel stops training + clears queue + cancels auto-benchmark
 
-### Verfügbare Architekturen
-| Gruppe | Architektur | timm Name | ~Parameter |
-|--------|------------|-----------|------------|
+### Available Architectures
+| Group | Architecture | timm Name | ~Parameters |
+|-------|------------|-----------|------------|
 | Lightweight | MobileNetV3 Small | mobilenetv3_small_100 | 2.5M |
 | Lightweight | MobileOne S0 | mobileone_s0 | 2.1M |
 | Lightweight | EfficientNet B0 | efficientnet_b0 | 5.3M |
@@ -332,19 +332,19 @@ class TrainingManager:
 | Heavy | ConvNeXt Tiny | convnext_tiny | 28.6M |
 
 ### Model Management
-- **Hot-Reload**: Modellwechsel ohne App-Restart (Model-Lock während Reload)
-- **Benchmark Persistenz**: Ergebnisse in metadata.json gespeichert, über Neustarts verfügbar
+- **Hot-Reload**: Model switching without app restart (model lock during reload)
+- **Benchmark Persistence**: Results stored in metadata.json, available across restarts
 
 ### UI/UX
-- **Framework**: FastAPI + Jinja2 Templates (kein React/SPA)
-- **Progress Updates**: REST API Polling (alle 2 Sekunden)
-- **Log-Filterung**: Epoch/Loss/Accuracy Zeilen werden aus Logs gefiltert (redundant mit Progress-Bars)
-- **Layout**: Kompakte Stats oben, Form + Queue Mitte, Models + Benchmark unten, Logs ganz unten
+- **Framework**: FastAPI + Jinja2 templates (no React/SPA)
+- **Progress Updates**: REST API polling (every 2 seconds)
+- **Log Filtering**: Epoch/loss/accuracy lines are filtered from logs (redundant with progress bars)
+- **Layout**: Compact stats at top, form + queue in middle, models + benchmark below, logs at bottom
 
-### Nicht implementiert
-- ❌ Rollback zu vorherigem Modell
-- ❌ A/B Testing
-- ❌ CPU/GPU Auswahl in UI
-- ❌ Multi-GPU Support
-- ❌ Auto-Retry bei Fehlern
-- ❌ Model Comparison Side-by-Side
+### Not Implemented
+- ❌ Rollback to previous model
+- ❌ A/B testing
+- ❌ CPU/GPU selection in UI
+- ❌ Multi-GPU support
+- ❌ Auto-retry on errors
+- ❌ Model comparison side-by-side

@@ -116,7 +116,7 @@ async def submit_for_training(submission: TrainingSubmission):
 
         return JSONResponse({
             "success": True,
-            "message": f"Bild gespeichert: {filename}",
+            "message": f"Image saved: {filename}",
             "path": str(filepath)
         })
 
@@ -124,7 +124,7 @@ async def submit_for_training(submission: TrainingSubmission):
         logger.error(f"Error submitting for training: {e}")
         return JSONResponse({
             "success": False,
-            "message": f"Fehler beim Speichern: {str(e)}"
+            "message": f"Error saving: {str(e)}"
         }, status_code=500)
 
 

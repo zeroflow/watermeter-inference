@@ -1,26 +1,26 @@
 {% if not mqtt_connected %}
 <div class="warnings">
-    <p>MQTT nicht verbunden — Daten werden nicht an Home Assistant gesendet.</p>
+    <p>MQTT not connected — Data will not be sent to Home Assistant.</p>
 </div>
 {% endif %}
 
 {% if status == 'idle' or not total_value %}
 <div class="no-data">
-    <h3>Keine Daten verfügbar</h3>
-    <p>Klicke auf "Jetzt Auslesen" um eine Messung zu starten.</p>
+    <h3>No data available</h3>
+    <p>Click "Read Now" to start a measurement.</p>
 </div>
 
 {% elif status == 'processing' %}
 <div class="loading">
-    <h3>🔄 Verarbeitung läuft...</h3>
-    <p>Bilder werden geladen und analysiert</p>
+    <h3>🔄 Processing...</h3>
+    <p>Loading and analyzing images</p>
 </div>
 
 {% else %}
 <!-- Total Value Display -->
 {% if total_value %}
 <div class="total-value">
-    <h2>Aktueller Zählerstand</h2>
+    <h2>Current Meter Reading</h2>
     <div>
         <span class="value">{{ "%.4f"|format(total_value) }}</span>
         <span class="unit">{{ unit }}</span>
@@ -35,7 +35,7 @@
 <!-- Warnings and Errors -->
 {% if warnings %}
 <div class="{% if status == 'error' %}error{% else %}warnings{% endif %}">
-    <h3>{% if status == 'error' %}⚠️ Fehler aufgetreten{% else %}⚠️ Warnungen{% endif %}</h3>
+    <h3>{% if status == 'error' %}⚠️ Error occurred{% else %}⚠️ Warnings{% endif %}</h3>
     <ul>
         {% for warning in warnings %}
         <li>{{ warning }}</li>
@@ -52,7 +52,7 @@
     {% if pred.model == 'arrows' %}{% set ns.analog_count = ns.analog_count + 1 %}{% endif %}
 {% endfor %}
 <div class="images-section">
-    <h3>Zählerstände (Digits + Arrows)</h3>
+    <h3>Meter Readings (Digits + Arrows)</h3>
     <div class="images-grid">
         <div class="images-row digits-row">
             {% for pred in predictions if pred.model == 'digits' %}

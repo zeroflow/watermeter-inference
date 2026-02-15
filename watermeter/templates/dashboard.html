@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -18,14 +18,14 @@
                     hx-target="#status-message"
                     hx-swap="innerHTML"
                     class="btn btn-primary">
-                    🔄 Jetzt Auslesen
+                    🔄 Read Now
                 </button>
                 <button
                     hx-post="/api/reset"
                     hx-target="#status-message"
                     hx-swap="innerHTML"
                     class="btn btn-secondary"
-                    onclick="return confirm('Previous Value zurücksetzen?')">
+                    onclick="return confirm('Reset previous value?')">
                     ↺ Reset
                 </button>
                 <label class="toggle">
@@ -42,9 +42,9 @@
         <div id="status-message" class="status-message"></div>
 
         <main hx-get="/api/status/html" hx-trigger="load, every 5s" hx-swap="innerHTML">
-            <!-- Status wird hier dynamisch geladen -->
+            <!-- Status will be loaded dynamically here -->
             <div class="loading">
-                <p>Lade Status...</p>
+                <p>Loading status...</p>
             </div>
         </main>
     </div>
