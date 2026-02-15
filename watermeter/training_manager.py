@@ -1,8 +1,8 @@
 """
 Training Manager - Orchestrates model training and benchmarking
 """
+
 import threading
-import queue
 import time
 import traceback
 from pathlib import Path
@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 class JobStatus(Enum):
     """Training job status."""
+
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -33,13 +34,13 @@ class TrainingJob:
         self.config = config
         self.status = JobStatus.PENDING
         self.progress = {
-            'current_epoch': 0,
-            'total_epochs': config.get('epochs', 20),
-            'current_config': 1,
-            'total_configs': 1,
-            'train_loss': None,
-            'val_accuracy': None,
-            'message': 'Initializing...'
+            "current_epoch": 0,
+            "total_epochs": config.get("epochs", 20),
+            "current_config": 1,
+            "total_configs": 1,
+            "train_loss": None,
+            "val_accuracy": None,
+            "message": "Initializing...",
         }
         self.logs = []
         self.error = None
@@ -62,13 +63,13 @@ class TrainingJob:
     def to_dict(self) -> Dict:
         """Convert job to dictionary for API responses."""
         return {
-            'job_id': self.job_id,
-            'status': self.status.value,
-            'config': self.config,
-            'progress': self.progress,
-            'started_at': self.started_at.isoformat() if self.started_at else None,
-            'completed_at': self.completed_at.isoformat() if self.completed_at else None,
-            'error': self.error
+            "job_id": self.job_id,
+            "status": self.status.value,
+            "config": self.config,
+            "progress": self.progress,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "error": self.error,
         }
 
 
@@ -81,11 +82,11 @@ class BenchmarkJob:
         self.model_id = model_id
         self.status = JobStatus.PENDING
         self.progress = {
-            'current_class': 0,
-            'total_classes': 0,
-            'processed_images': 0,
-            'total_images': 0,
-            'message': 'Initializing...'
+            "current_class": 0,
+            "total_classes": 0,
+            "processed_images": 0,
+            "total_images": 0,
+            "message": "Initializing...",
         }
         self.logs = []
         self.error = None
@@ -108,15 +109,15 @@ class BenchmarkJob:
     def to_dict(self) -> Dict:
         """Convert job to dictionary for API responses."""
         return {
-            'job_id': self.job_id,
-            'model_type': self.model_type,
-            'model_id': self.model_id,
-            'status': self.status.value,
-            'progress': self.progress,
-            'started_at': self.started_at.isoformat() if self.started_at else None,
-            'completed_at': self.completed_at.isoformat() if self.completed_at else None,
-            'error': self.error,
-            'result': self.result
+            "job_id": self.job_id,
+            "model_type": self.model_type,
+            "model_id": self.model_id,
+            "status": self.status.value,
+            "progress": self.progress,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "error": self.error,
+            "result": self.result,
         }
 
 
@@ -146,10 +147,10 @@ class TrainingManager:
                 self.training_queue.append(config)
                 position = len(self.training_queue)
             logger.info(f"Training queued at position {position}")
-            return {'job_id': None, 'queued': True, 'queue_position': position}
+            return {"job_id": None, "queued": True, "queue_position": position}
 
         job_id = self._start_training_now(config)
-        return {'job_id': job_id, 'queued': False, 'queue_position': 0}
+        return {"job_id": job_id, "queued": False, "queue_position": 0}
 
     def _start_training_now(self, config: Dict[str, Any]) -> str:
         """Start a training job immediately."""
@@ -282,19 +283,18 @@ class TrainingManager:
             job.add_log("Starting training execution")
 
             config = job.config
-            model_type = config['model_type']
-            architecture = config['architecture']
-            resolution = config['resolution']
-            seeds = config.get('seeds', [42])
-            epochs = config.get('epochs', 20)
-            batch_size = config.get('batch_size', 16)
-            notes = config.get('notes', '')
+            model_type = config["model_type"]
+            architecture = config["architecture"]
+            resolution = config["resolution"]
+            seeds = config.get("seeds", [42])
+            epochs = config.get("epochs", 20)
+            batch_size = config.get("batch_size", 16)
 
             # For arrows, we may have step_size
-            step_size = config.get('step_size', 1.0) if model_type == 'arrows' else None
+            step_size = config.get("step_size", 1.0) if model_type == "arrows" else None
 
             # Training mode: "discrete" (classification) or "continuous" (regression)
-            training_mode = config.get('training_mode', 'discrete')
+            training_mode = config.get("training_mode", "discrete")
 
             # Calculate total configurations
             total_configs = len(seeds)
@@ -310,8 +310,7 @@ class TrainingManager:
                     return
 
                 job.update_progress(
-                    current_config=config_idx,
-                    message=f"Training config {config_idx}/{total_configs} (seed={seed})"
+                    current_config=config_idx, message=f"Training config {config_idx}/{total_configs} (seed={seed})"
                 )
                 job.add_log(f"Starting training for seed {seed}")
 
@@ -324,11 +323,12 @@ class TrainingManager:
                     seed=seed,
                     epochs=epochs,
                     batch_size=batch_size,
-                    step_size=step_size
+                    step_size=step_size,
+                    training_mode=training_mode,
                 )
 
                 if result:
-                    metric_name = "within-half" if config.get('training_mode') == 'continuous' else "accuracy"
+                    metric_name = "within-half" if config.get("training_mode") == "continuous" else "accuracy"
                     results.append(result)
                     job.add_log(f"Completed training for seed {seed}: {result['best_val_acc']:.2f}% {metric_name}")
                 else:
@@ -363,11 +363,11 @@ class TrainingManager:
                 self._persist_failure_metadata(job)
 
             # Collect model IDs for auto-benchmark if requested
-            if job.status == JobStatus.COMPLETED and job.config.get('auto_benchmark', False):
-                for result in (job.result or []):
-                    model_id = result.get('model_id')
+            if job.status == JobStatus.COMPLETED and job.config.get("auto_benchmark", False):
+                for result in job.result or []:
+                    model_id = result.get("model_id")
                     if model_id:
-                        self._auto_benchmark_pending.append((job.config['model_type'], model_id))
+                        self._auto_benchmark_pending.append((job.config["model_type"], model_id))
 
             # Start next queued job, or auto-benchmarks if queue is empty
             self._process_next_in_queue()
@@ -417,9 +417,18 @@ class TrainingManager:
         thread = threading.Thread(target=run_sequential, daemon=True)
         thread.start()
 
-    def _execute_training(self, job: TrainingJob, model_type: str, architecture: str,
-                         resolution: int, seed: int, epochs: int, batch_size: int,
-                         step_size: Optional[float]) -> Optional[Dict]:
+    def _execute_training(
+        self,
+        job: TrainingJob,
+        model_type: str,
+        architecture: str,
+        resolution: int,
+        seed: int,
+        epochs: int,
+        batch_size: int,
+        step_size: Optional[float],
+        training_mode: str = "discrete",
+    ) -> Optional[Dict]:
         """
         Execute the actual training process using PyTorch and timm.
 
@@ -427,15 +436,18 @@ class TrainingManager:
         """
         import shutil
 
-        import numpy as np
         import torch
         import timm
         from torchvision.datasets import ImageFolder
         from torch.utils.data import DataLoader, Subset
 
         from .training_core import (
-            set_all_seeds, worker_init_fn, create_transforms,
-            stratified_split, compute_class_weights, export_to_openvino,
+            set_all_seeds,
+            worker_init_fn,
+            create_transforms,
+            stratified_split,
+            compute_class_weights,
+            export_to_openvino,
         )
 
         try:
@@ -444,28 +456,28 @@ class TrainingManager:
             job.add_log(f"Random seed set to {seed}")
 
             # Setup device
-            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             job.add_log(f"Using device: {device}")
 
             # Determine paths and classes based on model type
-            if model_type == 'digits':
+            if model_type == "digits":
                 dataset_dir = Path("/training/digits/ground_truth")
                 num_classes = 11  # 0-9 + NAN
-                model_filename = f'model_digits_{architecture}_r{resolution}_s{seed}'
-            elif model_type == 'arrows':
+                model_filename = f"model_digits_{architecture}_r{resolution}_s{seed}"
+            elif model_type == "arrows":
                 ground_truth_dir = Path("/training/arrows/ground_truth")
 
-                if training_mode == 'continuous':
+                if training_mode == "continuous":
                     # Regression mode: use all ground truth classes directly
                     dataset_dir = ground_truth_dir  # No temp dataset needed
-                    model_filename = f'model_arrows_{architecture}_continuous_r{resolution}_s{seed}'
+                    model_filename = f"model_arrows_{architecture}_continuous_r{resolution}_s{seed}"
                     job.add_log("Continuous (regression) mode — using all ground truth classes")
                 else:
                     # Discrete (classification) mode: subsample to step_size
                     dataset_dir = Path("/training/arrows/dataset_temp")
                     step = step_size or 1.0
                     num_classes = int(10 / step)
-                    model_filename = f'model_arrows_{architecture}_c{num_classes}_r{resolution}_s{seed}'
+                    model_filename = f"model_arrows_{architecture}_c{num_classes}_r{resolution}_s{seed}"
                     job.add_log(f"Discrete (classification) mode — step={step} ({num_classes} classes)")
                     self._create_arrow_dataset(ground_truth_dir, dataset_dir, step, job)
             else:
@@ -481,7 +493,7 @@ class TrainingManager:
             train_transform, val_transform = create_transforms(resolution)
 
             # Load dataset and create stratified split — branch on regression vs classification
-            if model_type == 'arrows' and training_mode == 'continuous':
+            if model_type == "arrows" and training_mode == "continuous":
                 # Regression dataset
                 from .training_core import RegressionArrowDataset, stratified_split_regression
 
@@ -498,7 +510,7 @@ class TrainingManager:
                 class_names = None
 
                 job.add_log(f"Train samples: {len(train_ds)}, Val samples: {len(val_ds)}")
-                job.add_log(f"Regression target range: 0.0 - 1.0 (dial position / 10)")
+                job.add_log("Regression target range: 0.0 - 1.0 (dial position / 10)")
             else:
                 # Classification dataset (existing code for both digits and discrete arrows)
                 job.add_log("Loading dataset and creating train/val split...")
@@ -522,13 +534,13 @@ class TrainingManager:
                 job.add_log("Class weights computed")
 
             # DataLoaders
-            train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
-                                     num_workers=2, worker_init_fn=worker_init_fn)
-            val_loader = DataLoader(val_ds, batch_size=batch_size,
-                                   num_workers=2, worker_init_fn=worker_init_fn)
+            train_loader = DataLoader(
+                train_ds, batch_size=batch_size, shuffle=True, num_workers=2, worker_init_fn=worker_init_fn
+            )
+            val_loader = DataLoader(val_ds, batch_size=batch_size, num_workers=2, worker_init_fn=worker_init_fn)
 
             # Create model
-            if model_type == 'arrows' and training_mode == 'continuous':
+            if model_type == "arrows" and training_mode == "continuous":
                 model = timm.create_model(architecture, pretrained=True, num_classes=1)
                 job.add_log(f"Creating regression model: {architecture} (1 output)")
             else:
@@ -543,7 +555,7 @@ class TrainingManager:
             # Optimizer and loss
             optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-            if model_type == 'arrows' and training_mode == 'continuous':
+            if model_type == "arrows" and training_mode == "continuous":
                 criterion = torch.nn.MSELoss()
             else:
                 criterion = torch.nn.CrossEntropyLoss(weight=class_weights_tensor)
@@ -553,9 +565,9 @@ class TrainingManager:
             train_losses = []
             val_accs = []
             best_val_acc = 0
-            best_val_loss = float('inf')
-            best_val_mae = float('inf')
-            best_val_rmse = float('inf')
+            best_val_loss = float("inf")
+            best_val_mae = float("inf")
+            best_val_rmse = float("inf")
             best_epoch = 0
             best_model_state = None
 
@@ -578,7 +590,7 @@ class TrainingManager:
                     imgs = imgs.to(device)
                     optimizer.zero_grad()
 
-                    if model_type == 'arrows' and training_mode == 'continuous':
+                    if model_type == "arrows" and training_mode == "continuous":
                         labels = labels.to(device)  # float32 targets
                         outputs = model(imgs).squeeze(-1)  # (batch,) — remove trailing dim
                         loss = criterion(torch.sigmoid(outputs), labels)
@@ -597,7 +609,7 @@ class TrainingManager:
                 # Validation phase
                 model.eval()
                 with torch.no_grad():
-                    if model_type == 'arrows' and training_mode == 'continuous':
+                    if model_type == "arrows" and training_mode == "continuous":
                         # Regression validation: compute MAE, RMSE, and "within-half" accuracy
                         all_preds = []
                         all_targets = []
@@ -617,7 +629,6 @@ class TrainingManager:
                         # "within-half": |pred - target| < 0.05 (= 0.5 dial position out of 10)
                         within_half = ((all_preds - all_targets).abs() < 0.05).float().mean().item() * 100
 
-                        val_metric = within_half
                     else:
                         # Classification validation: compute accuracy
                         correct = 0
@@ -630,10 +641,9 @@ class TrainingManager:
                             correct += (predicted == labels).sum().item()
 
                         val_acc = 100 * correct / total
-                        val_metric = val_acc
 
                 # Best model tracking
-                if model_type == 'arrows' and training_mode == 'continuous':
+                if model_type == "arrows" and training_mode == "continuous":
                     val_accs.append(within_half)  # Reuse val_accs list for within-half %
                     if within_half > best_val_acc:
                         best_val_acc = within_half
@@ -653,14 +663,14 @@ class TrainingManager:
                 epoch_time = time.time() - epoch_start
 
                 # Update progress
-                if model_type == 'arrows' and training_mode == 'continuous':
+                if model_type == "arrows" and training_mode == "continuous":
                     job.update_progress(
                         current_epoch=epoch + 1,
                         total_epochs=epochs,
                         train_loss=round(avg_loss, 4),
                         val_accuracy=round(within_half, 2),  # Repurpose val_accuracy for within-half %
                         epoch_duration=round(epoch_time, 1),
-                        message=f"Epoch {epoch+1}/{epochs}: Loss={avg_loss:.4f}, MAE={mae:.4f}, Within-half={within_half:.1f}%"
+                        message=f"Epoch {epoch+1}/{epochs}: Loss={avg_loss:.4f}, MAE={mae:.4f}, Within-half={within_half:.1f}%",
                     )
                     job.add_log(
                         f"Epoch {epoch+1}/{epochs} - Loss: {avg_loss:.4f} - MAE: {mae:.4f} "
@@ -673,16 +683,18 @@ class TrainingManager:
                         train_loss=round(avg_loss, 4),
                         val_accuracy=round(val_acc, 2),
                         epoch_duration=round(epoch_time, 1),
-                        message=f"Epoch {epoch+1}/{epochs}: Loss={avg_loss:.4f}, Val Acc={val_acc:.2f}%"
+                        message=f"Epoch {epoch+1}/{epochs}: Loss={avg_loss:.4f}, Val Acc={val_acc:.2f}%",
                     )
-                    job.add_log(f"Epoch {epoch+1}/{epochs} - Loss: {avg_loss:.4f} - Val Acc: {val_acc:.2f}% - Time: {epoch_time:.1f}s")
+                    job.add_log(
+                        f"Epoch {epoch+1}/{epochs} - Loss: {avg_loss:.4f} - Val Acc: {val_acc:.2f}% - Time: {epoch_time:.1f}s"
+                    )
 
             total_time = time.time() - total_start
             job.add_log(f"Training completed in {total_time:.1f}s ({total_time/60:.1f}min)")
 
             # Load best model
             model.load_state_dict(best_model_state)
-            if model_type == 'arrows' and training_mode == 'continuous':
+            if model_type == "arrows" and training_mode == "continuous":
                 job.add_log(f"Best model from epoch {best_epoch+1} with {best_val_acc:.1f}% within-half accuracy")
             else:
                 job.add_log(f"Best model from epoch {best_epoch+1} with {best_val_acc:.2f}% accuracy")
@@ -701,73 +713,75 @@ class TrainingManager:
 
             # Save metadata
             metadata = {
-                'model_type': model_type,
-                'architecture': architecture,
-                'resolution': resolution,
-                'seed': seed,
-                'epochs': epochs,
-                'batch_size': batch_size,
-                'best_val_loss': best_val_loss,
-                'best_epoch': best_epoch + 1,
-                'training_time': total_time,
-                'num_params': num_params,
-                'created_at': datetime.now().isoformat()
+                "model_type": model_type,
+                "architecture": architecture,
+                "resolution": resolution,
+                "seed": seed,
+                "epochs": epochs,
+                "batch_size": batch_size,
+                "best_val_loss": best_val_loss,
+                "best_epoch": best_epoch + 1,
+                "training_time": total_time,
+                "num_params": num_params,
+                "created_at": datetime.now().isoformat(),
             }
 
-            if model_type == 'arrows' and training_mode == 'continuous':
-                metadata['training_mode'] = 'continuous'
-                metadata['num_classes'] = 1
-                metadata['best_val_mae'] = best_val_mae
-                metadata['best_val_rmse'] = best_val_rmse
-                metadata['best_within_half'] = best_val_acc  # best_val_acc holds within-half for regression
-                metadata['classes'] = None
+            if model_type == "arrows" and training_mode == "continuous":
+                metadata["training_mode"] = "continuous"
+                metadata["num_classes"] = 1
+                metadata["best_val_mae"] = best_val_mae
+                metadata["best_val_rmse"] = best_val_rmse
+                metadata["best_within_half"] = best_val_acc  # best_val_acc holds within-half for regression
+                metadata["classes"] = None
             else:
-                metadata['training_mode'] = 'discrete'
-                metadata['num_classes'] = num_classes_actual
-                metadata['best_val_acc'] = best_val_acc
-                metadata['classes'] = class_names
-                if model_type == 'arrows' and step_size:
-                    metadata['step_size'] = step_size
+                metadata["training_mode"] = "discrete"
+                metadata["num_classes"] = num_classes_actual
+                metadata["best_val_acc"] = best_val_acc
+                metadata["classes"] = class_names
+                if model_type == "arrows" and step_size:
+                    metadata["step_size"] = step_size
 
             import json
-            metadata_path = output_dir / 'metadata.json'
-            with open(metadata_path, 'w') as f:
+
+            metadata_path = output_dir / "metadata.json"
+            with open(metadata_path, "w") as f:
                 json.dump(metadata, f, indent=2)
             job.add_log(f"Metadata saved: {metadata_path}")
 
             # Save training plot
             try:
                 import matplotlib
-                matplotlib.use('Agg')  # Non-interactive backend
+
+                matplotlib.use("Agg")  # Non-interactive backend
                 import matplotlib.pyplot as plt
 
                 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
                 ax1.plot(train_losses)
-                ax1.set_title('Training Loss')
-                ax1.set_xlabel('Epoch')
-                ax1.set_ylabel('Loss')
+                ax1.set_title("Training Loss")
+                ax1.set_xlabel("Epoch")
+                ax1.set_ylabel("Loss")
                 ax1.grid(True)
 
                 ax2.plot(val_accs)
-                if model_type == 'arrows' and training_mode == 'continuous':
-                    ax2.set_title('Validation Within-Half Accuracy')
-                    ax2.set_ylabel('Within-Half (%)')
+                if model_type == "arrows" and training_mode == "continuous":
+                    ax2.set_title("Validation Within-Half Accuracy")
+                    ax2.set_ylabel("Within-Half (%)")
                 else:
-                    ax2.set_title('Validation Accuracy')
-                    ax2.set_ylabel('Accuracy (%)')
-                ax2.set_xlabel('Epoch')
+                    ax2.set_title("Validation Accuracy")
+                    ax2.set_ylabel("Accuracy (%)")
+                ax2.set_xlabel("Epoch")
                 ax2.grid(True)
 
                 plt.tight_layout()
-                plot_path = output_dir / f'{model_filename}_training.png'
-                plt.savefig(plot_path, dpi=150, bbox_inches='tight')
+                plot_path = output_dir / f"{model_filename}_training.png"
+                plt.savefig(plot_path, dpi=150, bbox_inches="tight")
                 plt.close()
                 job.add_log(f"Training plot saved: {plot_path}")
             except Exception as e:
                 job.add_log(f"Warning: Could not save training plot: {e}")
 
             # Cleanup temp dataset for arrows
-            if model_type == 'arrows' and dataset_dir.name == 'dataset_temp':
+            if model_type == "arrows" and dataset_dir.name == "dataset_temp":
                 try:
                     shutil.rmtree(dataset_dir)
                     job.add_log("Cleaned up temporary dataset")
@@ -779,22 +793,22 @@ class TrainingManager:
             job.add_log("Model manager refreshed")
 
             result = {
-                'model_name': architecture,
-                'model_id': model_filename,
-                'seed': seed,
-                'resolution': resolution,
-                'training_time': total_time,
-                'output_dir': str(output_dir)
+                "model_name": architecture,
+                "model_id": model_filename,
+                "seed": seed,
+                "resolution": resolution,
+                "training_time": total_time,
+                "output_dir": str(output_dir),
             }
 
-            if model_type == 'arrows' and training_mode == 'continuous':
-                result['best_val_acc'] = best_val_acc  # within-half %
-                result['best_val_mae'] = best_val_mae
-                result['num_classes'] = 1
+            if model_type == "arrows" and training_mode == "continuous":
+                result["best_val_acc"] = best_val_acc  # within-half %
+                result["best_val_mae"] = best_val_mae
+                result["num_classes"] = 1
             else:
-                result['best_val_acc'] = best_val_acc
-                result['best_val_loss'] = best_val_loss
-                result['num_classes'] = num_classes_actual
+                result["best_val_acc"] = best_val_acc
+                result["best_val_loss"] = best_val_loss
+                result["num_classes"] = num_classes_actual
 
             return result
 
@@ -807,6 +821,7 @@ class TrainingManager:
             if partial_dir.exists():
                 try:
                     import shutil
+
                     shutil.rmtree(partial_dir)
                     job.add_log(f"Cleaned up partial model directory: {partial_dir}")
                 except Exception as cleanup_err:
@@ -816,20 +831,19 @@ class TrainingManager:
 
     def _persist_training_logs(self, job: TrainingJob):
         """Save training logs to disk for later viewing."""
-        import json
 
         config = job.config
-        model_type = config.get('model_type', 'unknown')
+        model_type = config.get("model_type", "unknown")
 
         # For successful jobs, save logs into each model directory
         if job.status == JobStatus.COMPLETED and job.result:
             for result in job.result:
-                model_id = result.get('model_id')
+                model_id = result.get("model_id")
                 if model_id:
                     log_path = Path(f"/app/models/{model_type}/{model_id}/training.log")
                     try:
-                        with open(log_path, 'w') as f:
-                            f.write('\n'.join(job.logs))
+                        with open(log_path, "w") as f:
+                            f.write("\n".join(job.logs))
                     except Exception as e:
                         logger.error(f"Failed to persist training logs to {log_path}: {e}")
 
@@ -840,8 +854,8 @@ class TrainingManager:
                 fail_dir.mkdir(parents=True, exist_ok=True)
                 log_path = fail_dir / "training.log"
                 try:
-                    with open(log_path, 'w') as f:
-                        f.write('\n'.join(job.logs))
+                    with open(log_path, "w") as f:
+                        f.write("\n".join(job.logs))
                 except Exception as e:
                     logger.error(f"Failed to persist failure logs to {log_path}: {e}")
 
@@ -857,22 +871,22 @@ class TrainingManager:
         config = job.config
 
         metadata = {
-            'model_type': config.get('model_type', 'unknown'),
-            'architecture': config.get('architecture', 'unknown'),
-            'resolution': config.get('resolution', 0),
-            'status': 'failed',
-            'error': job.error or 'Unknown error',
-            'created_at': (job.started_at or datetime.now()).isoformat(),
-            'training_info': {
-                'seeds': config.get('seeds', []),
-                'epochs': config.get('epochs', 0),
-                'notes': config.get('notes', ''),
-            }
+            "model_type": config.get("model_type", "unknown"),
+            "architecture": config.get("architecture", "unknown"),
+            "resolution": config.get("resolution", 0),
+            "status": "failed",
+            "error": job.error or "Unknown error",
+            "created_at": (job.started_at or datetime.now()).isoformat(),
+            "training_info": {
+                "seeds": config.get("seeds", []),
+                "epochs": config.get("epochs", 0),
+                "notes": config.get("notes", ""),
+            },
         }
 
-        metadata_path = fail_dir / 'metadata.json'
+        metadata_path = fail_dir / "metadata.json"
         try:
-            with open(metadata_path, 'w') as f:
+            with open(metadata_path, "w") as f:
                 json.dump(metadata, f, indent=2)
             logger.info(f"Saved failure metadata: {metadata_path}")
             # Refresh model manager so it picks up the failure entry
@@ -883,15 +897,14 @@ class TrainingManager:
     def _get_failure_dir(self, job: TrainingJob) -> Optional[Path]:
         """Get the directory path for storing failure artifacts."""
         config = job.config
-        model_type = config.get('model_type')
-        architecture = config.get('architecture', 'unknown')
-        timestamp = (job.started_at or datetime.now()).strftime('%Y%m%d_%H%M%S')
+        model_type = config.get("model_type")
+        architecture = config.get("architecture", "unknown")
+        timestamp = (job.started_at or datetime.now()).strftime("%Y%m%d_%H%M%S")
         if not model_type:
             return None
         return Path(f"/app/models/{model_type}/_failed_{architecture}_{timestamp}")
 
-    def _create_arrow_dataset(self, ground_truth_dir: Path, dataset_dir: Path,
-                              step: float, job: TrainingJob):
+    def _create_arrow_dataset(self, ground_truth_dir: Path, dataset_dir: Path, step: float, job: TrainingJob):
         """Create subsampled arrow dataset from ground_truth."""
         import shutil
         import math
@@ -926,7 +939,7 @@ class TrainingManager:
             target_class_dir.mkdir(exist_ok=True)
 
             # Copy images
-            for img_file in class_dir.glob('*'):
+            for img_file in class_dir.glob("*"):
                 if img_file.is_file():
                     target_file = target_class_dir / f"{class_dir.name}_{img_file.name}"
                     shutil.copy(img_file, target_file)
@@ -965,28 +978,28 @@ class TrainingManager:
             try:
                 metadata = self.model_manager.get_model(job.model_type, job.model_id)
                 if metadata:
-                    training_mode = metadata.get('training_mode', 'discrete')
-                    if training_mode == 'continuous':
-                        metadata['benchmark'] = {
-                            'training_mode': 'continuous',
-                            'mae': result['mae'],
-                            'rmse': result['rmse'],
-                            'within_half_pct': result['within_half_pct'],
-                            'within_one_pct': result['within_one_pct'],
-                            'mean_confidence': result['mean_confidence'],
-                            'inference_time_ms': result['inference_time_ms'],
-                            'total_images': result['total_images'],
-                            'date': datetime.now().isoformat(),
+                    training_mode = metadata.get("training_mode", "discrete")
+                    if training_mode == "continuous":
+                        metadata["benchmark"] = {
+                            "training_mode": "continuous",
+                            "mae": result["mae"],
+                            "rmse": result["rmse"],
+                            "within_half_pct": result["within_half_pct"],
+                            "within_one_pct": result["within_one_pct"],
+                            "mean_confidence": result["mean_confidence"],
+                            "inference_time_ms": result["inference_time_ms"],
+                            "total_images": result["total_images"],
+                            "date": datetime.now().isoformat(),
                         }
                     else:
-                        metadata['benchmark'] = {
-                            'accuracy': result['accuracy'],
-                            'mean_confidence': result['mean_confidence'],
-                            'low_confidence_pct': result['low_confidence_pct'],
-                            'inference_time_ms': result['inference_time_ms'],
-                            'total_images': result['total_images'],
-                            'correct_predictions': result['correct_predictions'],
-                            'date': datetime.now().isoformat(),
+                        metadata["benchmark"] = {
+                            "accuracy": result["accuracy"],
+                            "mean_confidence": result["mean_confidence"],
+                            "low_confidence_pct": result["low_confidence_pct"],
+                            "inference_time_ms": result["inference_time_ms"],
+                            "total_images": result["total_images"],
+                            "correct_predictions": result["correct_predictions"],
+                            "date": datetime.now().isoformat(),
                         }
                     self.model_manager.save_metadata(job.model_type, job.model_id, metadata)
                     job.add_log("Benchmark result saved to model metadata")
@@ -1034,21 +1047,21 @@ class TrainingManager:
         model_type = job.model_type
 
         # Determine ground truth path and classes
-        if model_type == 'digits':
+        if model_type == "digits":
             gt_path = Path("/training/digits/ground_truth")
-            classes = [str(i) for i in range(10)] + ['NAN']
-            training_mode = 'discrete'
+            classes = [str(i) for i in range(10)] + ["NAN"]
+            training_mode = "discrete"
         else:  # arrows
             gt_path = Path("/training/arrows/ground_truth")
             metadata = self.model_manager.get_model_metadata(model_type, job.model_id)
-            training_mode = metadata.get('training_mode', 'discrete')
+            training_mode = metadata.get("training_mode", "discrete")
 
-            if training_mode == 'continuous':
+            if training_mode == "continuous":
                 # No class list needed for regression benchmark
                 classes = None
                 job.add_log("Benchmark mode: regression (continuous)")
             else:
-                num_classes = metadata.get('num_classes', 10)
+                num_classes = metadata.get("num_classes", 10)
                 classes = self._generate_arrow_classes(num_classes)
                 job.add_log(f"Benchmark mode: classification ({len(classes)} classes)")
 
@@ -1062,14 +1075,14 @@ class TrainingManager:
 
         # Get model resolution from metadata
         metadata = self.model_manager.get_model_metadata(model_type, job.model_id)
-        resolution = metadata.get('resolution', 128)
+        resolution = metadata.get("resolution", 128)
         job.add_log(f"Model resolution: {resolution}px")
 
         # Load model with OpenVINO
         job.add_log("Loading model with OpenVINO...")
         core = ov.Core()
         model = core.read_model(str(model_path))
-        compiled = core.compile_model(model, 'AUTO')
+        compiled = core.compile_model(model, "AUTO")
         job.add_log("Model loaded successfully")
 
         # Collect test images
@@ -1082,7 +1095,7 @@ class TrainingManager:
         job.update_progress(
             total_classes=total_classes,
             total_images=total_images,
-            message=f"Running inference on {total_images} images..."
+            message=f"Running inference on {total_images} images...",
         )
 
         # Run inference
@@ -1099,7 +1112,7 @@ class TrainingManager:
 
             job.update_progress(
                 current_class=class_idx + 1,
-                message=f"Processing class {ground_truth} ({class_idx + 1}/{total_classes})"
+                message=f"Processing class {ground_truth} ({class_idx + 1}/{total_classes})",
             )
 
             for img_path in image_paths:
@@ -1113,7 +1126,7 @@ class TrainingManager:
                 result = compiled([img])[compiled.output(0)][0]
                 inference_time = time.perf_counter() - start_time
 
-                if training_mode == 'continuous':
+                if training_mode == "continuous":
                     pred_value, confidence = regression_predict(result)
                     expected_value = float(ground_truth)
 
@@ -1126,7 +1139,7 @@ class TrainingManager:
                         correct += 1
                 else:
                     # Determine expected label for arrows
-                    if model_type == 'arrows':
+                    if model_type == "arrows":
                         expected_label = self._round_to_arrow_class(float(ground_truth), len(classes))
                     else:
                         expected_label = ground_truth
@@ -1144,10 +1157,8 @@ class TrainingManager:
                 job.update_progress(processed_images=processed)
 
         # Calculate results
-        if training_mode == 'continuous':
+        if training_mode == "continuous":
             # Regression metrics
-            pred_values = [p for p, _ in all_predictions]
-            true_values = [t for _, t in all_predictions]
             errors = [abs(p - t) for p, t in all_predictions]
 
             mae = np.mean(errors) if errors else 0
@@ -1160,31 +1171,35 @@ class TrainingManager:
 
             # Per-class MAE (using ground truth folder as key)
             class_errors = defaultdict(list)
-            for (pred_val, true_val) in all_predictions:
+            for pred_val, true_val in all_predictions:
                 key = f"{true_val:.1f}"
                 class_errors[key].append(abs(pred_val - true_val))
 
             per_class = {}
             for cls, errs in class_errors.items():
                 per_class[cls] = {
-                    'mae': round(float(np.mean(errs)), 4),
-                    'count': len(errs),
-                    'within_half': round(sum(1 for e in errs if e < 0.5) / len(errs) * 100, 1)
+                    "mae": round(float(np.mean(errs)), 4),
+                    "count": len(errs),
+                    "within_half": round(sum(1 for e in errs if e < 0.5) / len(errs) * 100, 1),
                 }
 
             result = {
-                'training_mode': 'continuous',
-                'mae': round(float(mae), 4),
-                'rmse': round(float(rmse), 4),
-                'within_half_pct': round(within_half, 2),
-                'within_one_pct': round(within_one, 2),
-                'accuracy': round(within_half, 2),  # Alias for UI compatibility
-                'mean_confidence': round(float(mean_confidence) * 100, 2),
-                'low_confidence_pct': round(sum(1 for c in all_confidences if c < 0.8) / len(all_confidences) * 100, 2) if all_confidences else 0,
-                'inference_time_ms': round(float(mean_inference_time), 2),
-                'total_images': processed,
-                'correct_predictions': correct,
-                'per_class_accuracy': per_class  # Actually per-class MAE for regression
+                "training_mode": "continuous",
+                "mae": round(float(mae), 4),
+                "rmse": round(float(rmse), 4),
+                "within_half_pct": round(within_half, 2),
+                "within_one_pct": round(within_one, 2),
+                "accuracy": round(within_half, 2),  # Alias for UI compatibility
+                "mean_confidence": round(float(mean_confidence) * 100, 2),
+                "low_confidence_pct": (
+                    round(sum(1 for c in all_confidences if c < 0.8) / len(all_confidences) * 100, 2)
+                    if all_confidences
+                    else 0
+                ),
+                "inference_time_ms": round(float(mean_inference_time), 2),
+                "total_images": processed,
+                "correct_predictions": correct,
+                "per_class_accuracy": per_class,  # Actually per-class MAE for regression
             }
 
             job.add_log(
@@ -1201,27 +1216,27 @@ class TrainingManager:
             mean_inference_time = np.mean(all_times) * 1000 if all_times else 0  # in ms
 
             # Per-class accuracy
-            class_accuracy = defaultdict(lambda: {'correct': 0, 'total': 0})
+            class_accuracy = defaultdict(lambda: {"correct": 0, "total": 0})
             for pred, expected in all_predictions:
-                class_accuracy[expected]['total'] += 1
+                class_accuracy[expected]["total"] += 1
                 if pred == expected:
-                    class_accuracy[expected]['correct'] += 1
+                    class_accuracy[expected]["correct"] += 1
 
             per_class = {}
             for cls, data in class_accuracy.items():
                 per_class[cls] = {
-                    'accuracy': data['correct'] / data['total'] if data['total'] > 0 else 0,
-                    'count': data['total']
+                    "accuracy": data["correct"] / data["total"] if data["total"] > 0 else 0,
+                    "count": data["total"],
                 }
 
             result = {
-                'accuracy': round(accuracy * 100, 2),
-                'mean_confidence': round(mean_confidence * 100, 2),
-                'low_confidence_pct': round(low_conf_pct, 2),
-                'inference_time_ms': round(mean_inference_time, 2),
-                'total_images': processed,
-                'correct_predictions': correct,
-                'per_class_accuracy': per_class
+                "accuracy": round(accuracy * 100, 2),
+                "mean_confidence": round(mean_confidence * 100, 2),
+                "low_confidence_pct": round(low_conf_pct, 2),
+                "inference_time_ms": round(mean_inference_time, 2),
+                "total_images": processed,
+                "correct_predictions": correct,
+                "per_class_accuracy": per_class,
             }
 
             job.add_log(f"Benchmark complete: {accuracy*100:.1f}% accuracy, {mean_confidence*100:.1f}% mean confidence")
@@ -1244,6 +1259,7 @@ class TrainingManager:
     def _round_to_arrow_class(self, value: float, num_classes: int) -> str:
         """Round ground truth value to nearest arrow class label."""
         import math
+
         if num_classes == 10:
             rounded = math.floor(value)
             if rounded >= 10:

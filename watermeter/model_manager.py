@@ -1,6 +1,7 @@
 """
 Model Manager - Handles model metadata, storage, and lifecycle
 """
+
 import json
 import shutil
 from pathlib import Path
@@ -27,7 +28,7 @@ class ModelManager:
     @staticmethod
     def _validate_model_id(model_id: str) -> None:
         """Validate model_id to prevent path traversal."""
-        if '/' in model_id or '\\' in model_id or '..' in model_id or model_id in ('', '.'):
+        if "/" in model_id or "\\" in model_id or ".." in model_id or model_id in ("", "."):
             raise ValueError(f"Invalid model_id: {model_id}")
 
     def _get_model_types_dir(self, model_type: str) -> Path:
@@ -69,7 +70,7 @@ class ModelManager:
                 continue
 
         # Sort by created_at descending (newest first)
-        models.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+        models.sort(key=lambda x: x.get("created_at", ""), reverse=True)
         return models
 
     def get_model(self, model_type: str, model_id: str) -> Optional[Dict]:
@@ -91,17 +92,17 @@ class ModelManager:
             return None
 
         try:
-            with open(metadata_file, 'r') as f:
+            with open(metadata_file, "r") as f:
                 metadata = json.load(f)
 
             # Add computed fields
-            metadata['id'] = model_id
-            metadata['model_type'] = model_type
+            metadata["id"] = model_id
+            metadata["model_type"] = model_type
 
             # Check if model files exist
             xml_file = model_dir / f"{model_id}.xml"
             bin_file = model_dir / f"{model_id}.bin"
-            metadata['files_exist'] = xml_file.exists() and bin_file.exists()
+            metadata["files_exist"] = xml_file.exists() and bin_file.exists()
 
             return metadata
 
@@ -128,7 +129,7 @@ class ModelManager:
         metadata_file = model_dir / "metadata.json"
 
         try:
-            with open(metadata_file, 'w') as f:
+            with open(metadata_file, "w") as f:
                 json.dump(metadata, f, indent=2)
             logger.info(f"Saved metadata for {model_type}/{model_id}")
             return True
@@ -174,9 +175,9 @@ class ModelManager:
             Model ID (filename without extension) or None
         """
         if model_type == "digits":
-            model_path = config.get('inference', {}).get('digits_model', '')
+            model_path = config.get("inference", {}).get("digits_model", "")
         elif model_type == "arrows":
-            model_path = config.get('inference', {}).get('arrows_model', '')
+            model_path = config.get("inference", {}).get("arrows_model", "")
         else:
             return None
 
@@ -185,7 +186,7 @@ class ModelManager:
 
         # Extract model ID from path: /app/models/digits/model_xyz/model_xyz.xml -> model_xyz
         path = Path(model_path)
-        if path.suffix == '.xml':
+        if path.suffix == ".xml":
             return path.stem
         return None
 
@@ -217,24 +218,24 @@ class ModelManager:
             metadata_file = model_dir / "metadata.json"
             if metadata_file.exists():
                 try:
-                    with open(metadata_file, 'r') as f:
+                    with open(metadata_file, "r") as f:
                         metadata = json.load(f)
                 except Exception as e:
                     logger.warning(f"Could not read metadata for {model_id}: {e}")
 
             def _update(config):
-                if 'inference' not in config:
-                    config['inference'] = {}
+                if "inference" not in config:
+                    config["inference"] = {}
                 if model_type == "digits":
-                    config['inference']['digits_model'] = str(xml_file)
+                    config["inference"]["digits_model"] = str(xml_file)
                 elif model_type == "arrows":
-                    config['inference']['arrows_model'] = str(xml_file)
+                    config["inference"]["arrows_model"] = str(xml_file)
                 # Update classes and resolution from model metadata
-                if metadata.get('classes'):
-                    config['inference'][f'{model_type}_classes'] = metadata['classes']
+                if metadata.get("classes"):
+                    config["inference"][f"{model_type}_classes"] = metadata["classes"]
                     logger.info(f"Updated {model_type}_classes from metadata: {len(metadata['classes'])} classes")
-                if 'resolution' in metadata:
-                    config['inference'][f'{model_type}_resolution'] = metadata['resolution']
+                if "resolution" in metadata:
+                    config["inference"][f"{model_type}_resolution"] = metadata["resolution"]
 
             _config_utils.update_config(config_path, _update)
 
@@ -264,8 +265,9 @@ class ModelManager:
             return xml_file
         return None
 
-    def create_model_id(self, model_name: str, resolution: int, num_classes: int,
-                       seed: int, timestamp: Optional[str] = None) -> str:
+    def create_model_id(
+        self, model_name: str, resolution: int, num_classes: int, seed: int, timestamp: Optional[str] = None
+    ) -> str:
         """
         Create a standardized model ID.
 
@@ -300,7 +302,7 @@ class ModelManager:
         if not metadata:
             return False
 
-        metadata['status'] = 'archived'
+        metadata["status"] = "archived"
         return self.save_metadata(model_type, model_id, metadata)
 
     def get_model_metadata(self, model_type: str, model_id: str) -> Dict:

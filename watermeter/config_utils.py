@@ -8,11 +8,11 @@ when loading and saving configuration files.
 import json
 from io import StringIO
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Union
 import logging
 
 from ruamel.yaml import YAML
-from ruamel.yaml.comments import CommentedMap, CommentedSeq
+from ruamel.yaml.comments import CommentedMap
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ def load_config(path: Union[str, Path]) -> CommentedMap:
         CommentedMap with the config data (comments preserved)
     """
     path = Path(path)
-    with open(path, 'r', encoding='utf-8') as f:
+    with open(path, "r", encoding="utf-8") as f:
         return _yaml.load(f)
 
 
@@ -52,7 +52,7 @@ def save_config(config: CommentedMap, path: Union[str, Path]) -> None:
         path: Path to save to
     """
     path = Path(path)
-    with open(path, 'w', encoding='utf-8') as f:
+    with open(path, "w", encoding="utf-8") as f:
         _yaml.dump(config, f)
     logger.info(f"Config saved to {path}")
 
@@ -119,22 +119,16 @@ def validate_config(yaml_string: str) -> Dict[str, Any]:
         config = load_config_string(yaml_string)
 
         # Basic structure validation
-        required_sections = ['images', 'mqtt', 'inference']
+        required_sections = ["images", "mqtt", "inference"]
         missing = [s for s in required_sections if s not in config]
 
         if missing:
-            return {
-                'valid': False,
-                'error': f"Missing required sections: {', '.join(missing)}"
-            }
+            return {"valid": False, "error": f"Missing required sections: {', '.join(missing)}"}
 
-        return {'valid': True, 'error': None}
+        return {"valid": True, "error": None}
 
     except Exception as e:
-        return {
-            'valid': False,
-            'error': str(e)
-        }
+        return {"valid": False, "error": str(e)}
 
 
 # JSON Schema for config validation
@@ -151,8 +145,8 @@ CONFIG_SCHEMA = {
                 "host": {"type": "string", "description": "Device IP or hostname"},
                 "image_path": {"type": "string", "description": "Path to images on device"},
                 "timeout": {"type": "number", "description": "Request timeout in seconds"},
-                "fetch_delay": {"type": "number", "description": "Delay between image fetches"}
-            }
+                "fetch_delay": {"type": "number", "description": "Delay between image fetches"},
+            },
         },
         "images": {
             "type": "object",
@@ -161,20 +155,16 @@ CONFIG_SCHEMA = {
             "properties": {
                 "process_separate": {
                     "type": "boolean",
-                    "description": "Fetch individual images (true) or extract ROIs from whole image (false)"
+                    "description": "Fetch individual images (true) or extract ROIs from whole image (false)",
                 },
                 "src": {"type": "string", "description": "URL of the whole meter image"},
-                "digits": {
-                    "type": "array",
-                    "description": "List of digit image IDs",
-                    "items": {"type": "string"}
-                },
+                "digits": {"type": "array", "description": "List of digit image IDs", "items": {"type": "string"}},
                 "arrows": {
                     "type": "array",
                     "description": "List of arrow/analog image IDs",
-                    "items": {"type": "string"}
-                }
-            }
+                    "items": {"type": "string"},
+                },
+            },
         },
         "detection": {
             "type": "object",
@@ -194,11 +184,11 @@ CONFIG_SCHEMA = {
                                     "x": {"type": "number", "minimum": 0, "maximum": 1},
                                     "y": {"type": "number", "minimum": 0, "maximum": 1},
                                     "width": {"type": "number", "minimum": 0, "maximum": 1},
-                                    "height": {"type": "number", "minimum": 0, "maximum": 1}
-                                }
-                            }
-                        }
-                    }
+                                    "height": {"type": "number", "minimum": 0, "maximum": 1},
+                                },
+                            },
+                        },
+                    },
                 },
                 "analogs": {
                     "type": "object",
@@ -213,11 +203,11 @@ CONFIG_SCHEMA = {
                                     "x": {"type": "number", "minimum": 0, "maximum": 1},
                                     "y": {"type": "number", "minimum": 0, "maximum": 1},
                                     "width": {"type": "number", "minimum": 0, "maximum": 1},
-                                    "height": {"type": "number", "minimum": 0, "maximum": 1}
-                                }
-                            }
-                        }
-                    }
+                                    "height": {"type": "number", "minimum": 0, "maximum": 1},
+                                },
+                            },
+                        },
+                    },
                 },
                 "markers": {
                     "type": "array",
@@ -228,11 +218,11 @@ CONFIG_SCHEMA = {
                             "x": {"type": "number"},
                             "y": {"type": "number"},
                             "width": {"type": "number"},
-                            "height": {"type": "number"}
-                        }
-                    }
-                }
-            }
+                            "height": {"type": "number"},
+                        },
+                    },
+                },
+            },
         },
         "trigger": {
             "type": "object",
@@ -241,14 +231,14 @@ CONFIG_SCHEMA = {
                 "mode": {
                     "type": "string",
                     "enum": ["mqtt", "cyclic", "both"],
-                    "description": "Trigger mode: mqtt (AIOTE triggers), cyclic (periodic polling), or both"
+                    "description": "Trigger mode: mqtt (AIOTE triggers), cyclic (periodic polling), or both",
                 },
                 "cyclic_interval": {
                     "type": "integer",
                     "minimum": 10,
-                    "description": "Seconds between readings in cyclic/both mode"
-                }
-            }
+                    "description": "Seconds between readings in cyclic/both mode",
+                },
+            },
         },
         "mqtt": {
             "type": "object",
@@ -261,8 +251,8 @@ CONFIG_SCHEMA = {
                 "keepalive": {"type": "integer", "description": "Keepalive interval in seconds"},
                 "trigger_topic": {"type": "string", "description": "Topic to listen for triggers"},
                 "trigger_payload": {"type": "string", "description": "Payload that triggers processing"},
-                "reset_topic": {"type": "string", "description": "Topic for reset commands"}
-            }
+                "reset_topic": {"type": "string", "description": "Topic for reset commands"},
+            },
         },
         "homeassistant": {
             "type": "object",
@@ -276,8 +266,8 @@ CONFIG_SCHEMA = {
                     "properties": {
                         "name": {"type": "string"},
                         "manufacturer": {"type": "string"},
-                        "model": {"type": "string"}
-                    }
+                        "model": {"type": "string"},
+                    },
                 },
                 "sensor": {
                     "type": "object",
@@ -286,10 +276,10 @@ CONFIG_SCHEMA = {
                         "unit": {"type": "string"},
                         "device_class": {"type": "string"},
                         "state_class": {"type": "string"},
-                        "icon": {"type": "string"}
-                    }
-                }
-            }
+                        "icon": {"type": "string"},
+                    },
+                },
+            },
         },
         "inference": {
             "type": "object",
@@ -300,73 +290,50 @@ CONFIG_SCHEMA = {
                     "type": "number",
                     "minimum": 0,
                     "maximum": 1,
-                    "description": "Minimum confidence for valid predictions"
+                    "description": "Minimum confidence for valid predictions",
                 },
                 "device": {
                     "type": "string",
                     "enum": ["CPU", "GPU", "AUTO"],
-                    "description": "OpenVINO inference device"
+                    "description": "OpenVINO inference device",
                 },
                 "digits_model": {"type": "string", "description": "Path to digits model"},
-                "digits_classes": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Digit class labels"
-                },
+                "digits_classes": {"type": "array", "items": {"type": "string"}, "description": "Digit class labels"},
                 "digits_resolution": {"type": "integer", "description": "Input resolution for digits"},
                 "arrows_model": {"type": "string", "description": "Path to arrows model"},
-                "arrows_classes": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Arrow class labels"
-                },
-                "arrows_resolution": {"type": "integer", "description": "Input resolution for arrows"}
-            }
+                "arrows_classes": {"type": "array", "items": {"type": "string"}, "description": "Arrow class labels"},
+                "arrows_resolution": {"type": "integer", "description": "Input resolution for arrows"},
+            },
         },
         "plausibility": {
             "type": "object",
             "description": "Reading plausibility checks",
             "properties": {
-                "enable_reverse_detection": {
-                    "type": "boolean",
-                    "description": "Reject readings that go backwards"
-                },
-                "enable_rate_limit": {
-                    "type": "boolean",
-                    "description": "Enable rate-based plausibility checks"
-                },
-                "max_rate_per_hour": {
-                    "type": "number",
-                    "description": "Maximum m³/hour rate"
-                },
-                "max_rate_per_reading": {
-                    "type": "number",
-                    "description": "Maximum change per reading"
-                },
-                "rate_history_size": {
-                    "type": "integer",
-                    "description": "Number of readings for rate averaging"
-                },
+                "enable_reverse_detection": {"type": "boolean", "description": "Reject readings that go backwards"},
+                "enable_rate_limit": {"type": "boolean", "description": "Enable rate-based plausibility checks"},
+                "max_rate_per_hour": {"type": "number", "description": "Maximum m³/hour rate"},
+                "max_rate_per_reading": {"type": "number", "description": "Maximum change per reading"},
+                "rate_history_size": {"type": "integer", "description": "Number of readings for rate averaging"},
                 "enable_consistency_check": {
                     "type": "boolean",
-                    "description": "Check half/upper consistency between positions"
+                    "description": "Check half/upper consistency between positions",
                 },
                 "enable_leak_detection": {
                     "type": "boolean",
                     "description": "Detect sustained high consumption (leak warning)",
-                    "default": True
+                    "default": True,
                 },
                 "sustained_rate_threshold": {
                     "type": "number",
                     "minimum": 0,
-                    "description": "Rate threshold in m³/h for leak detection (each interval must exceed this)"
+                    "description": "Rate threshold in m³/h for leak detection (each interval must exceed this)",
                 },
                 "sustained_rate_readings": {
                     "type": "integer",
                     "minimum": 2,
-                    "description": "Number of consecutive above-threshold intervals before warning fires"
-                }
-            }
+                    "description": "Number of consecutive above-threshold intervals before warning fires",
+                },
+            },
         },
         "correction": {
             "type": "object",
@@ -375,50 +342,50 @@ CONFIG_SCHEMA = {
                 "enabled": {
                     "type": "boolean",
                     "description": "Enable confidence-weighted value correction",
-                    "default": False
+                    "default": False,
                 },
                 "confidence_threshold": {
                     "type": "number",
                     "minimum": 0,
                     "maximum": 1,
-                    "description": "Only correct positions with confidence below this threshold"
+                    "description": "Only correct positions with confidence below this threshold",
                 },
                 "min_signal_agreement": {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 4,
-                    "description": "Minimum number of contextual signals that must agree to apply correction"
+                    "description": "Minimum number of contextual signals that must agree to apply correction",
                 },
                 "min_alternative_confidence": {
                     "type": "number",
                     "minimum": 0,
                     "maximum": 1,
-                    "description": "Minimum softmax probability for an alternative to be considered"
+                    "description": "Minimum softmax probability for an alternative to be considered",
                 },
                 "rate_tolerance_factor": {
                     "type": "number",
                     "minimum": 1.0,
-                    "description": "Multiplier for expected rate to define plausible window"
+                    "description": "Multiplier for expected rate to define plausible window",
                 },
                 "max_corrections_per_reading": {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 7,
-                    "description": "Maximum number of positions to correct per reading"
+                    "description": "Maximum number of positions to correct per reading",
                 },
                 "top_k": {
                     "type": "integer",
                     "minimum": 2,
                     "maximum": 10,
-                    "description": "Number of softmax alternatives to retrieve from model"
+                    "description": "Number of softmax alternatives to retrieve from model",
                 },
                 "cross_arrow_confidence_gate": {
                     "type": "number",
                     "minimum": 0,
                     "maximum": 1,
-                    "description": "Confidence gate for cross-arrow consistency signal"
-                }
-            }
+                    "description": "Confidence gate for cross-arrow consistency signal",
+                },
+            },
         },
         "confirmation": {
             "type": "object",
@@ -427,86 +394,68 @@ CONFIG_SCHEMA = {
                 "enabled": {
                     "type": "boolean",
                     "description": "Enable user confirmation flow for uncertain readings",
-                    "default": False
+                    "default": False,
                 },
-                "request_topic": {
-                    "type": "string",
-                    "description": "MQTT topic to publish confirmation requests"
-                },
-                "response_topic": {
-                    "type": "string",
-                    "description": "MQTT topic to subscribe for user responses"
-                },
+                "request_topic": {"type": "string", "description": "MQTT topic to publish confirmation requests"},
+                "response_topic": {"type": "string", "description": "MQTT topic to subscribe for user responses"},
                 "timeout_minutes": {
                     "type": "number",
                     "minimum": 1,
                     "maximum": 60,
-                    "description": "Auto-reject pending confirmation after this many minutes"
+                    "description": "Auto-reject pending confirmation after this many minutes",
                 },
                 "min_warnings": {
                     "type": "integer",
                     "minimum": 1,
-                    "description": "Trigger confirmation if reading has >= N warnings"
+                    "description": "Trigger confirmation if reading has >= N warnings",
                 },
                 "min_low_confidence_positions": {
                     "type": "integer",
                     "minimum": 1,
-                    "description": "Trigger confirmation if >= N positions are below confidence threshold"
+                    "description": "Trigger confirmation if >= N positions are below confidence threshold",
                 },
                 "max_rate_jump_factor": {
                     "type": "number",
                     "minimum": 1.0,
-                    "description": "Trigger confirmation if rate exceeds factor * average rate"
-                }
-            }
+                    "description": "Trigger confirmation if rate exceeds factor * average rate",
+                },
+            },
         },
         "low_confidence": {
             "type": "object",
             "description": "Low confidence image handling",
             "properties": {
-                "warn_enabled": {
-                    "type": "boolean",
-                    "description": "Show warnings for low confidence"
-                },
-                "save_enabled": {
-                    "type": "boolean",
-                    "description": "Save low confidence images for training"
-                },
-                "save_path": {
-                    "type": "string",
-                    "description": "Base path for saving images"
-                },
-                "save_rate_limit": {
-                    "type": "integer",
-                    "description": "Minimum seconds between saves per ID"
-                },
+                "warn_enabled": {"type": "boolean", "description": "Show warnings for low confidence"},
+                "save_enabled": {"type": "boolean", "description": "Save low confidence images for training"},
+                "save_path": {"type": "string", "description": "Base path for saving images"},
+                "save_rate_limit": {"type": "integer", "description": "Minimum seconds between saves per ID"},
                 "dedup_enabled": {
                     "type": "boolean",
                     "description": "Deduplicate images before saving using perceptual hash",
-                    "default": True
+                    "default": True,
                 },
                 "dedup_threshold": {
                     "type": "integer",
                     "minimum": 0,
                     "maximum": 64,
                     "description": "Maximum hamming distance to consider images as duplicates (0=exact, 64=all different)",
-                    "default": 10
+                    "default": 10,
                 },
                 "dedup_scope": {
                     "type": "string",
                     "enum": ["input", "input+ground_truth"],
                     "description": "Compare against input folder only, or also against ground truth",
-                    "default": "input+ground_truth"
-                }
-            }
+                    "default": "input+ground_truth",
+                },
+            },
         },
         "persistence": {
             "type": "object",
             "description": "State persistence settings",
             "properties": {
                 "enabled": {"type": "boolean", "description": "Enable state persistence"},
-                "state_file": {"type": "string", "description": "Path to state file"}
-            }
+                "state_file": {"type": "string", "description": "Path to state file"},
+            },
         },
         "dashboard": {
             "type": "object",
@@ -514,29 +463,19 @@ CONFIG_SCHEMA = {
             "properties": {
                 "host": {"type": "string", "description": "Listen address"},
                 "port": {"type": "integer", "description": "Listen port"},
-                "auto_refresh_interval": {
-                    "type": "integer",
-                    "description": "Auto-refresh interval in seconds"
-                }
-            }
+                "auto_refresh_interval": {"type": "integer", "description": "Auto-refresh interval in seconds"},
+            },
         },
         "logging": {
             "type": "object",
             "description": "Logging configuration",
             "properties": {
-                "level": {
-                    "type": "string",
-                    "enum": ["DEBUG", "INFO", "WARNING", "ERROR"],
-                    "description": "Log level"
-                },
+                "level": {"type": "string", "enum": ["DEBUG", "INFO", "WARNING", "ERROR"], "description": "Log level"},
                 "format": {"type": "string", "description": "Log format string"},
-                "file": {
-                    "type": ["string", "null"],
-                    "description": "Log file path (null for stdout)"
-                }
-            }
-        }
-    }
+                "file": {"type": ["string", "null"], "description": "Log file path (null for stdout)"},
+            },
+        },
+    },
 }
 
 

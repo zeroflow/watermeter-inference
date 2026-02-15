@@ -19,13 +19,11 @@ templates = Jinja2Templates(directory=str(_pkg_dir / "templates"))
     response_class=HTMLResponse,
     tags=["Pages"],
     summary="Dashboard page",
-    description="Render the main dashboard page showing current meter reading and status"
+    description="Render the main dashboard page showing current meter reading and status",
 )
 async def dashboard(request: Request):
     """Render the main dashboard page."""
-    return templates.TemplateResponse(
-        request, "dashboard.html", context={"nav_active": "dashboard"}
-    )
+    return templates.TemplateResponse(request, "dashboard.html", context={"nav_active": "dashboard"})
 
 
 @router.get(
@@ -33,13 +31,11 @@ async def dashboard(request: Request):
     response_class=HTMLResponse,
     tags=["Pages"],
     summary="Labeling interface",
-    description="Render the labeling interface page for manually labeling training images"
+    description="Render the labeling interface page for manually labeling training images",
 )
 async def label_page(request: Request):
     """Render the labeling interface page."""
-    return templates.TemplateResponse(
-        request, "label.html", context={"nav_active": "label"}
-    )
+    return templates.TemplateResponse(request, "label.html", context={"nav_active": "label"})
 
 
 @router.get(
@@ -47,13 +43,11 @@ async def label_page(request: Request):
     response_class=HTMLResponse,
     tags=["Pages"],
     summary="ROI configuration page",
-    description="Render the ROI configuration page for setting up detection regions"
+    description="Render the ROI configuration page for setting up detection regions",
 )
 async def roi_config_page(request: Request):
     """Render the ROI configuration page."""
-    return templates.TemplateResponse(
-        request, "roi_config.html", context={"nav_active": "roi"}
-    )
+    return templates.TemplateResponse(request, "roi_config.html", context={"nav_active": "roi"})
 
 
 @router.get(
@@ -61,13 +55,11 @@ async def roi_config_page(request: Request):
     response_class=HTMLResponse,
     tags=["Pages"],
     summary="Configuration editor",
-    description="Render the config editor page with Monaco editor for YAML editing"
+    description="Render the config editor page with Monaco editor for YAML editing",
 )
 async def config_editor_page(request: Request):
     """Render the config editor page with Monaco editor."""
-    return templates.TemplateResponse(
-        request, "config_editor.html", context={"nav_active": "config"}
-    )
+    return templates.TemplateResponse(request, "config_editor.html", context={"nav_active": "config"})
 
 
 @router.get(
@@ -75,13 +67,11 @@ async def config_editor_page(request: Request):
     response_class=HTMLResponse,
     tags=["Pages"],
     summary="Training management page",
-    description="Render the training management page for model training and benchmarking"
+    description="Render the training management page for model training and benchmarking",
 )
 async def training_page(request: Request):
     """Render the training management page."""
-    return templates.TemplateResponse(
-        request, "training.html", context={"nav_active": "training"}
-    )
+    return templates.TemplateResponse(request, "training.html", context={"nav_active": "training"})
 
 
 @router.get(
@@ -89,7 +79,7 @@ async def training_page(request: Request):
     response_class=HTMLResponse,
     tags=["Status & Reading"],
     summary="Get status HTML fragment",
-    description="Get current status as HTML fragment for HTMX dynamic updates"
+    description="Get current status as HTML fragment for HTMX dynamic updates",
 )
 async def get_status_html(request: Request):
     """Get current status as HTML fragment for HTMX."""
@@ -99,9 +89,7 @@ async def get_status_html(request: Request):
     # so passing current_state directly would inject a non-serializable Request object
     # into the shared state, breaking /api/status JSON serialization.
     state = dict(service.current_state)
-    state["mqtt_connected"] = (
-        service.mqtt_client.is_connected() if service.mqtt_client else False
-    )
+    state["mqtt_connected"] = service.mqtt_client.is_connected() if service.mqtt_client else False
 
     return templates.TemplateResponse(
         request,

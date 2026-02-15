@@ -1,9 +1,10 @@
 """Perceptual hashing for image deduplication."""
+
 import json
 import logging
 import statistics
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import cv2
 import numpy as np
@@ -37,10 +38,7 @@ def compute_dhash(image_bytes: bytes, hash_size: int = 8) -> Optional[int]:
         diff = resized[:, 1:] > resized[:, :-1]
 
         # Pack bits into an integer
-        hash_value = int.from_bytes(
-            np.packbits(diff.flatten()).tobytes(),
-            byteorder='big'
-        )
+        hash_value = int.from_bytes(np.packbits(diff.flatten()).tobytes(), byteorder="big")
 
         return hash_value
 
@@ -60,7 +58,7 @@ def hamming_distance(h1: int, h2: int) -> int:
     Returns:
         Number of differing bits
     """
-    return bin(h1 ^ h2).count('1')
+    return bin(h1 ^ h2).count("1")
 
 
 class HashCache:
@@ -69,7 +67,7 @@ class HashCache:
     def __init__(self, folder: Path):
         """Load or create hash cache for the given folder."""
         self.folder = Path(folder)
-        self.cache_file = self.folder / '.hashes.json'
+        self.cache_file = self.folder / ".hashes.json"
         self._hashes: Dict[str, str] = {}  # filename -> hex hash string
         self._load()
 
@@ -80,10 +78,7 @@ class HashCache:
                 with open(self.cache_file) as f:
                     raw = json.load(f)
                 # Prune stale entries
-                self._hashes = {
-                    k: v for k, v in raw.items()
-                    if (self.folder / k).exists()
-                }
+                self._hashes = {k: v for k, v in raw.items() if (self.folder / k).exists()}
             except Exception as e:
                 logger.warning(f"Failed to load hash cache from {self.cache_file}: {e}")
                 self._hashes = {}
@@ -93,14 +88,14 @@ class HashCache:
     def _save(self):
         """Persist cache to disk."""
         try:
-            with open(self.cache_file, 'w') as f:
+            with open(self.cache_file, "w") as f:
                 json.dump(self._hashes, f, indent=1)
         except Exception as e:
             logger.error(f"Failed to save hash cache to {self.cache_file}: {e}")
 
     def add(self, filename: str, hash_value: int) -> None:
         """Add a hash entry and save."""
-        self._hashes[filename] = format(hash_value, 'x')
+        self._hashes[filename] = format(hash_value, "x")
         self._save()
 
     def get_all_hashes(self) -> List[int]:
@@ -135,22 +130,21 @@ class HashCache:
 
     def scan_and_update(self) -> None:
         """Scan folder for .jpg files not in cache, compute and add their hashes."""
-        for img_path in self.folder.glob('*.jpg'):
-            if img_path.name == '.hashes.json':
+        for img_path in self.folder.glob("*.jpg"):
+            if img_path.name == ".hashes.json":
                 continue
             if img_path.name not in self._hashes:
                 try:
                     image_bytes = img_path.read_bytes()
                     h = compute_dhash(image_bytes)
                     if h is not None:
-                        self._hashes[img_path.name] = format(h, 'x')
+                        self._hashes[img_path.name] = format(h, "x")
                 except Exception as e:
                     logger.warning(f"Failed to hash {img_path.name}: {e}")
         self._save()
 
 
-def purge_duplicates(input_dir: Path, threshold: int = 10,
-                     gt_dirs: Optional[List[Path]] = None) -> Dict:
+def purge_duplicates(input_dir: Path, threshold: int = 10, gt_dirs: Optional[List[Path]] = None) -> Dict:
     """
     Remove near-duplicate images from an input folder.
 
@@ -169,10 +163,7 @@ def purge_duplicates(input_dir: Path, threshold: int = 10,
     if not input_dir.is_dir():
         return {"kept": 0, "removed": 0, "errors": 0}
 
-    images = sorted([
-        p for p in input_dir.glob('*.jpg')
-        if not p.name.endswith('_next.jpg')
-    ])
+    images = sorted([p for p in input_dir.glob("*.jpg") if not p.name.endswith("_next.jpg")])
 
     if not images:
         return {"kept": 0, "removed": 0, "errors": 0}
@@ -215,9 +206,7 @@ def purge_duplicates(input_dir: Path, threshold: int = 10,
             if is_dup:
                 img_path.unlink()
                 # Delete companion _next.jpg
-                next_path = img_path.with_name(
-                    img_path.stem + '_next.jpg'
-                )
+                next_path = img_path.with_name(img_path.stem + "_next.jpg")
                 if next_path.exists():
                     next_path.unlink()
                 removed += 1
@@ -233,15 +222,14 @@ def purge_duplicates(input_dir: Path, threshold: int = 10,
     cache = HashCache(input_dir)
     cache.scan_and_update()
 
-    logger.info(
-        f"Purge {input_dir}: kept={kept}, removed={removed}, errors={errors}"
-    )
+    logger.info(f"Purge {input_dir}: kept={kept}, removed={removed}, errors={errors}")
     return {"kept": kept, "removed": removed, "errors": errors}
 
 
 # ---------------------------------------------------------------------------
 # BL-02: Ground-truth pruning
 # ---------------------------------------------------------------------------
+
 
 def cluster_images_by_hash(
     hashes: Dict[str, int],
@@ -323,11 +311,7 @@ def select_prune_candidates(
         best_avg_dist = -1.0
 
         for fname in cluster:
-            distances = [
-                hamming_distance(hashes[fname], hashes[other])
-                for other in cluster
-                if other != fname
-            ]
+            distances = [hamming_distance(hashes[fname], hashes[other]) for other in cluster if other != fname]
             avg_dist = sum(distances) / len(distances) if distances else 0
             if avg_dist > best_avg_dist:
                 best_avg_dist = avg_dist
@@ -470,7 +454,7 @@ def confirm_prune(gt_base: Path, preview: Dict) -> Dict:
 
     for class_name, class_info in preview.get("classes", {}).items():
         # Validate class name to prevent path traversal
-        if '..' in class_name or '/' in class_name or '\\' in class_name:
+        if ".." in class_name or "/" in class_name or "\\" in class_name:
             logger.warning(f"Invalid class name blocked: {class_name}")
             continue
 
@@ -512,9 +496,7 @@ def confirm_prune(gt_base: Path, preview: Dict) -> Dict:
         total_deleted += deleted
         total_errors += errors
 
-    logger.info(
-        f"Ground-truth prune {gt_base}: deleted={total_deleted}, errors={total_errors}"
-    )
+    logger.info(f"Ground-truth prune {gt_base}: deleted={total_deleted}, errors={total_errors}")
 
     return {
         "total_deleted": total_deleted,

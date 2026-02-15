@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 # --- Reproducibility ---
 
+
 def set_all_seeds(seed: int = 42):
     """Set all random seeds for reproducibility."""
     random.seed(seed)
@@ -55,23 +56,28 @@ def create_transforms(resolution: int) -> Tuple[transforms.Compose, transforms.C
     Returns:
         (train_transform, val_transform)
     """
-    train_transform = transforms.Compose([
-        transforms.Resize((resolution, resolution)),
-        transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2),
-        transforms.ToTensor(),
-        transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD)
-    ])
+    train_transform = transforms.Compose(
+        [
+            transforms.Resize((resolution, resolution)),
+            transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2),
+            transforms.ToTensor(),
+            transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
+        ]
+    )
 
-    val_transform = transforms.Compose([
-        transforms.Resize((resolution, resolution)),
-        transforms.ToTensor(),
-        transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD)
-    ])
+    val_transform = transforms.Compose(
+        [
+            transforms.Resize((resolution, resolution)),
+            transforms.ToTensor(),
+            transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
+        ]
+    )
 
     return train_transform, val_transform
 
 
 # --- Dataset splitting ---
+
 
 def stratified_split(dataset, train_ratio: float = 0.8) -> Tuple[List[int], List[int]]:
     """Create stratified train/val split indices.
@@ -111,9 +117,7 @@ def compute_class_weights(dataset, train_indices: List[int], device: torch.devic
     num_classes = len(dataset.classes)
     train_labels = [dataset.targets[idx] for idx in train_indices]
     unique_labels = np.unique(train_labels)
-    computed_weights = sklearn_compute_class_weight(
-        'balanced', classes=unique_labels, y=train_labels
-    )
+    computed_weights = sklearn_compute_class_weight("balanced", classes=unique_labels, y=train_labels)
     class_weights = np.ones(num_classes, dtype=np.float32)
     for label, weight in zip(unique_labels, computed_weights):
         class_weights[label] = weight
@@ -122,8 +126,8 @@ def compute_class_weights(dataset, train_indices: List[int], device: torch.devic
 
 # --- Model export ---
 
-def export_to_openvino(model: torch.nn.Module, resolution: int,
-                       output_dir: Path, filename: str) -> Tuple[Path, Path]:
+
+def export_to_openvino(model: torch.nn.Module, resolution: int, output_dir: Path, filename: str) -> Tuple[Path, Path]:
     """Export a PyTorch model to ONNX and then OpenVINO IR format.
 
     Args:
@@ -142,23 +146,28 @@ def export_to_openvino(model: torch.nn.Module, resolution: int,
     dummy_input = torch.randn(1, 3, resolution, resolution)
 
     # ONNX export
-    onnx_path = output_dir / f'{filename}.onnx'
+    onnx_path = output_dir / f"{filename}.onnx"
     torch.onnx.export(
-        model, dummy_input, onnx_path,
-        export_params=True, opset_version=18,
-        input_names=['input'], output_names=['output']
+        model,
+        dummy_input,
+        onnx_path,
+        export_params=True,
+        opset_version=18,
+        input_names=["input"],
+        output_names=["output"],
     )
 
     # OpenVINO conversion
     core = ov.Core()
     model_onnx = core.read_model(str(onnx_path))
-    ov_path = output_dir / f'{filename}.xml'
+    ov_path = output_dir / f"{filename}.xml"
     ov.save_model(model_onnx, str(ov_path))
 
     return onnx_path, ov_path
 
 
 # --- Inference preprocessing ---
+
 
 def preprocess_image(image_path: str, resolution: int) -> np.ndarray:
     """Preprocess an image for OpenVINO inference.
@@ -201,7 +210,7 @@ class RegressionArrowDataset(torch.utils.data.Dataset):
 
             target = value / 10.0  # Normalize to [0.0, 1.0)
 
-            for img_path in sorted(class_dir.glob('*.jpg')):
+            for img_path in sorted(class_dir.glob("*.jpg")):
                 self.samples.append((str(img_path), target))
 
         if not self.samples:
@@ -213,7 +222,8 @@ class RegressionArrowDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         img_path, target = self.samples[idx]
         from PIL import Image
-        img = Image.open(img_path).convert('RGB')
+
+        img = Image.open(img_path).convert("RGB")
         if self.transform:
             img = self.transform(img)
         return img, torch.tensor(target, dtype=torch.float32)

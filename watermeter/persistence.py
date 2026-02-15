@@ -24,14 +24,14 @@ class StateStore:
         """Save state to disk."""
         try:
             state = {
-                'previous_value': previous_value,
-                'last_update_time': last_update_time.isoformat() if last_update_time else None
+                "previous_value": previous_value,
+                "last_update_time": last_update_time.isoformat() if last_update_time else None,
             }
 
             # Write to temp file then rename for atomic save (prevents corruption on crash)
-            fd, tmp_path = tempfile.mkstemp(dir=self.file_path.parent, suffix='.tmp')
+            fd, tmp_path = tempfile.mkstemp(dir=self.file_path.parent, suffix=".tmp")
             try:
-                with os.fdopen(fd, 'w') as f:
+                with os.fdopen(fd, "w") as f:
                     json.dump(state, f, indent=2)
                 os.replace(tmp_path, self.file_path)
             except BaseException:
@@ -49,11 +49,11 @@ class StateStore:
                 logger.info(f"No state file found at {self.file_path}")
                 return None, None
 
-            with open(self.file_path, 'r') as f:
+            with open(self.file_path, "r") as f:
                 state = json.load(f)
 
-            previous_value = state.get('previous_value')
-            last_update_str = state.get('last_update_time')
+            previous_value = state.get("previous_value")
+            last_update_str = state.get("last_update_time")
             last_update_time = datetime.fromisoformat(last_update_str) if last_update_str else None
 
             logger.info(f"State loaded: previous_value={previous_value}, last_update={last_update_time}")

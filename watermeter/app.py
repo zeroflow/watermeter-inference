@@ -51,22 +51,22 @@ async def lifespan(app: FastAPI):
     service.start_mqtt()
 
     # Start cyclic loop if configured
-    if trigger_mode in ('cyclic', 'both'):
+    if trigger_mode in ("cyclic", "both"):
         service.start_cyclic_loop()
 
     logger.info(f"Water Meter Dashboard started (trigger_mode={trigger_mode})")
 
     # Purge duplicate images from input folders on startup
-    lc_config = service.config.get('low_confidence', {})
-    if lc_config.get('dedup_enabled', True):
-        training_path = Path(lc_config.get('save_path', '/training'))
-        threshold = lc_config.get('dedup_threshold', 10)
-        scope = lc_config.get('dedup_scope', 'input+ground_truth')
-        for model_type in ('digits', 'arrows'):
-            input_dir = training_path / model_type / 'input'
+    lc_config = service.config.get("low_confidence", {})
+    if lc_config.get("dedup_enabled", True):
+        training_path = Path(lc_config.get("save_path", "/training"))
+        threshold = lc_config.get("dedup_threshold", 10)
+        scope = lc_config.get("dedup_scope", "input+ground_truth")
+        for model_type in ("digits", "arrows"):
+            input_dir = training_path / model_type / "input"
             gt_dirs = None
-            if scope == 'input+ground_truth':
-                gt_base = training_path / model_type / 'ground_truth'
+            if scope == "input+ground_truth":
+                gt_base = training_path / model_type / "ground_truth"
                 if gt_base.is_dir():
                     gt_dirs = [d for d in gt_base.iterdir() if d.is_dir()]
             purge_duplicates(input_dir, threshold, gt_dirs)
@@ -129,11 +129,11 @@ tags_metadata = [
 app = FastAPI(
     title="AI Water Meter API",
     description="OpenVINO-based AI water meter reading system with automated training, "
-                "benchmarking, and live dashboard. Supports both analog dial and digital "
-                "display recognition with active learning workflows.",
+    "benchmarking, and live dashboard. Supports both analog dial and digital "
+    "display recognition with active learning workflows.",
     version="1.0.0",
     lifespan=lifespan,
-    openapi_tags=tags_metadata
+    openapi_tags=tags_metadata,
 )
 
 # Mount static files relative to this package
@@ -142,13 +142,13 @@ app.mount("/static", StaticFiles(directory=str(_pkg_dir / "static")), name="stat
 
 # Include route modules (imported here to avoid circular imports at module level;
 # safe_subpath and other shared objects are defined above these imports)
-from .routes.pages import router as pages_router      # noqa: E402
-from .routes.service import router as service_router   # noqa: E402
-from .routes.config import router as config_router     # noqa: E402
-from .routes.roi import router as roi_router           # noqa: E402
-from .routes.label import router as label_router       # noqa: E402
-from .routes.training import router as training_router # noqa: E402
-from .routes.models import router as models_router     # noqa: E402
+from .routes.pages import router as pages_router  # noqa: E402
+from .routes.service import router as service_router  # noqa: E402
+from .routes.config import router as config_router  # noqa: E402
+from .routes.roi import router as roi_router  # noqa: E402
+from .routes.label import router as label_router  # noqa: E402
+from .routes.training import router as training_router  # noqa: E402
+from .routes.models import router as models_router  # noqa: E402
 
 app.include_router(pages_router)
 app.include_router(service_router)
@@ -165,11 +165,11 @@ def main():
     import yaml as _yaml
 
     # Load config for port
-    with open("config.yaml", 'r') as f:
+    with open("config.yaml", "r") as f:
         _config = _yaml.safe_load(f)
 
-    host = _config['dashboard']['host']
-    port = _config['dashboard']['port']
+    host = _config["dashboard"]["host"]
+    port = _config["dashboard"]["port"]
 
     logger.info(f"Starting server on {host}:{port}")
     uvicorn.run("watermeter.app:app", host=host, port=port)
