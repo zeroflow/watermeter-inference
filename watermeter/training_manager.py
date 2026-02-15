@@ -5,6 +5,7 @@ Training Manager - Orchestrates model training and benchmarking
 import threading
 import time
 import traceback
+import uuid
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
@@ -468,24 +469,25 @@ class TrainingManager:
             job.add_log(f"Using device: {device}")
 
             # Determine paths and classes based on model type
+            short_id = uuid.uuid4().hex[:6]
             if model_type == "digits":
                 dataset_dir = Path("/training/digits/ground_truth")
                 num_classes = 11  # 0-9 + NAN
-                model_filename = f"model_digits_{architecture}_r{resolution}_s{seed}"
+                model_filename = f"{architecture}_{short_id}"
             elif model_type == "arrows":
                 ground_truth_dir = Path("/training/arrows/ground_truth")
 
                 if training_mode == "continuous":
                     # Regression mode: use all ground truth classes directly
                     dataset_dir = ground_truth_dir  # No temp dataset needed
-                    model_filename = f"model_arrows_{architecture}_continuous_r{resolution}_s{seed}"
+                    model_filename = f"{architecture}_{short_id}"
                     job.add_log("Continuous (regression) mode — using all ground truth classes")
                 else:
                     # Discrete (classification) mode: subsample to step_size
                     dataset_dir = Path("/training/arrows/dataset_temp")
                     step = step_size or 1.0
                     num_classes = int(10 / step)
-                    model_filename = f"model_arrows_{architecture}_c{num_classes}_r{resolution}_s{seed}"
+                    model_filename = f"{architecture}_{short_id}"
                     job.add_log(f"Discrete (classification) mode — step={step} ({num_classes} classes)")
                     self._create_arrow_dataset(ground_truth_dir, dataset_dir, step, job)
             else:
