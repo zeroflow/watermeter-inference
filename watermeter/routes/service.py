@@ -128,6 +128,17 @@ async def submit_for_training(submission: TrainingSubmission):
         }, status_code=500)
 
 
+@router.get("/api/confirmation/status")
+async def confirmation_status():
+    """Get the current pending confirmation status, if any."""
+    service = watermeter_service.get_service()
+    pending = service.get_confirmation_status()
+    return JSONResponse({
+        "pending": pending is not None,
+        "details": pending,
+    })
+
+
 @router.get("/health")
 def health():
     """Health check endpoint."""

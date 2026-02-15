@@ -5,6 +5,7 @@ Combines image fetching, OpenVINO inference, consistency checks, and MQTT publis
 
 import asyncio
 import logging
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -102,6 +103,10 @@ class WatermeterService:
 
         # Cached marker templates for alignment (loaded lazily)
         self._marker_templates: Optional[List[np.ndarray]] = None
+
+        # Confirmation state (BL-07)
+        self._pending_confirmation: Optional[Dict] = None
+        self._confirmation_timer: Optional[threading.Timer] = None
 
         logger.info(f"WatermeterService initialized (trigger_mode={self.trigger_mode})")
 
@@ -714,6 +719,277 @@ class WatermeterService:
             f"({min_readings} consecutive readings above {threshold} m\u00b3/h)"
         )
 
+    # ── User Confirmation (BL-07) ───────────────────────────────────────
+
+    def _get_confirmation_config(self) -> Dict:
+        """Return the confirmation config with defaults applied."""
+        defaults = {
+            'enabled': False,
+            'request_topic': 'watermeter/confirmation_request',
+            'response_topic': 'watermeter/confirmation_response',
+            'timeout_minutes': 5,
+            'min_warnings': 1,
+            'min_low_confidence_positions': 2,
+            'max_rate_jump_factor': 3.0,
+        }
+        user = self.config.get('confirmation', {})
+        return {**defaults, **user}
+
+    def _should_request_confirmation(self, total_value: float, warnings: List[str],
+                                     predictions: Dict[str, Dict]) -> Optional[str]:
+        """
+        Decide whether a reading needs user confirmation.
+
+        Returns a reason string if confirmation is needed, None otherwise.
+        """
+        conf = self._get_confirmation_config()
+        if not conf['enabled']:
+            return None
+
+        # Don't stack confirmations -- if one is already pending, skip
+        if self._pending_confirmation is not None:
+            return None
+
+        # Condition 1: reading has enough warnings
+        if len(warnings) >= conf['min_warnings']:
+            return f"{len(warnings)} warning(s) on this reading"
+
+        # Condition 2: enough positions below confidence threshold
+        threshold = self.config['inference']['confidence_threshold']
+        low_conf_count = sum(
+            1 for pred in predictions.values()
+            if pred['confidence'] < threshold
+        )
+        if low_conf_count >= conf['min_low_confidence_positions']:
+            return f"{low_conf_count} position(s) below confidence threshold"
+
+        # Condition 3: rate jump relative to average
+        if self.previous_value is not None and self.last_update_time is not None:
+            avg_rate = self._calculate_average_rate_per_hour()
+            if avg_rate is not None and avg_rate > 0:
+                time_diff = (datetime.now() - self.last_update_time).total_seconds()
+                if time_diff > 0:
+                    current_rate = ((total_value - self.previous_value) / time_diff) * 3600
+                    if current_rate > avg_rate * conf['max_rate_jump_factor']:
+                        return (
+                            f"Rate jump: {current_rate:.3f} m\u00b3/h "
+                            f"exceeds {conf['max_rate_jump_factor']}x average ({avg_rate:.3f})"
+                        )
+
+        return None
+
+    def _publish_confirmation_request(self, total_value: float, warnings: List[str],
+                                      predictions: Dict[str, Dict], reason: str) -> None:
+        """
+        Publish a confirmation request to MQTT and start the timeout timer.
+
+        Stores the reading details in _pending_confirmation so they can be
+        committed or discarded when the user responds.
+        """
+        conf = self._get_confirmation_config()
+
+        if not self.mqtt_client or not self.mqtt_client.is_connected():
+            logger.warning("MQTT not connected -- cannot request confirmation, auto-accepting")
+            return
+
+        # Build compact per-position confidence map
+        confidences = {
+            pred['id']: {
+                'class': pred['class'],
+                'confidence': round(pred['confidence'], 3),
+            }
+            for pred in predictions.values()
+        }
+
+        payload = {
+            'value': round(total_value, 4),
+            'reason': reason,
+            'warnings': warnings,
+            'positions': confidences,
+            'timestamp': datetime.now().isoformat(),
+        }
+
+        # Store pending state (captures everything needed to finalize later)
+        self._pending_confirmation = {
+            'value': total_value,
+            'warnings': warnings,
+            'predictions': predictions,
+            'reason': reason,
+            'timestamp': datetime.now(),
+            # Snapshot of state before this reading was applied
+            'previous_value_before': self.previous_value,
+            'last_update_time_before': self.last_update_time,
+        }
+
+        self.mqtt_client.publish(
+            conf['request_topic'],
+            json.dumps(payload),
+            qos=1,
+        )
+        logger.info(f"Published confirmation request: {reason}")
+
+        # Start timeout timer
+        self._cancel_confirmation_timer()
+        timeout_seconds = conf['timeout_minutes'] * 60
+        self._confirmation_timer = threading.Timer(
+            timeout_seconds, self._confirmation_timeout
+        )
+        self._confirmation_timer.daemon = True
+        self._confirmation_timer.start()
+        logger.info(f"Confirmation timeout set: {conf['timeout_minutes']} min")
+
+    def _cancel_confirmation_timer(self) -> None:
+        """Cancel the running confirmation timeout timer, if any."""
+        if self._confirmation_timer is not None:
+            self._confirmation_timer.cancel()
+            self._confirmation_timer = None
+
+    def _confirmation_timeout(self) -> None:
+        """
+        Called by the Timer thread when no user response arrives in time.
+
+        Auto-rejects: reverts previous_value to its pre-reading snapshot and
+        clears the pending confirmation.
+        """
+        pending = self._pending_confirmation
+        if pending is None:
+            return
+
+        logger.warning("Confirmation timeout -- auto-rejecting reading")
+
+        # Revert state to before the pending reading was applied
+        self.previous_value = pending['previous_value_before']
+        self.last_update_time = pending['last_update_time_before']
+
+        # Persist the reverted state
+        if self.state_store:
+            if self.previous_value is not None and self.last_update_time is not None:
+                self.state_store.save(self.previous_value, self.last_update_time)
+
+        # Remove the last entry from rate_history (it was added optimistically)
+        if self.rate_history:
+            self.rate_history.pop()
+
+        self._pending_confirmation = None
+        self._confirmation_timer = None
+        self.current_state['status'] = 'timeout'
+        self.current_state['warnings'] = ['Confirmation timed out -- reading discarded']
+        logger.info("Pending confirmation cleared after timeout")
+
+    def _handle_confirmation_response(self, payload: str) -> None:
+        """
+        Process a user response from the confirmation response MQTT topic.
+
+        Payloads:
+            - "confirm"        -- accept the pending reading as-is
+            - "reject"         -- discard the pending reading
+            - "correct:{value}" -- accept with an overridden value
+        """
+        pending = self._pending_confirmation
+        if pending is None:
+            logger.warning("Received confirmation response but nothing is pending -- ignoring")
+            return
+
+        self._cancel_confirmation_timer()
+        payload = payload.strip()
+
+        if payload == "confirm":
+            logger.info("User confirmed the reading")
+            # Reading was already optimistically applied -- just publish to HA
+            if self.loop:
+                asyncio.run_coroutine_threadsafe(
+                    self.publish_to_mqtt(
+                        pending['value'],
+                        pending['warnings'],
+                        pending['predictions'],
+                        leak_warning=self.leak_warning,
+                    ),
+                    self.loop,
+                )
+            self.current_state['status'] = 'ok'
+            self.current_state['warnings'] = pending['warnings']
+
+        elif payload == "reject":
+            logger.info("User rejected the reading")
+            # Revert to pre-reading state
+            self.previous_value = pending['previous_value_before']
+            self.last_update_time = pending['last_update_time_before']
+            if self.state_store:
+                if self.previous_value is not None and self.last_update_time is not None:
+                    self.state_store.save(self.previous_value, self.last_update_time)
+            # Remove the optimistic rate_history entry
+            if self.rate_history:
+                self.rate_history.pop()
+            self.current_state['status'] = 'rejected'
+            self.current_state['warnings'] = ['Reading rejected by user']
+
+        elif payload.startswith("correct:"):
+            corrected_str = payload[len("correct:"):]
+            try:
+                corrected_value = float(corrected_str)
+            except ValueError:
+                logger.error(f"Invalid corrected value: {corrected_str!r}")
+                return
+
+            logger.info(f"User corrected reading: {pending['value']:.4f} -> {corrected_value:.4f}")
+
+            # Apply the corrected value
+            self.previous_value = corrected_value
+            self.last_update_time = datetime.now()
+            if self.state_store:
+                self.state_store.save(self.previous_value, self.last_update_time)
+
+            # Fix up rate_history: replace the last (optimistic) entry
+            if self.rate_history:
+                self.rate_history[-1] = (corrected_value, self.last_update_time)
+
+            self.current_state['total_value'] = corrected_value
+            self.current_state['last_update'] = self.last_update_time.isoformat()
+            self.current_state['status'] = 'ok'
+            self.current_state['warnings'] = [
+                f"User corrected: {pending['value']:.4f} -> {corrected_value:.4f}"
+            ]
+
+            # Publish the corrected value to HA
+            if self.loop:
+                asyncio.run_coroutine_threadsafe(
+                    self.publish_to_mqtt(
+                        corrected_value,
+                        self.current_state['warnings'],
+                        pending['predictions'],
+                        leak_warning=self.leak_warning,
+                    ),
+                    self.loop,
+                )
+        else:
+            logger.warning(f"Unknown confirmation response: {payload!r}")
+            return
+
+        self._pending_confirmation = None
+
+    def get_confirmation_status(self) -> Optional[Dict]:
+        """
+        Return details of the pending confirmation, or None if nothing is pending.
+
+        Used by the /api/confirmation/status endpoint.
+        """
+        pending = self._pending_confirmation
+        if pending is None:
+            return None
+
+        conf = self._get_confirmation_config()
+        elapsed = (datetime.now() - pending['timestamp']).total_seconds()
+        timeout_seconds = conf['timeout_minutes'] * 60
+
+        return {
+            'value': round(pending['value'], 4),
+            'reason': pending['reason'],
+            'warnings': pending['warnings'],
+            'timestamp': pending['timestamp'].isoformat(),
+            'timeout_minutes': conf['timeout_minutes'],
+            'seconds_remaining': max(0, int(timeout_seconds - elapsed)),
+        }
+
     # ── Value Correction Engine (BL-04) ─────────────────────────────────
 
     def _get_ordered_position_ids(self) -> List[str]:
@@ -1224,6 +1500,10 @@ class WatermeterService:
                 ]
 
                 if is_valid:
+                    # Snapshot state before applying (needed for confirmation revert)
+                    prev_value_before = self.previous_value
+                    prev_time_before = self.last_update_time
+
                     self.previous_value = total_value
                     self.last_update_time = datetime.now()
                     self.consecutive_rejections = 0  # Reset rejection counter
@@ -1242,9 +1522,30 @@ class WatermeterService:
 
                     logger.info(f"✓ Reading accepted: {total_value:.4f} m³")
 
-                    # Publish to MQTT
-                    await self.publish_to_mqtt(total_value, all_warnings, predictions,
-                                               leak_warning=self.leak_warning)
+                    # Check if user confirmation is needed (BL-07)
+                    confirmation_reason = self._should_request_confirmation(
+                        total_value, all_warnings, predictions,
+                    )
+                    if confirmation_reason:
+                        # Hold HA publish -- store snapshots for revert on reject/timeout
+                        self._pending_confirmation = {
+                            'value': total_value,
+                            'warnings': all_warnings,
+                            'predictions': predictions,
+                            'reason': confirmation_reason,
+                            'timestamp': datetime.now(),
+                            'previous_value_before': prev_value_before,
+                            'last_update_time_before': prev_time_before,
+                        }
+                        self._publish_confirmation_request(
+                            total_value, all_warnings, predictions, confirmation_reason,
+                        )
+                        self.current_state['status'] = 'pending_confirmation'
+                        logger.info(f"Reading held for confirmation: {confirmation_reason}")
+                    else:
+                        # Normal path -- publish immediately
+                        await self.publish_to_mqtt(total_value, all_warnings, predictions,
+                                                   leak_warning=self.leak_warning)
                 else:
                     self.consecutive_rejections += 1
                     self.current_state['status'] = 'error'
@@ -1343,6 +1644,10 @@ class WatermeterService:
         self.leak_warning = False
         self.current_state['leak_warning'] = False
 
+        # Clear any pending confirmation (BL-07)
+        self._cancel_confirmation_timer()
+        self._pending_confirmation = None
+
         # Clear persisted state
         if self.state_store:
             self.state_store.clear()
@@ -1416,6 +1721,12 @@ class WatermeterService:
             logger.info(f"Subscribed to {mqtt_config['reset_topic']}")
             logger.info("Subscribed to homeassistant/status")
 
+            # Subscribe to confirmation response topic if enabled (BL-07)
+            conf_config = self._get_confirmation_config()
+            if conf_config['enabled']:
+                client.subscribe(conf_config['response_topic'], qos=2)
+                logger.info(f"Subscribed to {conf_config['response_topic']}")
+
             # Publish discovery on connect
             self.publish_discovery()
         else:
@@ -1444,6 +1755,13 @@ class WatermeterService:
                 self.loop.call_soon_threadsafe(self.reset_previous_value)
             else:
                 self.reset_previous_value()
+
+        elif topic == self._get_confirmation_config()['response_topic']:
+            # Route through event loop to keep state mutations on the main thread
+            if self.loop:
+                self.loop.call_soon_threadsafe(self._handle_confirmation_response, payload)
+            else:
+                self._handle_confirmation_response(payload)
 
         elif topic == "homeassistant/status":
             if payload == "online":

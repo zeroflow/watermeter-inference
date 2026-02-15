@@ -76,6 +76,8 @@ def service():
     svc.state_store = None
     svc.mqtt_client = None
     svc.ha_publish_enabled = False
+    svc._pending_confirmation = None
+    svc._confirmation_timer = None
 
     return svc
 

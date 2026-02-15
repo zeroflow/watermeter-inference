@@ -420,6 +420,46 @@ CONFIG_SCHEMA = {
                 }
             }
         },
+        "confirmation": {
+            "type": "object",
+            "description": "User confirmation via Home Assistant for uncertain readings (BL-07)",
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "description": "Enable user confirmation flow for uncertain readings",
+                    "default": False
+                },
+                "request_topic": {
+                    "type": "string",
+                    "description": "MQTT topic to publish confirmation requests"
+                },
+                "response_topic": {
+                    "type": "string",
+                    "description": "MQTT topic to subscribe for user responses"
+                },
+                "timeout_minutes": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 60,
+                    "description": "Auto-reject pending confirmation after this many minutes"
+                },
+                "min_warnings": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Trigger confirmation if reading has >= N warnings"
+                },
+                "min_low_confidence_positions": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Trigger confirmation if >= N positions are below confidence threshold"
+                },
+                "max_rate_jump_factor": {
+                    "type": "number",
+                    "minimum": 1.0,
+                    "description": "Trigger confirmation if rate exceeds factor * average rate"
+                }
+            }
+        },
         "low_confidence": {
             "type": "object",
             "description": "Low confidence image handling",

@@ -73,7 +73,7 @@ Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
 
 ## User Interaction
 
-- **BL-07** `planned` — **User confirmation via Home Assistant**: route uncertain readings through HA for user verification and response
+- **BL-07** `done` — **User confirmation via Home Assistant**: route uncertain readings through HA for user verification and response
   - **Not Telegram-native** — use MQTT to publish actionable events, let HA handle notification channel (Telegram, push, email, etc.)
   - **One-way (publish)**:
     - New MQTT topic `watermeter/confirmation_request` with payload: value, confidence, image (base64 or URL), reason for doubt

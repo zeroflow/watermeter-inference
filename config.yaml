@@ -140,6 +140,16 @@ correction:
   top_k: 3                          # Number of softmax alternatives to consider
   cross_arrow_confidence_gate: 0.8  # Only use cross-arrow signal when constraining arrow >= this
 
+# User Confirmation via Home Assistant (BL-07)
+confirmation:
+  enabled: false                                          # Opt-in; disabled by default
+  request_topic: "watermeter/confirmation_request"        # MQTT topic to publish requests
+  response_topic: "watermeter/confirmation_response"      # MQTT topic to subscribe for responses
+  timeout_minutes: 5                                      # Auto-reject if no response within N minutes
+  min_warnings: 1                                         # Trigger if reading has >= N warnings
+  min_low_confidence_positions: 2                         # Trigger if >= N positions below confidence threshold
+  max_rate_jump_factor: 3.0                               # Trigger if rate exceeds factor * average rate
+
 # Low Confidence Handling
 low_confidence:
   warn_enabled: true  # Show warnings for low confidence predictions
