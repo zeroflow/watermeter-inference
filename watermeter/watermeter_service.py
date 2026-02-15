@@ -27,6 +27,211 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Home Assistant MQTT Discovery — Entity Registry
+# ---------------------------------------------------------------------------
+# Each dict describes one HA entity that belongs to the "watermeter_ai" device.
+# `publish_discovery()` iterates over this list to emit discovery messages.
+#
+# Keys:
+#   object_id          – used in discovery topic and as the JSON payload key
+#   name               – friendly name shown in HA
+#   component          – "sensor" or "binary_sensor"
+#   icon               – MDI icon string
+#   device_class       – (optional) HA device class
+#   state_class        – (optional) HA state class
+#   unit_of_measurement – (optional)
+#   entity_category    – (optional) "diagnostic" or "config"
+#   state_topic_key    – "main" (default) or "training_stats"
+#   options            – (optional) list of enum options (for enum sensors)
+# ---------------------------------------------------------------------------
+_HA_ENTITIES = [
+    # ── Primary entities (published every reading) ─────────────────────────
+    {
+        "object_id": "water_usage",
+        "name": "Water Usage",
+        "component": "sensor",
+        "icon": "mdi:water",
+        "device_class": "water",
+        "state_class": "total_increasing",
+        "unit_of_measurement": "m\u00b3",
+    },
+    {
+        "object_id": "water_usage_raw",
+        "name": "Water Usage Raw",
+        "component": "sensor",
+        "icon": "mdi:water-outline",
+        "device_class": "water",
+        "state_class": "total_increasing",
+        "unit_of_measurement": "m\u00b3",
+    },
+    {
+        "object_id": "leak_warning",
+        "name": "Leak Warning",
+        "component": "binary_sensor",
+        "icon": "mdi:water-alert",
+        "device_class": "moisture",
+    },
+    # ── Diagnostic entities ────────────────────────────────────────────────
+    {
+        "object_id": "min_confidence",
+        "name": "Minimum Confidence",
+        "component": "sensor",
+        "icon": "mdi:percent-circle",
+        "state_class": "measurement",
+        "unit_of_measurement": "%",
+        "entity_category": "diagnostic",
+    },
+    {
+        "object_id": "status",
+        "name": "Status",
+        "component": "sensor",
+        "icon": "mdi:information-outline",
+        "entity_category": "diagnostic",
+        "device_class": "enum",
+        "options": ["idle", "ok", "warning", "error", "no_models", "pending_confirmation", "processing"],
+    },
+    {
+        "object_id": "consecutive_rejections",
+        "name": "Consecutive Rejections",
+        "component": "sensor",
+        "icon": "mdi:close-octagon-outline",
+        "state_class": "measurement",
+        "entity_category": "diagnostic",
+    },
+    {
+        "object_id": "unlabeled_digits",
+        "name": "Unlabeled Images (Digits)",
+        "component": "sensor",
+        "icon": "mdi:image-edit-outline",
+        "state_class": "measurement",
+        "unit_of_measurement": "images",
+        "entity_category": "diagnostic",
+        "state_topic_key": "training_stats",
+    },
+    {
+        "object_id": "unlabeled_arrows",
+        "name": "Unlabeled Images (Arrows)",
+        "component": "sensor",
+        "icon": "mdi:image-edit-outline",
+        "state_class": "measurement",
+        "unit_of_measurement": "images",
+        "entity_category": "diagnostic",
+        "state_topic_key": "training_stats",
+    },
+    {
+        "object_id": "training_digits",
+        "name": "Training Images (Digits)",
+        "component": "sensor",
+        "icon": "mdi:image-check",
+        "state_class": "total_increasing",
+        "unit_of_measurement": "images",
+        "entity_category": "diagnostic",
+        "state_topic_key": "training_stats",
+    },
+    {
+        "object_id": "training_arrows",
+        "name": "Training Images (Arrows)",
+        "component": "sensor",
+        "icon": "mdi:image-check",
+        "state_class": "total_increasing",
+        "unit_of_measurement": "images",
+        "entity_category": "diagnostic",
+        "state_topic_key": "training_stats",
+    },
+    {
+        "object_id": "last_rejected_value",
+        "name": "Last Rejected Value",
+        "component": "sensor",
+        "icon": "mdi:water-remove",
+        "device_class": "water",
+        "unit_of_measurement": "m\u00b3",
+        "entity_category": "diagnostic",
+    },
+    {
+        "object_id": "last_rejected_reason",
+        "name": "Last Rejected Reason",
+        "component": "sensor",
+        "icon": "mdi:alert-circle-outline",
+        "entity_category": "diagnostic",
+    },
+    {
+        "object_id": "average_rate",
+        "name": "Average Rate",
+        "component": "sensor",
+        "icon": "mdi:speedometer",
+        "state_class": "measurement",
+        "unit_of_measurement": "m\u00b3/h",
+        "entity_category": "diagnostic",
+    },
+    {
+        "object_id": "last_update",
+        "name": "Last Update",
+        "component": "sensor",
+        "icon": "mdi:clock-outline",
+        "device_class": "timestamp",
+        "entity_category": "diagnostic",
+    },
+    {
+        "object_id": "mqtt_connected",
+        "name": "MQTT Connected",
+        "component": "binary_sensor",
+        "device_class": "connectivity",
+        "entity_category": "diagnostic",
+    },
+    {
+        "object_id": "processing",
+        "name": "Processing",
+        "component": "binary_sensor",
+        "device_class": "running",
+        "entity_category": "diagnostic",
+    },
+    {
+        "object_id": "confirmation_pending",
+        "name": "Confirmation Pending",
+        "component": "binary_sensor",
+        "icon": "mdi:human-greeting-proximity",
+        "entity_category": "diagnostic",
+    },
+    # ── Timing entities (values populated in WP2) ─────────────────────────
+    {
+        "object_id": "inference_duration",
+        "name": "Inference Duration",
+        "component": "sensor",
+        "icon": "mdi:timer-outline",
+        "device_class": "duration",
+        "state_class": "measurement",
+        "unit_of_measurement": "ms",
+        "entity_category": "diagnostic",
+    },
+    {
+        "object_id": "processing_duration",
+        "name": "Processing Duration",
+        "component": "sensor",
+        "icon": "mdi:timer",
+        "device_class": "duration",
+        "state_class": "measurement",
+        "unit_of_measurement": "s",
+        "entity_category": "diagnostic",
+    },
+    # ── Config entities ────────────────────────────────────────────────────
+    {
+        "object_id": "active_digits_model",
+        "name": "Active Digits Model",
+        "component": "sensor",
+        "icon": "mdi:brain",
+        "entity_category": "config",
+    },
+    {
+        "object_id": "active_arrows_model",
+        "name": "Active Arrows Model",
+        "component": "sensor",
+        "icon": "mdi:brain",
+        "entity_category": "config",
+    },
+]
+
+
 class WatermeterService:
     """Main service for watermeter reading and inference."""
 
@@ -108,12 +313,19 @@ class WatermeterService:
         # Cyclic loop task
         self._cyclic_task: Optional[asyncio.Task] = None
 
+        # Training stats publishing loop task
+        self._stats_task: Optional[asyncio.Task] = None
+
         # Cached marker templates for alignment (loaded lazily)
         self._marker_templates: Optional[List[np.ndarray]] = None
 
         # Confirmation state (BL-07)
         self._pending_confirmation: Optional[Dict] = None
         self._confirmation_timer: Optional[threading.Timer] = None
+
+        # Timing instrumentation (populated by process_reading, published via MQTT)
+        self._last_inference_duration_ms: Optional[int] = None
+        self._last_processing_duration_s: Optional[float] = None
 
         logger.info(f"WatermeterService initialized (trigger_mode={self.trigger_mode})")
 
@@ -895,6 +1107,7 @@ class WatermeterService:
         if payload == "confirm":
             logger.info("User confirmed the reading")
             # Reading was already optimistically applied -- just publish to HA
+            raw_total = self._compute_raw_total(pending["raw_values"]) if pending.get("raw_values") else None
             if self.loop:
                 asyncio.run_coroutine_threadsafe(
                     self.publish_to_mqtt(
@@ -902,6 +1115,7 @@ class WatermeterService:
                         pending["warnings"],
                         pending["predictions"],
                         leak_warning=self.leak_warning,
+                        raw_value=raw_total,
                     ),
                     self.loop,
                 )
@@ -957,6 +1171,7 @@ class WatermeterService:
                         self.current_state["warnings"],
                         pending["predictions"],
                         leak_warning=self.leak_warning,
+                        raw_value=corrected_value,
                     ),
                     self.loop,
                 )
@@ -1394,6 +1609,7 @@ class WatermeterService:
                 self.current_state["warnings"] = ["No inference models loaded. Train or import models via the Training page."]
                 return self.current_state
 
+            t_start = time.monotonic()
             try:
                 self.current_state["processing"] = True
                 self.current_state["warnings"] = []
@@ -1421,7 +1637,9 @@ class WatermeterService:
                         raise Exception("No ROIs extracted from whole image")
 
                 # 2. Run inference
+                t_inf = time.monotonic()
                 predictions = await self.run_inference(images)
+                self._last_inference_duration_ms = round((time.monotonic() - t_inf) * 1000)
 
                 # 3. Calculate total
                 total_value, raw_values = self.calculate_total(predictions)
@@ -1546,6 +1764,7 @@ class WatermeterService:
                         # Hold HA publish -- store snapshots for revert on reject/timeout
                         self._pending_confirmation = {
                             "value": total_value,
+                            "raw_values": raw_values,
                             "warnings": all_warnings,
                             "predictions": predictions,
                             "reason": confirmation_reason,
@@ -1563,8 +1782,10 @@ class WatermeterService:
                         logger.info(f"Reading held for confirmation: {confirmation_reason}")
                     else:
                         # Normal path -- publish immediately
+                        raw_total = self._compute_raw_total(raw_values)
                         await self.publish_to_mqtt(
-                            total_value, all_warnings, predictions, leak_warning=self.leak_warning
+                            total_value, all_warnings, predictions,
+                            leak_warning=self.leak_warning, raw_value=raw_total,
                         )
                 else:
                     self.consecutive_rejections += 1
@@ -1614,20 +1835,56 @@ class WatermeterService:
                 except Exception as pred_err:
                     logger.error(f"Could not save predictions after error: {pred_err}")
             finally:
+                self._last_processing_duration_s = round(time.monotonic() - t_start, 2)
                 self.current_state["processing"] = False
 
         return self.current_state
 
-    async def publish_to_mqtt(
-        self, value: float, warnings: List[str], predictions: Dict, *, leak_warning: bool = False
-    ) -> None:
+    def _get_active_model_name(self, model_type: str) -> Optional[str]:
+        """Return the active model directory name for a model type, or None."""
+        from .model_manager import get_model_manager
+
+        try:
+            return get_model_manager().get_active_model(model_type, self.config)
+        except Exception:
+            return None
+
+    def _compute_raw_total(self, raw_values: Dict) -> float:
+        """Compute the unrounded total from raw digit and arrow values.
+
+        Unlike ``calculate_total`` which floors each arrow value, this uses
+        the continuous arrow predictions to produce a higher-precision reading.
         """
-        Publish reading to Home Assistant via MQTT.
+        total = 0.0
+        digits = raw_values.get("digits", [])
+        arrows = raw_values.get("arrows", [])
+        for i, digit in enumerate(digits):
+            total += digit * (10 ** (len(digits) - 1 - i))
+        for i, arrow in enumerate(arrows):
+            total += arrow * (10 ** (-(i + 1)))
+        return total
+
+    async def publish_to_mqtt(
+        self,
+        value: float,
+        warnings: List[str],
+        predictions: Dict,
+        *,
+        leak_warning: bool = False,
+        raw_value: Optional[float] = None,
+    ) -> None:
+        """Publish a full-state JSON payload to the shared HA state topic.
+
+        The payload keys match the ``object_id`` values in ``_HA_ENTITIES`` so
+        that each entity's ``value_template`` can extract its own value.
 
         Args:
-            value: Meter reading value
-            warnings: List of warnings
-            predictions: Prediction results
+            value: Meter reading (floored / rounded).
+            warnings: List of warning strings.
+            predictions: Prediction results dict (keyed by image id).
+            leak_warning: Whether a leak is currently detected.
+            raw_value: Unrounded meter reading.  Falls back to *value* if not
+                provided (e.g. manual-set path where no raw value exists).
         """
         if not self.ha_publish_enabled:
             logger.info("HA publishing disabled - skipping MQTT publish")
@@ -1639,18 +1896,43 @@ class WatermeterService:
 
         ha_config = self.config["homeassistant"]
 
-        # Build payload
+        # Minimum confidence across all predictions (percent)
+        if predictions:
+            min_conf = min(p["confidence"] for p in predictions.values()) * 100
+            min_conf = round(min_conf, 1)
+        else:
+            min_conf = None
+
+        # Average consumption rate
+        avg_rate = self._calculate_average_rate_per_hour()
+
+        # Last rejected reason — may be a list; join if so
+        rejected_reasons = self.current_state.get("last_rejected_reasons") or []
+        if isinstance(rejected_reasons, list):
+            last_rejected_reason = "; ".join(rejected_reasons) if rejected_reasons else ""
+        else:
+            last_rejected_reason = str(rejected_reasons)
+
         payload = {
-            "state": round(value, 4),
-            "attributes": {
-                "last_update": datetime.now().isoformat(),
-                "warnings": warnings,
-                "leak_warning": leak_warning,
-                "confidences": {pred["id"]: round(pred["confidence"] * 100, 1) for pred in predictions.values()},
-            },
+            "water_usage": round(value, 4),
+            "water_usage_raw": round(raw_value, 6) if raw_value is not None else round(value, 4),
+            "leak_warning": leak_warning,
+            "min_confidence": min_conf,
+            "status": self.current_state.get("status", "idle"),
+            "consecutive_rejections": self.consecutive_rejections,
+            "last_rejected_value": self.current_state.get("last_rejected_value"),
+            "last_rejected_reason": last_rejected_reason,
+            "average_rate": round(avg_rate, 4) if avg_rate is not None else None,
+            "last_update": datetime.now().isoformat(),
+            "mqtt_connected": True,
+            "processing": False,
+            "confirmation_pending": self._pending_confirmation is not None,
+            "inference_duration": self._last_inference_duration_ms,
+            "processing_duration": self._last_processing_duration_s,
+            "active_digits_model": self._get_active_model_name("digits"),
+            "active_arrows_model": self._get_active_model_name("arrows"),
         }
 
-        # Publish
         topic = ha_config["publish_topic"]
         self.mqtt_client.publish(topic, json.dumps(payload), qos=2, retain=True)
         logger.info(f"Published to MQTT: {topic}")
@@ -1727,32 +2009,39 @@ class WatermeterService:
         self.current_state["last_rejected_timestamp"] = None
         self.current_state["last_rejected_reasons"] = []
 
-        # Publish to MQTT
+        # Publish to MQTT using the same payload structure as publish_to_mqtt()
         mqtt_published = False
-        if self.ha_publish_enabled:
-            if self.mqtt_client and self.mqtt_client.is_connected():
-                try:
-                    ha_config = self.config["homeassistant"]
-                    topic = ha_config.get("publish_topic", "homeassistant/sensor/watermeter/state")
-                    payload = json.dumps(
-                        {
-                            "state": round(value, 4),
-                            "attributes": {
-                                "last_update": now.isoformat(),
-                                "warnings": ["Manual input"],
-                                "leak_warning": False,
-                                "confidences": {},
-                                "source": "manual",
-                            },
-                        }
-                    )
-                    self.mqtt_client.publish(topic, payload, qos=2, retain=True)
-                    mqtt_published = True
-                    logger.info(f"Published manual value {value:.4f} to MQTT: {topic}")
-                except Exception as e:
-                    logger.error(f"Failed to publish manual value to MQTT: {e}")
-            else:
-                logger.warning("MQTT not connected, manual value not published to Home Assistant")
+        if self.ha_publish_enabled and self.mqtt_client and self.mqtt_client.is_connected():
+            try:
+                ha_config = self.config["homeassistant"]
+                avg_rate = self._calculate_average_rate_per_hour()
+                payload = {
+                    "water_usage": round(value, 4),
+                    "water_usage_raw": round(value, 4),
+                    "leak_warning": False,
+                    "min_confidence": None,
+                    "status": self.current_state.get("status", "ok"),
+                    "consecutive_rejections": self.consecutive_rejections,
+                    "last_rejected_value": self.current_state.get("last_rejected_value"),
+                    "last_rejected_reason": "",
+                    "average_rate": round(avg_rate, 4) if avg_rate is not None else None,
+                    "last_update": now.isoformat(),
+                    "mqtt_connected": True,
+                    "processing": False,
+                    "confirmation_pending": False,
+                    "inference_duration": self._last_inference_duration_ms,
+                    "processing_duration": self._last_processing_duration_s,
+                    "active_digits_model": self._get_active_model_name("digits"),
+                    "active_arrows_model": self._get_active_model_name("arrows"),
+                }
+                topic = ha_config["publish_topic"]
+                self.mqtt_client.publish(topic, json.dumps(payload), qos=2, retain=True)
+                mqtt_published = True
+                logger.info(f"Published manual value {value:.4f} to MQTT: {topic}")
+            except Exception as e:
+                logger.error(f"Failed to publish manual value to MQTT: {e}")
+        elif self.ha_publish_enabled:
+            logger.warning("MQTT not connected, manual value not published to Home Assistant")
 
         return mqtt_published
 
@@ -1762,8 +2051,86 @@ class WatermeterService:
         self.current_state["ha_publish_enabled"] = enabled
         logger.info(f"Home Assistant publishing {'enabled' if enabled else 'disabled'}")
 
+    def publish_training_stats(self) -> None:
+        """Publish training data statistics to HA via MQTT (slow cadence).
+
+        Counts files in the training directories (unlabeled input and labeled
+        ground truth) and publishes the counts to the ``training_stats`` topic
+        so HA entities 7-10 receive updated values.
+        """
+        if not self.ha_publish_enabled:
+            return
+        if not self.mqtt_client or not self.mqtt_client.is_connected():
+            return
+
+        ha_config = self.config["homeassistant"]
+        training_path = Path(
+            self.config.get("low_confidence", {}).get("save_path", "/training")
+        )
+
+        digits_input = training_path / "digits" / "input"
+        arrows_input = training_path / "arrows" / "input"
+        digits_gt = training_path / "digits" / "ground_truth"
+        arrows_gt = training_path / "arrows" / "ground_truth"
+
+        payload = {
+            "unlabeled_digits": (
+                len(list(digits_input.glob("*.jpg"))) if digits_input.exists() else 0
+            ),
+            "unlabeled_arrows": (
+                len(list(arrows_input.glob("*.jpg"))) if arrows_input.exists() else 0
+            ),
+            "training_digits": (
+                sum(len(list(d.glob("*.jpg"))) for d in digits_gt.iterdir() if d.is_dir())
+                if digits_gt.exists()
+                else 0
+            ),
+            "training_arrows": (
+                sum(len(list(d.glob("*.jpg"))) for d in arrows_gt.iterdir() if d.is_dir())
+                if arrows_gt.exists()
+                else 0
+            ),
+        }
+
+        topic = ha_config["publish_topic"] + "/training_stats"
+        self.mqtt_client.publish(topic, json.dumps(payload), qos=1, retain=True)
+        logger.info(f"Published training stats to {topic}")
+
+    async def _stats_loop(self) -> None:
+        """Periodically publish training data stats to HA (every 5 minutes)."""
+        logger.info("Training stats publish loop started (interval=300s)")
+        try:
+            while True:
+                await asyncio.sleep(300)
+                try:
+                    self.publish_training_stats()
+                except Exception:
+                    logger.exception("Error publishing training stats")
+        except asyncio.CancelledError:
+            logger.info("Training stats publish loop cancelled")
+
+    def start_stats_loop(self) -> None:
+        """Start the periodic training stats background task."""
+        if self._stats_task is not None:
+            logger.warning("Stats loop already running")
+            return
+        self._stats_task = asyncio.create_task(self._stats_loop())
+        logger.info("Training stats loop task created")
+
+    def stop_stats_loop(self) -> None:
+        """Cancel the periodic training stats background task."""
+        if self._stats_task is not None:
+            self._stats_task.cancel()
+            self._stats_task = None
+            logger.info("Training stats loop stopped")
+
     def publish_discovery(self) -> None:
-        """Publish Home Assistant MQTT Discovery message."""
+        """Publish Home Assistant MQTT Discovery messages for all entities.
+
+        Iterates over the module-level ``_HA_ENTITIES`` registry and publishes
+        one discovery config per entity.  All entities share the same ``device``
+        block so Home Assistant groups them into a single device.
+        """
         if not self.mqtt_client or not self.mqtt_client.is_connected():
             logger.warning("MQTT client not connected - skipping discovery")
             return
@@ -1773,32 +2140,51 @@ class WatermeterService:
             return
 
         ha_config = self.config["homeassistant"]
+        discovery_prefix = ha_config["discovery_prefix"]
+        main_state_topic = ha_config["publish_topic"]
+        training_stats_topic = f"{main_state_topic}/training_stats"
 
-        # Discovery topic: <discovery_prefix>/<component>/<node_id>/<object_id>/config
-        discovery_topic = f"{ha_config['discovery_prefix']}/sensor/watermeter_ai/watermeter_usage/config"
-
-        # Discovery payload
-        discovery_payload = {
-            "name": ha_config["sensor"]["name"],
-            "state_topic": ha_config["publish_topic"],
-            "unit_of_measurement": ha_config["sensor"]["unit"],
-            "device_class": ha_config["sensor"]["device_class"],
-            "state_class": ha_config["sensor"]["state_class"],
-            "icon": ha_config["sensor"]["icon"],
-            "unique_id": "watermeter_ai_usage",
-            "value_template": "{{ value_json.state }}",
-            "json_attributes_topic": ha_config["publish_topic"],
-            "device": {
-                "identifiers": ["watermeter_ai"],
-                "name": ha_config["device"]["name"],
-                "manufacturer": ha_config["device"]["manufacturer"],
-                "model": ha_config["device"]["model"],
-            },
+        # Shared device block — identical in every discovery message
+        device_block = {
+            "identifiers": ["watermeter_ai"],
+            "name": ha_config["device"]["name"],
+            "manufacturer": ha_config["device"]["manufacturer"],
+            "model": ha_config["device"]["model"],
         }
 
-        # Publish with retain=True so HA finds it after restart
-        self.mqtt_client.publish(discovery_topic, json.dumps(discovery_payload), qos=1, retain=True)
-        logger.info(f"Published MQTT Discovery to {discovery_topic}")
+        for entity in _HA_ENTITIES:
+            component = entity["component"]
+            object_id = entity["object_id"]
+
+            # Determine state topic
+            topic_key = entity.get("state_topic_key", "main")
+            state_topic = training_stats_topic if topic_key == "training_stats" else main_state_topic
+
+            # Build discovery payload
+            payload: Dict = {
+                "name": entity["name"],
+                "unique_id": f"watermeter_ai_{object_id}",
+                "state_topic": state_topic,
+                "value_template": "{{ value_json." + object_id + " }}",
+                "device": device_block,
+            }
+
+            # Optional fields
+            for key in ("device_class", "state_class", "unit_of_measurement",
+                        "icon", "entity_category", "options"):
+                if key in entity:
+                    payload[key] = entity[key]
+
+            # Binary sensor specifics
+            if component == "binary_sensor":
+                payload["payload_on"] = True
+                payload["payload_off"] = False
+
+            # Discovery topic: {prefix}/{component}/watermeter_ai/{object_id}/config
+            discovery_topic = f"{discovery_prefix}/{component}/watermeter_ai/{object_id}/config"
+            self.mqtt_client.publish(discovery_topic, json.dumps(payload), qos=1, retain=True)
+
+        logger.info(f"Published MQTT Discovery for {len(_HA_ENTITIES)} entities")
 
     # MQTT Callbacks
     def on_mqtt_connect(self, client, userdata, flags, rc):
@@ -1826,8 +2212,9 @@ class WatermeterService:
                 client.subscribe(conf_config["response_topic"], qos=2)
                 logger.info(f"Subscribed to {conf_config['response_topic']}")
 
-            # Publish discovery on connect
+            # Publish discovery on connect, then send initial training stats
             self.publish_discovery()
+            self.publish_training_stats()
         else:
             logger.error(f"MQTT connection failed with code {rc}")
 

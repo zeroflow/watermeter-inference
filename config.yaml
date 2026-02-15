@@ -95,13 +95,6 @@ homeassistant:
     manufacturer: "with Claude Code"
     model: "OpenVINO Inference"
 
-  sensor:
-    name: "Water Usage"
-    unit: "m³"
-    device_class: "water"
-    state_class: "total_increasing"
-    icon: "mdi:water"
-
 # Inference Settings
 inference:
   confidence_threshold: 0.8

@@ -369,6 +369,14 @@ class TrainingManager:
                     if model_id:
                         self._auto_benchmark_pending.append((job.config["model_type"], model_id))
 
+            # Update HA training stats (training may have consumed ground truth images)
+            try:
+                from . import watermeter_service
+                svc = watermeter_service.get_service()
+                svc.publish_training_stats()
+            except Exception:
+                pass  # Service might not be initialized; periodic loop will catch up
+
             # Start next queued job, or auto-benchmarks if queue is empty
             self._process_next_in_queue()
 

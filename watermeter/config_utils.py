@@ -269,16 +269,6 @@ CONFIG_SCHEMA = {
                         "model": {"type": "string"},
                     },
                 },
-                "sensor": {
-                    "type": "object",
-                    "properties": {
-                        "name": {"type": "string"},
-                        "unit": {"type": "string"},
-                        "device_class": {"type": "string"},
-                        "state_class": {"type": "string"},
-                        "icon": {"type": "string"},
-                    },
-                },
             },
         },
         "inference": {

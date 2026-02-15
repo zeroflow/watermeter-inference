@@ -167,6 +167,12 @@ async def submit_label(submission: LabelSubmission):
             next_image_path.unlink()
             logger.info(f"Deleted helper image: {next_image_path}")
 
+        # Update HA training stats after labeling
+        try:
+            service.publish_training_stats()
+        except Exception:
+            pass  # Non-critical — periodic loop will catch up
+
         return JSONResponse({"success": True, "message": f"Image labeled as {label_folder}", "label": label_folder})
 
     except Exception as e:
