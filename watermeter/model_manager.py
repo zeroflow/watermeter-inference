@@ -230,7 +230,7 @@ class ModelManager:
                 elif model_type == "arrows":
                     config['inference']['arrows_model'] = str(xml_file)
                 # Update classes and resolution from model metadata
-                if 'classes' in metadata:
+                if metadata.get('classes'):
                     config['inference'][f'{model_type}_classes'] = metadata['classes']
                     logger.info(f"Updated {model_type}_classes from metadata: {len(metadata['classes'])} classes")
                 if 'resolution' in metadata:

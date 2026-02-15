@@ -293,6 +293,9 @@ class TrainingManager:
             # For arrows, we may have step_size
             step_size = config.get('step_size', 1.0) if model_type == 'arrows' else None
 
+            # Training mode: "discrete" (classification) or "continuous" (regression)
+            training_mode = config.get('training_mode', 'discrete')
+
             # Calculate total configurations
             total_configs = len(seeds)
             job.update_progress(total_configs=total_configs)
@@ -325,8 +328,9 @@ class TrainingManager:
                 )
 
                 if result:
+                    metric_name = "within-half" if config.get('training_mode') == 'continuous' else "accuracy"
                     results.append(result)
-                    job.add_log(f"Completed training for seed {seed}: {result['best_val_acc']:.2f}% accuracy")
+                    job.add_log(f"Completed training for seed {seed}: {result['best_val_acc']:.2f}% {metric_name}")
                 else:
                     job.add_log(f"Training failed for seed {seed}")
 
@@ -450,16 +454,20 @@ class TrainingManager:
                 model_filename = f'model_digits_{architecture}_r{resolution}_s{seed}'
             elif model_type == 'arrows':
                 ground_truth_dir = Path("/training/arrows/ground_truth")
-                dataset_dir = Path("/training/arrows/dataset_temp")
 
-                # Calculate num_classes from step_size
-                step = step_size or 1.0
-                num_classes = int(10 / step)
-                model_filename = f'model_arrows_{architecture}_c{num_classes}_r{resolution}_s{seed}'
-
-                # Create subsampled dataset for arrows
-                job.add_log(f"Creating subsampled dataset with step={step} ({num_classes} classes)")
-                self._create_arrow_dataset(ground_truth_dir, dataset_dir, step, job)
+                if training_mode == 'continuous':
+                    # Regression mode: use all ground truth classes directly
+                    dataset_dir = ground_truth_dir  # No temp dataset needed
+                    model_filename = f'model_arrows_{architecture}_continuous_r{resolution}_s{seed}'
+                    job.add_log("Continuous (regression) mode — using all ground truth classes")
+                else:
+                    # Discrete (classification) mode: subsample to step_size
+                    dataset_dir = Path("/training/arrows/dataset_temp")
+                    step = step_size or 1.0
+                    num_classes = int(10 / step)
+                    model_filename = f'model_arrows_{architecture}_c{num_classes}_r{resolution}_s{seed}'
+                    job.add_log(f"Discrete (classification) mode — step={step} ({num_classes} classes)")
+                    self._create_arrow_dataset(ground_truth_dir, dataset_dir, step, job)
             else:
                 raise ValueError(f"Unknown model type: {model_type}")
 
@@ -472,17 +480,46 @@ class TrainingManager:
             # Create transforms
             train_transform, val_transform = create_transforms(resolution)
 
-            # Load dataset and create stratified split
-            job.add_log("Loading dataset and creating train/val split...")
-            dataset = ImageFolder(str(dataset_dir))
-            train_idx, val_idx = stratified_split(dataset)
+            # Load dataset and create stratified split — branch on regression vs classification
+            if model_type == 'arrows' and training_mode == 'continuous':
+                # Regression dataset
+                from .training_core import RegressionArrowDataset, stratified_split_regression
 
-            # Create datasets with appropriate transforms
-            train_dataset = ImageFolder(str(dataset_dir), transform=train_transform)
-            train_ds = Subset(train_dataset, train_idx)
+                job.add_log("Loading regression dataset...")
+                train_dataset = RegressionArrowDataset(dataset_dir, transform=train_transform)
+                val_dataset = RegressionArrowDataset(dataset_dir, transform=val_transform)
 
-            val_dataset = ImageFolder(str(dataset_dir), transform=val_transform)
-            val_ds = Subset(val_dataset, val_idx)
+                train_idx, val_idx = stratified_split_regression(train_dataset)
+
+                train_ds = Subset(train_dataset, train_idx)
+                val_ds = Subset(val_dataset, val_idx)
+
+                num_classes_actual = 1  # regression
+                class_names = None
+
+                job.add_log(f"Train samples: {len(train_ds)}, Val samples: {len(val_ds)}")
+                job.add_log(f"Regression target range: 0.0 - 1.0 (dial position / 10)")
+            else:
+                # Classification dataset (existing code for both digits and discrete arrows)
+                job.add_log("Loading dataset and creating train/val split...")
+                dataset = ImageFolder(str(dataset_dir))
+                train_idx, val_idx = stratified_split(dataset)
+
+                train_dataset = ImageFolder(str(dataset_dir), transform=train_transform)
+                train_ds = Subset(train_dataset, train_idx)
+
+                val_dataset = ImageFolder(str(dataset_dir), transform=val_transform)
+                val_ds = Subset(val_dataset, val_idx)
+
+                num_classes_actual = len(dataset.classes)
+                class_names = dataset.classes
+
+                job.add_log(f"Train samples: {len(train_ds)}, Val samples: {len(val_ds)}")
+                job.add_log(f"Classes: {num_classes_actual}")
+
+                # Compute class weights (classification only)
+                class_weights_tensor = compute_class_weights(dataset, train_idx, device)
+                job.add_log("Class weights computed")
 
             # DataLoaders
             train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
@@ -490,17 +527,14 @@ class TrainingManager:
             val_loader = DataLoader(val_ds, batch_size=batch_size,
                                    num_workers=2, worker_init_fn=worker_init_fn)
 
-            job.add_log(f"Train samples: {len(train_ds)}, Val samples: {len(val_ds)}")
-            job.add_log(f"Classes: {len(dataset.classes)}")
-
-            # Compute class weights
-            num_classes_actual = len(dataset.classes)
-            class_weights_tensor = compute_class_weights(dataset, train_idx, device)
-            job.add_log(f"Class weights computed")
-
             # Create model
-            job.add_log(f"Creating model: {architecture}")
-            model = timm.create_model(architecture, pretrained=True, num_classes=num_classes_actual)
+            if model_type == 'arrows' and training_mode == 'continuous':
+                model = timm.create_model(architecture, pretrained=True, num_classes=1)
+                job.add_log(f"Creating regression model: {architecture} (1 output)")
+            else:
+                model = timm.create_model(architecture, pretrained=True, num_classes=num_classes_actual)
+                job.add_log(f"Creating classification model: {architecture} ({num_classes_actual} classes)")
+
             model = model.to(device)
 
             num_params = sum(p.numel() for p in model.parameters())
@@ -508,7 +542,11 @@ class TrainingManager:
 
             # Optimizer and loss
             optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-            criterion = torch.nn.CrossEntropyLoss(weight=class_weights_tensor)
+
+            if model_type == 'arrows' and training_mode == 'continuous':
+                criterion = torch.nn.MSELoss()
+            else:
+                criterion = torch.nn.CrossEntropyLoss(weight=class_weights_tensor)
 
             # Training loop
             job.add_log(f"Starting training for {epochs} epochs...")
@@ -516,6 +554,8 @@ class TrainingManager:
             val_accs = []
             best_val_acc = 0
             best_val_loss = float('inf')
+            best_val_mae = float('inf')
+            best_val_rmse = float('inf')
             best_epoch = 0
             best_model_state = None
 
@@ -535,10 +575,18 @@ class TrainingManager:
                     if self._training_cancel_flag.is_set():
                         return None
 
-                    imgs, labels = imgs.to(device), labels.to(device)
+                    imgs = imgs.to(device)
                     optimizer.zero_grad()
-                    outputs = model(imgs)
-                    loss = criterion(outputs, labels)
+
+                    if model_type == 'arrows' and training_mode == 'continuous':
+                        labels = labels.to(device)  # float32 targets
+                        outputs = model(imgs).squeeze(-1)  # (batch,) — remove trailing dim
+                        loss = criterion(torch.sigmoid(outputs), labels)
+                    else:
+                        labels = labels.to(device)  # int64 class indices
+                        outputs = model(imgs)
+                        loss = criterion(outputs, labels)
+
                     loss.backward()
                     optimizer.step()
                     epoch_loss += loss.item()
@@ -548,44 +596,96 @@ class TrainingManager:
 
                 # Validation phase
                 model.eval()
-                correct = 0
-                total = 0
                 with torch.no_grad():
-                    for imgs, labels in val_loader:
-                        imgs, labels = imgs.to(device), labels.to(device)
-                        outputs = model(imgs)
-                        _, predicted = torch.max(outputs, 1)
-                        total += labels.size(0)
-                        correct += (predicted == labels).sum().item()
+                    if model_type == 'arrows' and training_mode == 'continuous':
+                        # Regression validation: compute MAE, RMSE, and "within-half" accuracy
+                        all_preds = []
+                        all_targets = []
+                        for imgs, labels in val_loader:
+                            imgs = imgs.to(device)
+                            labels = labels.to(device)
+                            outputs = model(imgs).squeeze(-1)
+                            preds = torch.sigmoid(outputs)
+                            all_preds.append(preds)
+                            all_targets.append(labels)
 
-                val_acc = 100 * correct / total
-                val_accs.append(val_acc)
+                        all_preds = torch.cat(all_preds)
+                        all_targets = torch.cat(all_targets)
 
-                if val_acc > best_val_acc:
-                    best_val_acc = val_acc
-                    best_val_loss = avg_loss
-                    best_epoch = epoch
-                    best_model_state = model.state_dict().copy()
+                        mae = (all_preds - all_targets).abs().mean().item()
+                        rmse = ((all_preds - all_targets) ** 2).mean().sqrt().item()
+                        # "within-half": |pred - target| < 0.05 (= 0.5 dial position out of 10)
+                        within_half = ((all_preds - all_targets).abs() < 0.05).float().mean().item() * 100
+
+                        val_metric = within_half
+                    else:
+                        # Classification validation: compute accuracy
+                        correct = 0
+                        total = 0
+                        for imgs, labels in val_loader:
+                            imgs, labels = imgs.to(device), labels.to(device)
+                            outputs = model(imgs)
+                            _, predicted = torch.max(outputs, 1)
+                            total += labels.size(0)
+                            correct += (predicted == labels).sum().item()
+
+                        val_acc = 100 * correct / total
+                        val_metric = val_acc
+
+                # Best model tracking
+                if model_type == 'arrows' and training_mode == 'continuous':
+                    val_accs.append(within_half)  # Reuse val_accs list for within-half %
+                    if within_half > best_val_acc:
+                        best_val_acc = within_half
+                        best_val_loss = avg_loss
+                        best_val_mae = mae
+                        best_val_rmse = rmse
+                        best_epoch = epoch
+                        best_model_state = model.state_dict().copy()
+                else:
+                    val_accs.append(val_acc)
+                    if val_acc > best_val_acc:
+                        best_val_acc = val_acc
+                        best_val_loss = avg_loss
+                        best_epoch = epoch
+                        best_model_state = model.state_dict().copy()
 
                 epoch_time = time.time() - epoch_start
 
                 # Update progress
-                job.update_progress(
-                    current_epoch=epoch + 1,
-                    total_epochs=epochs,
-                    train_loss=round(avg_loss, 4),
-                    val_accuracy=round(val_acc, 2),
-                    epoch_duration=round(epoch_time, 1),
-                    message=f"Epoch {epoch+1}/{epochs}: Loss={avg_loss:.4f}, Val Acc={val_acc:.2f}%"
-                )
-                job.add_log(f"Epoch {epoch+1}/{epochs} - Loss: {avg_loss:.4f} - Val Acc: {val_acc:.2f}% - Time: {epoch_time:.1f}s")
+                if model_type == 'arrows' and training_mode == 'continuous':
+                    job.update_progress(
+                        current_epoch=epoch + 1,
+                        total_epochs=epochs,
+                        train_loss=round(avg_loss, 4),
+                        val_accuracy=round(within_half, 2),  # Repurpose val_accuracy for within-half %
+                        epoch_duration=round(epoch_time, 1),
+                        message=f"Epoch {epoch+1}/{epochs}: Loss={avg_loss:.4f}, MAE={mae:.4f}, Within-half={within_half:.1f}%"
+                    )
+                    job.add_log(
+                        f"Epoch {epoch+1}/{epochs} - Loss: {avg_loss:.4f} - MAE: {mae:.4f} "
+                        f"- RMSE: {rmse:.4f} - Within-half: {within_half:.1f}% - Time: {epoch_time:.1f}s"
+                    )
+                else:
+                    job.update_progress(
+                        current_epoch=epoch + 1,
+                        total_epochs=epochs,
+                        train_loss=round(avg_loss, 4),
+                        val_accuracy=round(val_acc, 2),
+                        epoch_duration=round(epoch_time, 1),
+                        message=f"Epoch {epoch+1}/{epochs}: Loss={avg_loss:.4f}, Val Acc={val_acc:.2f}%"
+                    )
+                    job.add_log(f"Epoch {epoch+1}/{epochs} - Loss: {avg_loss:.4f} - Val Acc: {val_acc:.2f}% - Time: {epoch_time:.1f}s")
 
             total_time = time.time() - total_start
             job.add_log(f"Training completed in {total_time:.1f}s ({total_time/60:.1f}min)")
 
             # Load best model
             model.load_state_dict(best_model_state)
-            job.add_log(f"Best model from epoch {best_epoch+1} with {best_val_acc:.2f}% accuracy")
+            if model_type == 'arrows' and training_mode == 'continuous':
+                job.add_log(f"Best model from epoch {best_epoch+1} with {best_val_acc:.1f}% within-half accuracy")
+            else:
+                job.add_log(f"Best model from epoch {best_epoch+1} with {best_val_acc:.2f}% accuracy")
 
             # Export to ONNX and OpenVINO
             job.update_progress(message="Exporting model...")
@@ -604,20 +704,30 @@ class TrainingManager:
                 'model_type': model_type,
                 'architecture': architecture,
                 'resolution': resolution,
-                'num_classes': num_classes_actual,
                 'seed': seed,
                 'epochs': epochs,
                 'batch_size': batch_size,
-                'best_val_acc': best_val_acc,
                 'best_val_loss': best_val_loss,
                 'best_epoch': best_epoch + 1,
                 'training_time': total_time,
                 'num_params': num_params,
-                'classes': dataset.classes,
                 'created_at': datetime.now().isoformat()
             }
-            if model_type == 'arrows' and step_size:
-                metadata['step_size'] = step_size
+
+            if model_type == 'arrows' and training_mode == 'continuous':
+                metadata['training_mode'] = 'continuous'
+                metadata['num_classes'] = 1
+                metadata['best_val_mae'] = best_val_mae
+                metadata['best_val_rmse'] = best_val_rmse
+                metadata['best_within_half'] = best_val_acc  # best_val_acc holds within-half for regression
+                metadata['classes'] = None
+            else:
+                metadata['training_mode'] = 'discrete'
+                metadata['num_classes'] = num_classes_actual
+                metadata['best_val_acc'] = best_val_acc
+                metadata['classes'] = class_names
+                if model_type == 'arrows' and step_size:
+                    metadata['step_size'] = step_size
 
             import json
             metadata_path = output_dir / 'metadata.json'
@@ -639,9 +749,13 @@ class TrainingManager:
                 ax1.grid(True)
 
                 ax2.plot(val_accs)
-                ax2.set_title('Validation Accuracy')
+                if model_type == 'arrows' and training_mode == 'continuous':
+                    ax2.set_title('Validation Within-Half Accuracy')
+                    ax2.set_ylabel('Within-Half (%)')
+                else:
+                    ax2.set_title('Validation Accuracy')
+                    ax2.set_ylabel('Accuracy (%)')
                 ax2.set_xlabel('Epoch')
-                ax2.set_ylabel('Accuracy (%)')
                 ax2.grid(True)
 
                 plt.tight_layout()
@@ -664,17 +778,25 @@ class TrainingManager:
             self.model_manager.refresh()
             job.add_log("Model manager refreshed")
 
-            return {
+            result = {
                 'model_name': architecture,
                 'model_id': model_filename,
                 'seed': seed,
                 'resolution': resolution,
-                'num_classes': num_classes_actual,
-                'best_val_acc': best_val_acc,
-                'best_val_loss': best_val_loss,
                 'training_time': total_time,
                 'output_dir': str(output_dir)
             }
+
+            if model_type == 'arrows' and training_mode == 'continuous':
+                result['best_val_acc'] = best_val_acc  # within-half %
+                result['best_val_mae'] = best_val_mae
+                result['num_classes'] = 1
+            else:
+                result['best_val_acc'] = best_val_acc
+                result['best_val_loss'] = best_val_loss
+                result['num_classes'] = num_classes_actual
+
+            return result
 
         except Exception as e:
             job.add_log(f"Error in training execution: {str(e)}")
@@ -843,15 +965,29 @@ class TrainingManager:
             try:
                 metadata = self.model_manager.get_model(job.model_type, job.model_id)
                 if metadata:
-                    metadata['benchmark'] = {
-                        'accuracy': result['accuracy'],
-                        'mean_confidence': result['mean_confidence'],
-                        'low_confidence_pct': result['low_confidence_pct'],
-                        'inference_time_ms': result['inference_time_ms'],
-                        'total_images': result['total_images'],
-                        'correct_predictions': result['correct_predictions'],
-                        'date': datetime.now().isoformat(),
-                    }
+                    training_mode = metadata.get('training_mode', 'discrete')
+                    if training_mode == 'continuous':
+                        metadata['benchmark'] = {
+                            'training_mode': 'continuous',
+                            'mae': result['mae'],
+                            'rmse': result['rmse'],
+                            'within_half_pct': result['within_half_pct'],
+                            'within_one_pct': result['within_one_pct'],
+                            'mean_confidence': result['mean_confidence'],
+                            'inference_time_ms': result['inference_time_ms'],
+                            'total_images': result['total_images'],
+                            'date': datetime.now().isoformat(),
+                        }
+                    else:
+                        metadata['benchmark'] = {
+                            'accuracy': result['accuracy'],
+                            'mean_confidence': result['mean_confidence'],
+                            'low_confidence_pct': result['low_confidence_pct'],
+                            'inference_time_ms': result['inference_time_ms'],
+                            'total_images': result['total_images'],
+                            'correct_predictions': result['correct_predictions'],
+                            'date': datetime.now().isoformat(),
+                        }
                     self.model_manager.save_metadata(job.model_type, job.model_id, metadata)
                     job.add_log("Benchmark result saved to model metadata")
             except Exception as e:
@@ -887,12 +1023,13 @@ class TrainingManager:
         Execute the actual benchmark process.
 
         Uses logic from benchmark_digits.py and benchmark_arrows.py.
+        Supports both classification (discrete) and regression (continuous) modes.
         """
         import openvino as ov
         import numpy as np
         from collections import defaultdict
 
-        from .training_core import preprocess_image, softmax_predict
+        from .training_core import preprocess_image, softmax_predict, regression_predict
 
         model_type = job.model_type
 
@@ -900,15 +1037,24 @@ class TrainingManager:
         if model_type == 'digits':
             gt_path = Path("/training/digits/ground_truth")
             classes = [str(i) for i in range(10)] + ['NAN']
+            training_mode = 'discrete'
         else:  # arrows
             gt_path = Path("/training/arrows/ground_truth")
-            # Determine num_classes from model metadata
             metadata = self.model_manager.get_model_metadata(model_type, job.model_id)
-            num_classes = metadata.get('num_classes', 10)
-            classes = self._generate_arrow_classes(num_classes)
+            training_mode = metadata.get('training_mode', 'discrete')
+
+            if training_mode == 'continuous':
+                # No class list needed for regression benchmark
+                classes = None
+                job.add_log("Benchmark mode: regression (continuous)")
+            else:
+                num_classes = metadata.get('num_classes', 10)
+                classes = self._generate_arrow_classes(num_classes)
+                job.add_log(f"Benchmark mode: classification ({len(classes)} classes)")
 
         job.add_log(f"Ground truth path: {gt_path}")
-        job.add_log(f"Number of classes: {len(classes)}")
+        if classes is not None:
+            job.add_log(f"Number of classes: {len(classes)}")
 
         # Check if ground truth exists
         if not gt_path.exists():
@@ -956,12 +1102,6 @@ class TrainingManager:
                 message=f"Processing class {ground_truth} ({class_idx + 1}/{total_classes})"
             )
 
-            # Determine expected label for arrows
-            if model_type == 'arrows':
-                expected_label = self._round_to_arrow_class(float(ground_truth), len(classes))
-            else:
-                expected_label = ground_truth
-
             for img_path in image_paths:
                 try:
                     img = preprocess_image(str(img_path), resolution)
@@ -973,50 +1113,119 @@ class TrainingManager:
                 result = compiled([img])[compiled.output(0)][0]
                 inference_time = time.perf_counter() - start_time
 
-                pred_label, confidence = softmax_predict(result, classes)
+                if training_mode == 'continuous':
+                    pred_value, confidence = regression_predict(result)
+                    expected_value = float(ground_truth)
 
-                all_predictions.append((pred_label, expected_label))
-                all_confidences.append(confidence)
-                all_times.append(inference_time)
+                    all_predictions.append((pred_value, expected_value))
+                    all_confidences.append(confidence)
+                    all_times.append(inference_time)
 
-                if pred_label == expected_label:
-                    correct += 1
+                    # "Correct" if within half a dial position
+                    if abs(pred_value - expected_value) < 0.5:
+                        correct += 1
+                else:
+                    # Determine expected label for arrows
+                    if model_type == 'arrows':
+                        expected_label = self._round_to_arrow_class(float(ground_truth), len(classes))
+                    else:
+                        expected_label = ground_truth
+
+                    pred_label, confidence = softmax_predict(result, classes)
+
+                    all_predictions.append((pred_label, expected_label))
+                    all_confidences.append(confidence)
+                    all_times.append(inference_time)
+
+                    if pred_label == expected_label:
+                        correct += 1
 
                 processed += 1
                 job.update_progress(processed_images=processed)
 
         # Calculate results
-        accuracy = correct / processed if processed > 0 else 0
-        mean_confidence = np.mean(all_confidences) if all_confidences else 0
-        low_conf_count = sum(1 for c in all_confidences if c < 0.8)
-        low_conf_pct = low_conf_count / len(all_confidences) * 100 if all_confidences else 0
-        mean_inference_time = np.mean(all_times) * 1000 if all_times else 0  # in ms
+        if training_mode == 'continuous':
+            # Regression metrics
+            pred_values = [p for p, _ in all_predictions]
+            true_values = [t for _, t in all_predictions]
+            errors = [abs(p - t) for p, t in all_predictions]
 
-        # Per-class accuracy
-        class_accuracy = defaultdict(lambda: {'correct': 0, 'total': 0})
-        for pred, expected in all_predictions:
-            class_accuracy[expected]['total'] += 1
-            if pred == expected:
-                class_accuracy[expected]['correct'] += 1
+            mae = np.mean(errors) if errors else 0
+            rmse = np.sqrt(np.mean([e**2 for e in errors])) if errors else 0
+            within_half = sum(1 for e in errors if e < 0.5) / len(errors) * 100 if errors else 0
+            within_one = sum(1 for e in errors if e < 1.0) / len(errors) * 100 if errors else 0
 
-        per_class = {}
-        for cls, data in class_accuracy.items():
-            per_class[cls] = {
-                'accuracy': data['correct'] / data['total'] if data['total'] > 0 else 0,
-                'count': data['total']
+            mean_confidence = np.mean(all_confidences) if all_confidences else 0
+            mean_inference_time = np.mean(all_times) * 1000 if all_times else 0
+
+            # Per-class MAE (using ground truth folder as key)
+            class_errors = defaultdict(list)
+            for (pred_val, true_val) in all_predictions:
+                key = f"{true_val:.1f}"
+                class_errors[key].append(abs(pred_val - true_val))
+
+            per_class = {}
+            for cls, errs in class_errors.items():
+                per_class[cls] = {
+                    'mae': round(float(np.mean(errs)), 4),
+                    'count': len(errs),
+                    'within_half': round(sum(1 for e in errs if e < 0.5) / len(errs) * 100, 1)
+                }
+
+            result = {
+                'training_mode': 'continuous',
+                'mae': round(float(mae), 4),
+                'rmse': round(float(rmse), 4),
+                'within_half_pct': round(within_half, 2),
+                'within_one_pct': round(within_one, 2),
+                'accuracy': round(within_half, 2),  # Alias for UI compatibility
+                'mean_confidence': round(float(mean_confidence) * 100, 2),
+                'low_confidence_pct': round(sum(1 for c in all_confidences if c < 0.8) / len(all_confidences) * 100, 2) if all_confidences else 0,
+                'inference_time_ms': round(float(mean_inference_time), 2),
+                'total_images': processed,
+                'correct_predictions': correct,
+                'per_class_accuracy': per_class  # Actually per-class MAE for regression
             }
 
-        result = {
-            'accuracy': round(accuracy * 100, 2),
-            'mean_confidence': round(mean_confidence * 100, 2),
-            'low_confidence_pct': round(low_conf_pct, 2),
-            'inference_time_ms': round(mean_inference_time, 2),
-            'total_images': processed,
-            'correct_predictions': correct,
-            'per_class_accuracy': per_class
-        }
+            job.add_log(
+                f"Benchmark complete: MAE={mae:.4f}, RMSE={rmse:.4f}, "
+                f"Within-half={within_half:.1f}%, Within-one={within_one:.1f}%, "
+                f"Mean confidence={mean_confidence*100:.1f}%"
+            )
+        else:
+            # Classification metrics
+            accuracy = correct / processed if processed > 0 else 0
+            mean_confidence = np.mean(all_confidences) if all_confidences else 0
+            low_conf_count = sum(1 for c in all_confidences if c < 0.8)
+            low_conf_pct = low_conf_count / len(all_confidences) * 100 if all_confidences else 0
+            mean_inference_time = np.mean(all_times) * 1000 if all_times else 0  # in ms
 
-        job.add_log(f"Benchmark complete: {accuracy*100:.1f}% accuracy, {mean_confidence*100:.1f}% mean confidence")
+            # Per-class accuracy
+            class_accuracy = defaultdict(lambda: {'correct': 0, 'total': 0})
+            for pred, expected in all_predictions:
+                class_accuracy[expected]['total'] += 1
+                if pred == expected:
+                    class_accuracy[expected]['correct'] += 1
+
+            per_class = {}
+            for cls, data in class_accuracy.items():
+                per_class[cls] = {
+                    'accuracy': data['correct'] / data['total'] if data['total'] > 0 else 0,
+                    'count': data['total']
+                }
+
+            result = {
+                'accuracy': round(accuracy * 100, 2),
+                'mean_confidence': round(mean_confidence * 100, 2),
+                'low_confidence_pct': round(low_conf_pct, 2),
+                'inference_time_ms': round(mean_inference_time, 2),
+                'total_images': processed,
+                'correct_predictions': correct,
+                'per_class_accuracy': per_class
+            }
+
+            job.add_log(f"Benchmark complete: {accuracy*100:.1f}% accuracy, {mean_confidence*100:.1f}% mean confidence")
+
         return result
 
     def _generate_arrow_classes(self, num_classes: int) -> List[str]:

@@ -5,7 +5,7 @@ from typing import List
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from ..training_manager import get_training_manager
 
@@ -23,8 +23,16 @@ class TrainingConfig(BaseModel):
     epochs: int = 20
     batch_size: int = 16
     step_size: float = 1.0  # For arrows only
+    training_mode: str = "discrete"  # "discrete" or "continuous"
     notes: str = ""
     auto_benchmark: bool = True
+
+    @field_validator('training_mode')
+    @classmethod
+    def validate_training_mode(cls, v):
+        if v not in ('discrete', 'continuous'):
+            raise ValueError("training_mode must be 'discrete' or 'continuous'")
+        return v
 
 
 @router.get("/api/training/status")

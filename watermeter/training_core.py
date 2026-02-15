@@ -178,6 +178,96 @@ def preprocess_image(image_path: str, resolution: int) -> np.ndarray:
     return img.transpose(2, 0, 1)[np.newaxis, ...].astype(np.float32)
 
 
+class RegressionArrowDataset(torch.utils.data.Dataset):
+    """
+    Dataset for arrow regression: maps folder name (e.g. "2.5") to normalized float target.
+
+    Args:
+        root_dir: Path to ground_truth directory containing class folders (0.0, 0.1, ..., 9.9)
+        transform: torchvision transform to apply to images
+    """
+
+    def __init__(self, root_dir: Path, transform=None):
+        self.transform = transform
+        self.samples = []  # List of (image_path, target_float)
+
+        for class_dir in sorted(root_dir.iterdir()):
+            if not class_dir.is_dir():
+                continue
+            try:
+                value = float(class_dir.name)
+            except ValueError:
+                continue
+
+            target = value / 10.0  # Normalize to [0.0, 1.0)
+
+            for img_path in sorted(class_dir.glob('*.jpg')):
+                self.samples.append((str(img_path), target))
+
+        if not self.samples:
+            raise ValueError(f"No images found in {root_dir}")
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        img_path, target = self.samples[idx]
+        from PIL import Image
+        img = Image.open(img_path).convert('RGB')
+        if self.transform:
+            img = self.transform(img)
+        return img, torch.tensor(target, dtype=torch.float32)
+
+
+def stratified_split_regression(dataset, train_ratio: float = 0.8):
+    """
+    Stratified train/val split for RegressionArrowDataset.
+
+    Groups samples by their target value (which corresponds to the folder)
+    and splits each group proportionally.
+
+    Args:
+        dataset: RegressionArrowDataset instance
+        train_ratio: Fraction for training
+
+    Returns:
+        (train_indices, val_indices)
+    """
+    from collections import defaultdict
+
+    indices_by_target = defaultdict(list)
+    for idx, (_, target) in enumerate(dataset.samples):
+        # Use string key to avoid float hashing issues
+        key = f"{target:.4f}"
+        indices_by_target[key].append(idx)
+
+    train_idx = []
+    val_idx = []
+    for key, indices in indices_by_target.items():
+        random.shuffle(indices)
+        split_point = max(1, int(train_ratio * len(indices)))
+        train_idx.extend(indices[:split_point])
+        val_idx.extend(indices[split_point:])
+
+    return train_idx, val_idx
+
+
+def regression_predict(raw_output: np.ndarray) -> Tuple[float, float]:
+    """
+    Apply sigmoid and scale for regression model output.
+
+    Args:
+        raw_output: Raw model output (1D array with single element).
+
+    Returns:
+        (dial_position, confidence) where dial_position is 0.0-9.9
+    """
+    sigmoid_val = 1.0 / (1.0 + np.exp(-float(raw_output[0])))
+    dial_position = max(0.0, min(9.9, sigmoid_val * 10.0))
+    confidence = abs(sigmoid_val - 0.5) * 2.0
+    return dial_position, confidence
+
+
 def softmax_predict(logits: np.ndarray, classes: List[str]) -> Tuple[str, float]:
     """Apply softmax to logits and return (predicted_class, confidence).
 

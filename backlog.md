@@ -51,7 +51,7 @@ Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
   - **Cave**: parallax error skews images, especially on outer dial positions — may need tolerance
   - **Depends on**: BL-04 (rule engine) provides the framework for cross-position correction
   - **Deferred**: multi-model ensemble (running 1.0 + 0.5 + 0.1 step models) — too expensive for now
-- **BL-08** `planned` — **Arrow regression mode**: train arrows as regression (single 0.0–1.0 output) instead of classification
+- **BL-08** `done` — **Arrow regression mode**: train arrows as regression (single 0.0–1.0 output) instead of classification
   - **Motivation**: reference project (AI-on-the-edge) uses regression; avoids class boundary issues; continuous output
   - **Implementation**: add "continuous" mode alongside current "discrete" mode in training config
     - Training: MSE/Huber loss, single output neuron, sigmoid → 0.0–1.0; ground truth normalized by dividing folder label by 10

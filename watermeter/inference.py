@@ -63,6 +63,103 @@ class Classifier:
         ]
 
 
+class Regressor:
+    """
+    Regression-based inference for continuous arrow models.
+
+    Outputs a dial position (0.0-9.9) instead of a class label.
+    """
+
+    def __init__(self, model_path, resolution, label_config_tag, device='GPU'):
+        core = ov.Core()
+        model = core.read_model(model_path)
+        self.compiled = core.compile_model(model, device)
+        self.resolution = resolution
+        self.label_config_tag = label_config_tag
+        self.model_path = model_path
+
+    def preprocess(self, image_path):
+        """Same preprocessing as Classifier."""
+        img = cv2.imread(str(image_path))
+        if img is None:
+            raise ValueError(f"Failed to read image: {image_path}")
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img = cv2.resize(img, (self.resolution, self.resolution))
+        img = img.astype(np.float32) / 255.0
+        img = (img - [0.485, 0.456, 0.406]) / [0.229, 0.224, 0.225]
+        return img.transpose(2, 0, 1)[np.newaxis, ...]
+
+    def predict(self, image_path):
+        """
+        Run regression inference.
+
+        Returns:
+            dict with 'class' (string like "3.7") and 'confidence' (float 0.0-1.0)
+        """
+        img = self.preprocess(image_path)
+        raw_output = self.compiled([img])[self.compiled.output(0)][0]
+
+        # Apply sigmoid to get [0, 1], then scale to [0, 10)
+        sigmoid_val = 1.0 / (1.0 + np.exp(-float(raw_output[0])))
+        dial_position = sigmoid_val * 10.0
+
+        # Clamp to valid range
+        dial_position = max(0.0, min(9.9, dial_position))
+
+        # Format as class string (same format as ground truth folder names)
+        class_str = f"{dial_position:.1f}"
+
+        # Confidence heuristic: how certain the model is.
+        # Use distance from 0.5 sigmoid midpoint as confidence proxy.
+        # Values near sigmoid midpoint (0.5) are uncertain; values near 0 or 1 are confident.
+        # Map: |sigmoid - 0.5| * 2 gives 0.0 (uncertain) to 1.0 (confident).
+        confidence = abs(sigmoid_val - 0.5) * 2.0
+
+        return {
+            'class': class_str,
+            'confidence': float(confidence)
+        }
+
+    def predict_detailed(self, image_path, top_k=3):
+        """
+        For regression, return a single prediction (no top-K concept).
+
+        Returns list with one entry for API compatibility with Classifier.predict_detailed().
+        """
+        result = self.predict(image_path)
+        return [result]
+
+
+def _detect_training_mode(model_path: str) -> str:
+    """
+    Detect whether a model is discrete (classification) or continuous (regression).
+
+    Checks metadata.json in the model directory first, falls back to filename pattern.
+
+    Returns:
+        "discrete" or "continuous"
+    """
+    import json as _json
+
+    model_dir = Path(model_path).parent
+    metadata_file = model_dir / "metadata.json"
+
+    if metadata_file.exists():
+        try:
+            with open(metadata_file, 'r') as f:
+                metadata = _json.load(f)
+            return metadata.get('training_mode', 'discrete')
+        except Exception:
+            pass
+
+    # Fallback: check filename pattern
+    filename = Path(model_path).stem
+    if '_continuous_' in filename:
+        return 'continuous'
+
+    return 'discrete'
+
+
 class InferenceService:
     """Thread-safe inference service with hot-reload support."""
 
@@ -77,21 +174,13 @@ class InferenceService:
         with self._lock:
             inference_config = config['inference']
 
-            # Validate models
+            # --- Digits (always classification) ---
             validate_model_config(
                 inference_config['digits_model'],
                 'digits',
                 inference_config['digits_classes'],
                 inference_config['digits_resolution']
             )
-            validate_model_config(
-                inference_config['arrows_model'],
-                'arrows',
-                inference_config['arrows_classes'],
-                inference_config['arrows_resolution']
-            )
-
-            # Create classifiers
             self._digits_classifier = Classifier(
                 inference_config['digits_model'],
                 inference_config['digits_classes'],
@@ -100,13 +189,33 @@ class InferenceService:
                 device=inference_config.get('device', 'GPU')
             )
 
-            self._arrows_classifier = Classifier(
-                inference_config['arrows_model'],
-                inference_config['arrows_classes'],
-                inference_config['arrows_resolution'],
-                'arrow_value',
-                device=inference_config.get('device', 'GPU')
-            )
+            # --- Arrows (classification or regression) ---
+            arrows_mode = _detect_training_mode(inference_config['arrows_model'])
+
+            if arrows_mode == 'continuous':
+                # Regression model — no class list validation needed
+                self._arrows_classifier = Regressor(
+                    inference_config['arrows_model'],
+                    inference_config['arrows_resolution'],
+                    'arrow_value',
+                    device=inference_config.get('device', 'GPU')
+                )
+                logger.info("Arrows model initialized in REGRESSION mode")
+            else:
+                validate_model_config(
+                    inference_config['arrows_model'],
+                    'arrows',
+                    inference_config['arrows_classes'],
+                    inference_config['arrows_resolution']
+                )
+                self._arrows_classifier = Classifier(
+                    inference_config['arrows_model'],
+                    inference_config['arrows_classes'],
+                    inference_config['arrows_resolution'],
+                    'arrow_value',
+                    device=inference_config.get('device', 'GPU')
+                )
+                logger.info("Arrows model initialized in CLASSIFICATION mode")
 
             logger.info("Inference service initialized")
 
@@ -122,21 +231,13 @@ class InferenceService:
 
                 inference_config = config['inference']
 
-                # Validate new models
+                # --- Digits (always classification) ---
                 validate_model_config(
                     inference_config['digits_model'],
                     'digits',
                     inference_config['digits_classes'],
                     inference_config['digits_resolution']
                 )
-                validate_model_config(
-                    inference_config['arrows_model'],
-                    'arrows',
-                    inference_config['arrows_classes'],
-                    inference_config['arrows_resolution']
-                )
-
-                # Create new classifiers
                 new_digits = Classifier(
                     inference_config['digits_model'],
                     inference_config['digits_classes'],
@@ -145,13 +246,32 @@ class InferenceService:
                     device=inference_config.get('device', 'GPU')
                 )
 
-                new_arrows = Classifier(
-                    inference_config['arrows_model'],
-                    inference_config['arrows_classes'],
-                    inference_config['arrows_resolution'],
-                    'arrow_value',
-                    device=inference_config.get('device', 'GPU')
-                )
+                # --- Arrows (classification or regression) ---
+                arrows_mode = _detect_training_mode(inference_config['arrows_model'])
+
+                if arrows_mode == 'continuous':
+                    new_arrows = Regressor(
+                        inference_config['arrows_model'],
+                        inference_config['arrows_resolution'],
+                        'arrow_value',
+                        device=inference_config.get('device', 'GPU')
+                    )
+                    logger.info("Arrows model reloaded in REGRESSION mode")
+                else:
+                    validate_model_config(
+                        inference_config['arrows_model'],
+                        'arrows',
+                        inference_config['arrows_classes'],
+                        inference_config['arrows_resolution']
+                    )
+                    new_arrows = Classifier(
+                        inference_config['arrows_model'],
+                        inference_config['arrows_classes'],
+                        inference_config['arrows_resolution'],
+                        'arrow_value',
+                        device=inference_config.get('device', 'GPU')
+                    )
+                    logger.info("Arrows model reloaded in CLASSIFICATION mode")
 
                 # Atomic swap
                 self._digits_classifier = new_digits
@@ -233,8 +353,20 @@ def validate_model_config(model_path: str, model_type: str, classes: list, resol
     filename = Path(model_path).stem
 
     if model_type == 'arrows':
-        # Pattern: model_arrows_<model>_c<num_classes>_r<resolution>
-        pattern = r'^model_arrows_(.+)_c(\d+)_r(\d+)$'
+        # Check continuous pattern first (with optional _s{seed} suffix)
+        continuous_pattern = r'^model_arrows_(.+)_continuous_r(\d+)(?:_s\d+)?$'
+        continuous_match = re.match(continuous_pattern, filename)
+        if continuous_match:
+            file_resolution = int(continuous_match.group(2))
+            if file_resolution != resolution:
+                msg = f"arrows resolution mismatch: filename has r{file_resolution}, config has {resolution}"
+                logger.error(msg)
+                raise ValueError(msg)
+            logger.info(f"Arrows continuous model validated: {filename} (resolution={resolution})")
+            return
+
+        # Check discrete pattern: model_arrows_<model>_c<num_classes>_r<resolution> (with optional _s{seed} suffix)
+        pattern = r'^model_arrows_(.+)_c(\d+)_r(\d+)(?:_s\d+)?$'
         match = re.match(pattern, filename)
         if match:
             file_num_classes = int(match.group(2))
@@ -255,8 +387,8 @@ def validate_model_config(model_path: str, model_type: str, classes: list, resol
             logger.info(f"Arrows model validated: {filename} (classes={config_num_classes}, resolution={resolution})")
 
     elif model_type == 'digits':
-        # Pattern: model_digits_<model>_r<resolution>
-        pattern = r'^model_digits_(.+)_r(\d+)$'
+        # Pattern: model_digits_<model>_r<resolution> (with optional _s{seed} suffix)
+        pattern = r'^model_digits_(.+)_r(\d+)(?:_s\d+)?$'
         match = re.match(pattern, filename)
         if match:
             file_resolution = int(match.group(2))
