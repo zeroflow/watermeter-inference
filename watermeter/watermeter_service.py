@@ -2205,11 +2205,6 @@ class WatermeterService:
             discovery_topic = f"{discovery_prefix}/{component}/watermeter_ai/{object_id}/config"
             self.mqtt_client.publish(discovery_topic, json.dumps(payload), qos=1, retain=True)
 
-        # Clean up legacy single-sensor discovery topic (pre-fae8c9b).
-        # Publishing an empty retained payload tells HA to remove it.
-        legacy_topic = f"{discovery_prefix}/sensor/watermeter_ai/watermeter_usage/config"
-        self.mqtt_client.publish(legacy_topic, "", qos=1, retain=True)
-
         logger.info(f"Published MQTT Discovery for {len(_HA_ENTITIES)} entities")
 
     # MQTT Callbacks
