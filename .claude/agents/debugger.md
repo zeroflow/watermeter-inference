@@ -23,16 +23,14 @@ You may run diagnostic commands but should NOT modify source files — report fi
 ## Diagnostic Commands
 - Run tests: `python -m pytest tests/unit/ tests/regression/ --tb=long -q`
 - Single test: `python -m pytest tests/unit/test_foo.py::test_bar -v`
-- Docker logs: `docker logs watermeter-dashboard 2>&1 | tail -50`
-- Container state: `docker ps -a --filter name=watermeter-dashboard`
-- Check endpoint (production): `curl -s http://localhost:8001/api/training/status | python -m json.tool`
+- Docker logs (debug): `docker logs watermeter-dashboard-debug 2>&1 | tail -50`
+- Container state (debug): `docker ps -a --filter name=watermeter-dashboard-debug`
 - Check endpoint (debug): `curl -s http://localhost:8002/api/training/status | python -m json.tool`
 - Config check: read `/config/config.yaml` or local equivalent
 
 ## Port Mapping
-- **8001** — production service
-- **8002** — debug instance (`./debug.sh` maps `-p 8002:8001`)
-- Container name: `watermeter-dashboard`
+- **8001** — production (`watermeter-dashboard-prod`) — **DO NOT touch, stop, or restart**
+- **8002** — debug instance (`./debug.sh` → container `watermeter-dashboard-debug`)
 - Debug volumes: `./config_debug/`, `./data_debug/`, `./models_debug/`
 
 ## Project Architecture

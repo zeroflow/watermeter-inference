@@ -58,7 +58,7 @@ cp "arrows/ov_model/${ARROWS_BASE}.bin" arrows/selected/
 ls -lh digits/selected/ arrows/selected/
 
 echo ""
-echo "Building watermeter-dashboard..."
+echo "Building watermeter-dashboard image..."
 docker build . -t watermeter-dashboard
 
 echo "Creating local directories for volumes..."
@@ -71,7 +71,7 @@ fi
 
 # rm -rf ./config_debug/*
 
-CONTAINER_NAME="watermeter-dashboard"
+CONTAINER_NAME="watermeter-dashboard-debug"
 
 # Stop and remove existing container if it exists
 if docker container inspect "$CONTAINER_NAME" &>/dev/null; then

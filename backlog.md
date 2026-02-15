@@ -86,6 +86,15 @@ Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
   - **Timeout**: if no response within N minutes, auto-reject (don't publish uncertain readings; wait for next cycle)
   - **Depends on**: existing MQTT infra (already has publish + subscribe); BL-06 stale detection could also trigger confirmation requests
 
+## Internationalization
+
+- **BL-11** `planned` — **Translate UI to English**: replace remaining German text in templates and backend with English
+  - **Examples**: "Aktueller Zählerstand", button labels, status messages, tooltips, section headers
+  - **Scope**: all templates (`templates/*.html`), flash messages and error strings in `app.py`, any hardcoded German in JS
+  - **Not in scope**: comments in code (can stay mixed), config keys, log messages (already English)
+  - **Approach**: systematic sweep — grep for common German patterns (umlauts, known German words), replace with English equivalents
+  - **Assigned**: `frontend` (templates/CSS) + `junior-dev` (backend strings)
+
 ## Tech Debt
 
 - **BL-09** `done` — **Fix Pydantic `schema` field shadow**: `SetupRequest` in `inference.py:267` uses field name `schema` which shadows `BaseModel.schema()` → renamed to `label_schema` with `alias="schema"` for wire compatibility
