@@ -129,6 +129,11 @@ Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
 
 ## Tech Debt
 
+- **BL-16** `done` — **Test suite audit**: analyze the full test suite for unnecessary, incorrect, or broken tests
+  - **Scope**: all tests in `tests/` (unit, integration, etc.)
+  - **Find**: tests that are redundant, test wrong behavior, always pass trivially, mock too much to be useful, or are flaky/broken
+  - **Output**: report with recommendations (delete, fix, rewrite) per finding
+  - **Not in scope**: writing new tests — this is analysis only
 - **BL-09** `done` — **Fix Pydantic `schema` field shadow**: `SetupRequest` in `inference.py:267` uses field name `schema` which shadows `BaseModel.schema()` → renamed to `label_schema` with `alias="schema"` for wire compatibility
 
 ## Legal / Licensing
