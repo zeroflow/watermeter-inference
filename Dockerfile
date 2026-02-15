@@ -41,10 +41,6 @@ ENV HF_HOME=/app/.cache/huggingface
 # Copy application package
 COPY watermeter/ /app/watermeter/
 
-# Copy selected models to staging area (entrypoint copies to /app/models/ on first run)
-COPY digits/selected/ /app/digits/selected/
-COPY arrows/selected/ /app/arrows/selected/
-
 # Copy default configuration
 COPY config.yaml /config_default/config.yaml
 

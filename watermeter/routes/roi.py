@@ -3,10 +3,11 @@
 import base64
 import logging
 from pathlib import Path
+from urllib.parse import urlparse
 
 import cv2
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
 
@@ -132,6 +133,69 @@ async def fetch_roi_reference_image():
         return JSONResponse({"success": False, "message": f"HTTP error: {str(e)}"}, status_code=502)
     except Exception as e:
         logger.error(f"Error fetching reference image: {e}")
+        return JSONResponse({"success": False, "message": f"Error: {str(e)}"}, status_code=500)
+
+
+@router.post(
+    "/api/roi/image-source",
+    tags=["ROI Setup"],
+    summary="Set image source URL",
+    description="Validate and save the camera image source URL, fetch a reference image",
+)
+async def set_image_source(request: Request):
+    """Validate image source URL, fetch image, save to config."""
+    try:
+        data = await request.json()
+        url = data.get("url", "").strip()
+
+        if not url:
+            return JSONResponse({"success": False, "message": "URL is required"}, status_code=400)
+
+        # Basic URL validation
+        parsed = urlparse(url)
+        if not parsed.scheme or not parsed.hostname:
+            return JSONResponse({"success": False, "message": "Invalid URL format"}, status_code=400)
+
+        # Try to fetch the image
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+        except Exception as e:
+            return JSONResponse({"success": False, "message": f"Could not reach device: {e}"})
+
+        # Validate it looks like an image (check content-type or magic bytes)
+        content_type = resp.headers.get("content-type", "")
+        if not (content_type.startswith("image/") or resp.content[:3] in [b'\xff\xd8\xff', b'\x89PN']):
+            return JSONResponse({"success": False, "message": "URL did not return an image"})
+
+        # Save image
+        Path("/data").mkdir(parents=True, exist_ok=True)
+        Path("/data/reference_raw.jpg").write_bytes(resp.content)
+
+        # Update config
+        config_path = Path("config.yaml")
+
+        host = f"{parsed.scheme}://{parsed.hostname}"
+        if parsed.port:
+            host += f":{parsed.port}"
+
+        def _update(config):
+            config.setdefault("images", {})["src"] = url
+            config.setdefault("aiote", {})["host"] = host
+
+        config = config_utils.update_config(config_path, _update)
+
+        # Reload config in service
+        service = watermeter_service.get_service()
+        service.config = config
+
+        logger.info(f"Image source saved: {url}")
+
+        return JSONResponse({"success": True, "message": "Image source saved successfully"})
+
+    except Exception as e:
+        logger.error(f"Error setting image source: {e}")
         return JSONResponse({"success": False, "message": f"Error: {str(e)}"}, status_code=500)
 
 

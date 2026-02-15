@@ -2,13 +2,6 @@ import openvino as ov
 import cv2
 import numpy as np
 from pathlib import Path
-from fastapi import FastAPI, File, UploadFile
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
-from typing import Optional
-import tempfile
-import httpx
-import yaml
 import re
 import logging
 import threading
@@ -162,59 +155,80 @@ class InferenceService:
         self._reloading = False
 
     def initialize(self, config: dict):
-        """Initialize classifiers from config."""
+        """Initialize classifiers from config.
+
+        Tolerates missing model files: if a model file does not exist,
+        the corresponding classifier is left as None and a warning is logged.
+        """
         with self._lock:
             inference_config = config["inference"]
 
             # --- Digits (always classification) ---
-            validate_model_config(
-                inference_config["digits_model"],
-                "digits",
-                inference_config["digits_classes"],
-                inference_config["digits_resolution"],
-            )
-            self._digits_classifier = Classifier(
-                inference_config["digits_model"],
-                inference_config["digits_classes"],
-                inference_config["digits_resolution"],
-                "digit",
-                device=inference_config.get("device", "GPU"),
-            )
+            digits_path = inference_config["digits_model"]
+            try:
+                if not Path(digits_path).exists():
+                    raise FileNotFoundError(f"Model file not found: {digits_path}")
+                validate_model_config(
+                    digits_path,
+                    "digits",
+                    inference_config["digits_classes"],
+                    inference_config["digits_resolution"],
+                )
+                self._digits_classifier = Classifier(
+                    digits_path,
+                    inference_config["digits_classes"],
+                    inference_config["digits_resolution"],
+                    "digit",
+                    device=inference_config.get("device", "GPU"),
+                )
+            except Exception as e:
+                logger.warning(f"Digits model not found at {digits_path} -- inference disabled for digits: {e}")
+                self._digits_classifier = None
 
             # --- Arrows (classification or regression) ---
-            arrows_mode = _detect_training_mode(inference_config["arrows_model"])
+            arrows_path = inference_config["arrows_model"]
+            try:
+                if not Path(arrows_path).exists():
+                    raise FileNotFoundError(f"Model file not found: {arrows_path}")
+                arrows_mode = _detect_training_mode(arrows_path)
 
-            if arrows_mode == "continuous":
-                # Regression model — no class list validation needed
-                self._arrows_classifier = Regressor(
-                    inference_config["arrows_model"],
-                    inference_config["arrows_resolution"],
-                    "arrow_value",
-                    device=inference_config.get("device", "GPU"),
-                )
-                logger.info("Arrows model initialized in REGRESSION mode")
-            else:
-                validate_model_config(
-                    inference_config["arrows_model"],
-                    "arrows",
-                    inference_config["arrows_classes"],
-                    inference_config["arrows_resolution"],
-                )
-                self._arrows_classifier = Classifier(
-                    inference_config["arrows_model"],
-                    inference_config["arrows_classes"],
-                    inference_config["arrows_resolution"],
-                    "arrow_value",
-                    device=inference_config.get("device", "GPU"),
-                )
-                logger.info("Arrows model initialized in CLASSIFICATION mode")
+                if arrows_mode == "continuous":
+                    # Regression model — no class list validation needed
+                    self._arrows_classifier = Regressor(
+                        arrows_path,
+                        inference_config["arrows_resolution"],
+                        "arrow_value",
+                        device=inference_config.get("device", "GPU"),
+                    )
+                    logger.info("Arrows model initialized in REGRESSION mode")
+                else:
+                    validate_model_config(
+                        arrows_path,
+                        "arrows",
+                        inference_config["arrows_classes"],
+                        inference_config["arrows_resolution"],
+                    )
+                    self._arrows_classifier = Classifier(
+                        arrows_path,
+                        inference_config["arrows_classes"],
+                        inference_config["arrows_resolution"],
+                        "arrow_value",
+                        device=inference_config.get("device", "GPU"),
+                    )
+                    logger.info("Arrows model initialized in CLASSIFICATION mode")
+            except Exception as e:
+                logger.warning(f"Arrows model not found at {arrows_path} -- inference disabled for arrows: {e}")
+                self._arrows_classifier = None
 
-            logger.info("Inference service initialized")
+            logger.info(f"Inference service initialized (loaded: {self.loaded_model_types})")
 
     def reload_models(self, config: dict):
         """
         Hot-reload models from updated config.
         Blocks inference during reload.
+
+        Tolerates missing model files: if a model file does not exist,
+        the corresponding classifier is set to None and a warning is logged.
         """
         with self._lock:
             self._reloading = True
@@ -224,57 +238,68 @@ class InferenceService:
                 inference_config = config["inference"]
 
                 # --- Digits (always classification) ---
-                validate_model_config(
-                    inference_config["digits_model"],
-                    "digits",
-                    inference_config["digits_classes"],
-                    inference_config["digits_resolution"],
-                )
-                new_digits = Classifier(
-                    inference_config["digits_model"],
-                    inference_config["digits_classes"],
-                    inference_config["digits_resolution"],
-                    "digit",
-                    device=inference_config.get("device", "GPU"),
-                )
+                new_digits = None
+                digits_path = inference_config["digits_model"]
+                try:
+                    if not Path(digits_path).exists():
+                        raise FileNotFoundError(f"Model file not found: {digits_path}")
+                    validate_model_config(
+                        digits_path,
+                        "digits",
+                        inference_config["digits_classes"],
+                        inference_config["digits_resolution"],
+                    )
+                    new_digits = Classifier(
+                        digits_path,
+                        inference_config["digits_classes"],
+                        inference_config["digits_resolution"],
+                        "digit",
+                        device=inference_config.get("device", "GPU"),
+                    )
+                except Exception as e:
+                    logger.warning(f"Digits model not found at {digits_path} -- inference disabled for digits: {e}")
 
                 # --- Arrows (classification or regression) ---
-                arrows_mode = _detect_training_mode(inference_config["arrows_model"])
+                new_arrows = None
+                arrows_path = inference_config["arrows_model"]
+                try:
+                    if not Path(arrows_path).exists():
+                        raise FileNotFoundError(f"Model file not found: {arrows_path}")
+                    arrows_mode = _detect_training_mode(arrows_path)
 
-                if arrows_mode == "continuous":
-                    new_arrows = Regressor(
-                        inference_config["arrows_model"],
-                        inference_config["arrows_resolution"],
-                        "arrow_value",
-                        device=inference_config.get("device", "GPU"),
-                    )
-                    logger.info("Arrows model reloaded in REGRESSION mode")
-                else:
-                    validate_model_config(
-                        inference_config["arrows_model"],
-                        "arrows",
-                        inference_config["arrows_classes"],
-                        inference_config["arrows_resolution"],
-                    )
-                    new_arrows = Classifier(
-                        inference_config["arrows_model"],
-                        inference_config["arrows_classes"],
-                        inference_config["arrows_resolution"],
-                        "arrow_value",
-                        device=inference_config.get("device", "GPU"),
-                    )
-                    logger.info("Arrows model reloaded in CLASSIFICATION mode")
+                    if arrows_mode == "continuous":
+                        new_arrows = Regressor(
+                            arrows_path,
+                            inference_config["arrows_resolution"],
+                            "arrow_value",
+                            device=inference_config.get("device", "GPU"),
+                        )
+                        logger.info("Arrows model reloaded in REGRESSION mode")
+                    else:
+                        validate_model_config(
+                            arrows_path,
+                            "arrows",
+                            inference_config["arrows_classes"],
+                            inference_config["arrows_resolution"],
+                        )
+                        new_arrows = Classifier(
+                            arrows_path,
+                            inference_config["arrows_classes"],
+                            inference_config["arrows_resolution"],
+                            "arrow_value",
+                            device=inference_config.get("device", "GPU"),
+                        )
+                        logger.info("Arrows model reloaded in CLASSIFICATION mode")
+                except Exception as e:
+                    logger.warning(f"Arrows model not found at {arrows_path} -- inference disabled for arrows: {e}")
 
                 # Atomic swap
                 self._digits_classifier = new_digits
                 self._arrows_classifier = new_arrows
 
-                logger.info("Model hot-reload completed successfully")
+                logger.info(f"Model hot-reload completed (loaded: {self.loaded_model_types})")
                 return True
 
-            except Exception as e:
-                logger.error(f"Model hot-reload failed: {e}")
-                raise
             finally:
                 self._reloading = False
 
@@ -288,21 +313,36 @@ class InferenceService:
 
         Returns:
             Prediction dict with 'class' and 'confidence'
+
+        Raises:
+            RuntimeError: If the requested model type is not loaded.
         """
         with self._lock:
             if model_type == "digits":
+                if self._digits_classifier is None:
+                    raise RuntimeError("No digits model loaded")
                 return self._digits_classifier.predict(image_path)
             elif model_type == "arrows":
+                if self._arrows_classifier is None:
+                    raise RuntimeError("No arrows model loaded")
                 return self._arrows_classifier.predict(image_path)
             else:
                 raise ValueError(f"Unknown model type: {model_type}")
 
     def predict_detailed(self, model_type: str, image_path: str, top_k: int = 3) -> list:
-        """Run inference and return top-K predictions."""
+        """Run inference and return top-K predictions.
+
+        Raises:
+            RuntimeError: If the requested model type is not loaded.
+        """
         with self._lock:
             if model_type == "digits":
+                if self._digits_classifier is None:
+                    raise RuntimeError("No digits model loaded")
                 return self._digits_classifier.predict_detailed(image_path, top_k)
             elif model_type == "arrows":
+                if self._arrows_classifier is None:
+                    raise RuntimeError("No arrows model loaded")
                 return self._arrows_classifier.predict_detailed(image_path, top_k)
             else:
                 raise ValueError(f"Unknown model type: {model_type}")
@@ -320,6 +360,21 @@ class InferenceService:
     def is_reloading(self) -> bool:
         """Check if models are currently being reloaded."""
         return self._reloading
+
+    @property
+    def models_loaded(self) -> bool:
+        """Check if both model types are loaded and ready."""
+        return self._digits_classifier is not None and self._arrows_classifier is not None
+
+    @property
+    def loaded_model_types(self) -> list:
+        """Return list of model types that are loaded."""
+        types = []
+        if self._digits_classifier is not None:
+            types.append("digits")
+        if self._arrows_classifier is not None:
+            types.append("arrows")
+        return types
 
     @property
     def digits_classifier(self) -> Classifier:
@@ -396,129 +451,12 @@ def validate_model_config(model_path: str, model_type: str, classes: list, resol
             logger.info(f"Digits model validated: {filename} (resolution={resolution})")
 
 
-# Load configuration and initialize service
-with open("config.yaml", "r") as f:
-    config = yaml.safe_load(f)
-
-app = FastAPI()
-
-# Create global inference service
-_inference_service = InferenceService()
-_inference_service.initialize(config)
+_inference_service = None
 
 
 def get_inference_service() -> InferenceService:
-    """Get the global InferenceService instance."""
+    """Get the global InferenceService instance (lazy singleton)."""
+    global _inference_service
+    if _inference_service is None:
+        _inference_service = InferenceService()
     return _inference_service
-
-
-classifiers = None  # Deprecated: use get_inference_service().predict() instead
-
-# Label Studio ML Backend models
-
-
-class SetupRequest(BaseModel):
-    project: Optional[str] = None
-    label_schema: Optional[str] = Field(None, alias="schema")
-    hostname: Optional[str] = None
-    access_token: Optional[str] = None
-
-
-class PredictRequest(BaseModel):
-    tasks: list
-    project: Optional[str] = None
-    label_config: Optional[str] = None
-    params: Optional[dict] = None
-
-
-async def download_image(url: str) -> str:
-    """Download image from URL to temp file."""
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url)
-        response.raise_for_status()
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
-            tmp.write(response.content)
-            return tmp.name
-
-
-# Setup endpoints
-@app.post("/predict/{model_type}/setup")
-async def setup(model_type: str, request: SetupRequest):
-    if model_type not in classifiers:
-        return JSONResponse({"error": f"Unknown model: {model_type}"}, status_code=404)
-
-    clf = classifiers[model_type]
-    return {"model_version": f"{model_type}-v1", "labels": clf.classes}
-
-
-# Predict endpoints for Label Studio
-@app.post("/predict/{model_type}/predict")
-async def predict_ls(model_type: str, request: PredictRequest):
-    if model_type not in classifiers:
-        return JSONResponse({"error": f"Unknown model: {model_type}"}, status_code=404)
-
-    clf = classifiers[model_type]
-    results = []
-
-    for task in request.tasks:
-        image_url = task.get("data", {}).get("image")
-        if not image_url:
-            results.append({"result": [], "score": 0.0})
-            continue
-
-        try:
-            tmp_path = await download_image(image_url)
-            pred = clf.predict(tmp_path)
-            Path(tmp_path).unlink()
-
-            # Different format for Number vs Choices
-            if model_type == "arrows":
-                result_item = {
-                    "from_name": clf.label_config_tag,
-                    "to_name": "image",
-                    "type": "number",
-                    "value": {"number": float(pred["class"])},
-                }
-            else:
-                result_item = {
-                    "from_name": clf.label_config_tag,
-                    "to_name": "image",
-                    "type": "choices",
-                    "value": {"choices": [pred["class"]]},
-                }
-
-            results.append({"result": [result_item], "score": pred["confidence"]})
-        except Exception as e:
-            results.append({"result": [], "score": 0.0, "error": str(e)})
-
-    return {"results": results}
-
-
-# Health endpoints
-@app.get("/health")
-def health():
-    return {"status": "ok", "models": list(classifiers.keys()), "device": "GPU"}
-
-
-@app.get("/predict/{model_type}/health")
-def model_health(model_type: str):
-    if model_type not in classifiers:
-        return JSONResponse({"error": f"Unknown model: {model_type}"}, status_code=404)
-    return {"status": "ok", "model": model_type, "device": "GPU"}
-
-
-# Direct prediction endpoint (your original)
-@app.post("/predict/{model_type}")
-async def predict_direct(model_type: str, file: UploadFile = File(...)):
-    if model_type not in classifiers:
-        return JSONResponse({"error": f"Unknown model: {model_type}"}, status_code=404)
-
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
-        content = await file.read()
-        tmp.write(content)
-        tmp_path = tmp.name
-
-    result = classifiers[model_type].predict(tmp_path)
-    Path(tmp_path).unlink()
-
-    return JSONResponse({**result, "model": model_type})

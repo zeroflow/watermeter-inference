@@ -20,6 +20,24 @@
         </header>
 
         <main class="roi-config-main">
+            {% if setup_mode %}
+            <div class="setup-wizard-banner">
+                <h2>Welcome to Watermeter Setup</h2>
+                <p>Let's configure your water meter reading. This wizard will guide you through connecting your camera and defining the regions of interest.</p>
+            </div>
+            {% endif %}
+
+            <section id="step-image-source" class="roi-step" {% if not setup_mode %}style="display:none"{% endif %}>
+                <h2>Step 0: Camera Image Source</h2>
+                <p class="step-description">Enter the URL of your AI-on-the-edge device's camera image.</p>
+                <div class="image-source-controls">
+                    <input type="url" id="image-source-url" value="{{ image_src }}"
+                           placeholder="http://192.168.1.x/img_tmp/alg.jpg" class="image-source-input">
+                    <button id="test-image-btn" class="btn btn-primary" onclick="testImageSource()">Test &amp; Save</button>
+                </div>
+                <div id="image-source-status"></div>
+            </section>
+
             <!-- Completed Steps Container -->
             <div id="completed-steps" class="completed-steps-container">
                 <!-- Dynamically populated with completed steps -->
@@ -230,9 +248,19 @@
                 </div>
             </section>
         </main>
+
+        {% if setup_mode %}
+        <div id="setup-complete" style="display:none" class="setup-complete-section">
+            <h2>Setup Complete!</h2>
+            <p>Your water meter is configured. You can now start reading values.</p>
+            <a href="/" class="btn btn-primary">Go to Dashboard</a>
+        </div>
+        {% endif %}
     </div>
 
-
+    <script>
+        window.setupMode = {{ "true" if setup_mode else "false" }};
+    </script>
     <script src="/static/roi-config.js"></script>
 </body>
 </html>

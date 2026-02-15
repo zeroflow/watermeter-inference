@@ -26,16 +26,16 @@ set -euo pipefail
 DIGITS_REPO="jomjol/neural-network-digital-counter-readout"
 ANALOG_REPO="jomjol/neural-network-analog-needle-readout"
 DIGITS_BRANCH="master"
-ANALOG_BRANCH="master"
+ANALOG_BRANCH="main"
 
 # GitHub archive download URLs
 DIGITS_ARCHIVE="https://github.com/${DIGITS_REPO}/archive/refs/heads/${DIGITS_BRANCH}.zip"
 ANALOG_ARCHIVE="https://github.com/${ANALOG_REPO}/archive/refs/heads/${ANALOG_BRANCH}.zip"
 
 # Source directories within the extracted archives (where labeled images live)
-# Digits: images are in subfolders named 0/ 1/ ... 9/ NaN/ inside the training data dir
-DIGITS_DATA_SUBDIR="neural-network-digital-counter-readout-${DIGITS_BRANCH}/ziffer_sortiert_resize"
-# Analog: images are in subfolders inside data_raw_all/
+# Digits: images are flat with filename prefixes like 3_xyz.jpg, NaN_abc.jpg
+DIGITS_DATA_SUBDIR="neural-network-digital-counter-readout-${DIGITS_BRANCH}/03_data_resize_all-use_for_training"
+# Analog: images are flat with filename prefixes like 5.7_abc.jpg
 ANALOG_DATA_SUBDIR="neural-network-analog-needle-readout-${ANALOG_BRANCH}/data_raw_all"
 
 # Default output base directory (Docker volume mount point)
@@ -218,34 +218,38 @@ install_digits() {
     log "Installing digit images to $target_dir ..."
     mkdir -p "$target_dir"
 
+    # Create class subdirectories
+    mkdir -p "$target_dir"/{0,1,2,3,4,5,6,7,8,9,NAN}
+
+    # Sort flat files into subdirectories by filename prefix
     local total_copied=0
-    for class_dir in "$src_dir"/*/; do
-        local class_name
-        class_name=$(basename "$class_dir")
+    for img in "$src_dir"/*.jpg "$src_dir"/*.jpeg "$src_dir"/*.png "$src_dir"/*.bmp; do
+        [[ ! -f "$img" ]] && continue
 
-        # Map upstream class names to our convention
-        local target_class="$class_name"
-        if [[ "$class_name" == "NaN" ]] || [[ "$class_name" == "nan" ]]; then
-            target_class="NAN"
-        fi
+        local filename
+        filename=$(basename "$img")
 
-        mkdir -p "$target_dir/$target_class"
+        # Match filenames like: 3_xyz.jpg, NaN_abc.png, etc.
+        if [[ "$filename" =~ ^(NaN|[0-9])_ ]]; then
+            local class="${BASH_REMATCH[1]}"
+            # Map NaN to NAN (our convention)
+            [[ "$class" == "NaN" ]] && class="NAN"
 
-        local count=0
-        while IFS= read -r -d '' img; do
-            local basename_img
-            basename_img=$(basename "$img")
-            local dest="$target_dir/$target_class/$basename_img"
+            local dest="$target_dir/$class/$filename"
             if [[ -f "$dest" ]] && [[ "$FORCE" != "true" ]]; then
                 continue
             fi
             cp "$img" "$dest"
-            count=$((count + 1))
-        done < <(find "$class_dir" -maxdepth 1 -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.bmp" \) -print0 2>/dev/null || true)
-        total_copied=$((total_copied + count))
+            total_copied=$((total_copied + 1))
+        fi
+    done
 
+    # Count and report per-class totals
+    for class in {0..9} NAN; do
+        local count
+        count=$(find "$target_dir/$class" -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.bmp" \) 2>/dev/null | wc -l)
         if [[ "$count" -gt 0 ]]; then
-            log "  Class $target_class: copied $count images"
+            log "  Class $class: $count images"
         fi
     done
 
@@ -306,30 +310,38 @@ install_analog() {
     log "Installing analog images to $target_dir ..."
     mkdir -p "$target_dir"
 
-    # Upstream analog data uses folder names like 0.0, 0.1, ..., 9.9
-    # Our convention matches: arrows/ground_truth/{0.0,0.1,...,9.9}/
+    # Sort flat files into subdirectories by filename prefix (e.g., 5.7_abc.jpg)
+    # Upstream uses filenames like: 0.0_xyz.jpg, 5.7_abc.png, etc.
     local total_copied=0
-    for class_dir in "$src_dir"/*/; do
-        local class_name
-        class_name=$(basename "$class_dir")
+    for img in "$src_dir"/*.jpg "$src_dir"/*.jpeg "$src_dir"/*.png "$src_dir"/*.bmp; do
+        [[ ! -f "$img" ]] && continue
 
-        mkdir -p "$target_dir/$class_name"
+        local filename
+        filename=$(basename "$img")
 
-        local count=0
-        while IFS= read -r -d '' img; do
-            local basename_img
-            basename_img=$(basename "$img")
-            local dest="$target_dir/$class_name/$basename_img"
+        # Match filenames like: 5.7_abc.jpg, 0.0_xyz.png, etc.
+        if [[ "$filename" =~ ^([0-9]\.[0-9])_ ]]; then
+            local class="${BASH_REMATCH[1]}"
+            mkdir -p "$target_dir/$class"
+
+            local dest="$target_dir/$class/$filename"
             if [[ -f "$dest" ]] && [[ "$FORCE" != "true" ]]; then
                 continue
             fi
             cp "$img" "$dest"
-            count=$((count + 1))
-        done < <(find "$class_dir" -maxdepth 1 -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.bmp" \) -print0 2>/dev/null || true)
-        total_copied=$((total_copied + count))
+            total_copied=$((total_copied + 1))
+        fi
+    done
 
+    # Count and report per-class totals
+    for class_dir in "$target_dir"/*/; do
+        [[ ! -d "$class_dir" ]] && continue
+        local class_name
+        class_name=$(basename "$class_dir")
+        local count
+        count=$(find "$class_dir" -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.bmp" \) 2>/dev/null | wc -l)
         if [[ "$count" -gt 0 ]]; then
-            log "  Class $class_name: copied $count images"
+            log "  Class $class_name: $count images"
         fi
     done
 

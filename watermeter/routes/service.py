@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from .. import watermeter_service
 from ..app import safe_subpath
+from ..inference import get_inference_service
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,12 @@ async def get_status():
 )
 async def trigger_reading():
     """Manually trigger a new reading."""
+    if not get_inference_service().models_loaded:
+        return JSONResponse(
+            {"message": "No inference models loaded. Train or import models first."},
+            status_code=503,
+        )
+
     service = watermeter_service.get_service()
 
     if service.current_state["processing"]:

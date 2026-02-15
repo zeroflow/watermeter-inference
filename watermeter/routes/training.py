@@ -1,9 +1,14 @@
 """Training and benchmark routes."""
 
 import logging
+import re
+import shutil
+import tempfile
+import zipfile
+from pathlib import Path
 from typing import List
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
 
@@ -12,6 +17,13 @@ from ..training_manager import get_training_manager
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# --- Training data upload constants ---
+DIGIT_CLASSES = set(str(i) for i in range(10)) | {"NAN", "NaN", "nan"}
+ARROW_CLASSES = set(f"{i}.{j}" for i in range(10) for j in range(10))
+DIGIT_PREFIX_RE = re.compile(r"^(NaN|[0-9])_")
+ARROW_PREFIX_RE = re.compile(r"^([0-9]\.[0-9])_")
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp"}
 
 
 class TrainingConfig(BaseModel):
@@ -213,3 +225,176 @@ async def get_training_progress(job_id: str):
     except Exception as e:
         logger.error(f"Error getting training progress: {e}")
         return JSONResponse({"success": False, "message": f"Error: {str(e)}"}, status_code=500)
+
+
+# --- Training data ZIP upload ---
+
+
+def _detect_and_sort(images: list, data_type: str) -> tuple:
+    """Detect ZIP structure and return (format_name, {class_name: [paths]}).
+
+    Tries subdirectory-based format first (standard), falls back to prefix-based
+    (jomjol community format).
+
+    Args:
+        images: List of Path objects pointing to extracted image files.
+        data_type: "digits" or "arrows".
+
+    Returns:
+        Tuple of (format_name, dict mapping class name to list of image Paths).
+
+    Raises:
+        HTTPException(400) if neither format is detected.
+    """
+    valid_classes = DIGIT_CLASSES if data_type == "digits" else ARROW_CLASSES
+
+    # --- Try Format 1: subdirectory-based ---
+    # Group images by their immediate parent directory name
+    by_parent: dict[str, list[Path]] = {}
+    for img in images:
+        parent_name = img.parent.name
+        by_parent.setdefault(parent_name, []).append(img)
+
+    # Check if parent directory names match expected class names
+    matching_parents = set(by_parent.keys()) & valid_classes
+    if len(matching_parents) >= 3:
+        result: dict[str, list[Path]] = {}
+        for parent_name, imgs in by_parent.items():
+            # Normalize NaN variants to NAN for digits
+            if data_type == "digits" and parent_name.lower() == "nan":
+                normalized = "NAN"
+            else:
+                normalized = parent_name
+            if normalized in valid_classes:
+                result.setdefault(normalized, []).extend(imgs)
+        if result:
+            return ("subdirectory", result)
+
+    # --- Try Format 2: prefix-based ---
+    prefix_re = DIGIT_PREFIX_RE if data_type == "digits" else ARROW_PREFIX_RE
+    result = {}
+    for img in images:
+        match = prefix_re.match(img.name)
+        if match:
+            class_name = match.group(1)
+            # Normalize NaN -> NAN for digits
+            if data_type == "digits" and class_name == "NaN":
+                class_name = "NAN"
+            result.setdefault(class_name, []).append(img)
+
+    if result:
+        return ("prefix", result)
+
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            "Could not detect data format in ZIP. Expected either: "
+            "subdirectories per class (0/, 1/, ..., NAN/) or "
+            "filename prefixes (3_img.jpg, NaN_img.jpg, 5.7_img.jpg)."
+        ),
+    )
+
+
+@router.post(
+    "/api/training-data/upload",
+    tags=["Training Data"],
+    summary="Upload training data ZIP",
+    description=(
+        "Upload a ZIP file containing training images. Supports two formats: "
+        "subdirectory-based (class dirs with images inside) and prefix-based "
+        "(flat files with class prefix in filename, e.g. 3_img.jpg). "
+        "Images are sorted into ground_truth/{class}/ directories."
+    ),
+)
+async def upload_training_data(
+    file: UploadFile = File(..., description="ZIP file containing training images"),
+    type: str = Form(..., description="Data type: 'digits' or 'arrows'"),
+):
+    """Upload and sort a ZIP of training images into ground_truth directories."""
+    # Validate type parameter
+    if type not in ("digits", "arrows"):
+        raise HTTPException(status_code=400, detail="type must be 'digits' or 'arrows'")
+
+    # Validate file extension
+    if not file.filename or not file.filename.lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Only ZIP files are supported")
+
+    ground_truth_dir = Path(f"/training/{type}/ground_truth")
+    ground_truth_dir.mkdir(parents=True, exist_ok=True)
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        tmp_zip = tmp_path / "upload.zip"
+
+        # Save uploaded file to temp directory
+        try:
+            content = await file.read()
+            if not content:
+                raise HTTPException(status_code=400, detail="Uploaded file is empty")
+            with open(tmp_zip, "wb") as f:
+                f.write(content)
+        finally:
+            await file.close()
+
+        # Validate it is a real ZIP file
+        if not zipfile.is_zipfile(tmp_zip):
+            raise HTTPException(status_code=400, detail="Invalid ZIP file")
+
+        # Extract
+        extract_dir = tmp_path / "extracted"
+        try:
+            with zipfile.ZipFile(tmp_zip, "r") as zf:
+                zf.extractall(extract_dir)
+        except zipfile.BadZipFile:
+            raise HTTPException(status_code=400, detail="Corrupt ZIP file")
+
+        # Collect all image files recursively
+        all_images = [
+            p
+            for p in extract_dir.rglob("*")
+            if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS
+        ]
+
+        if not all_images:
+            raise HTTPException(status_code=400, detail="No image files found in ZIP")
+
+        # Detect format and sort images by class
+        format_type, sorted_images = _detect_and_sort(all_images, type)
+
+        # Copy sorted images to ground_truth directory
+        imported = 0
+        for class_name, image_paths in sorted_images.items():
+            class_dir = ground_truth_dir / class_name
+            class_dir.mkdir(parents=True, exist_ok=True)
+            for img_path in image_paths:
+                dest = class_dir / img_path.name
+                # Avoid overwriting existing files — add _imported suffix
+                if dest.exists():
+                    stem = img_path.stem
+                    suffix = img_path.suffix
+                    dest = class_dir / f"{stem}_imported{suffix}"
+                    # If even that exists, add a counter
+                    counter = 2
+                    while dest.exists():
+                        dest = class_dir / f"{stem}_imported_{counter}{suffix}"
+                        counter += 1
+                shutil.copy2(img_path, dest)
+                imported += 1
+
+        logger.info(
+            "Uploaded %d images into %d classes (%s format) for %s",
+            imported,
+            len(sorted_images),
+            format_type,
+            type,
+        )
+
+        return {
+            "message": (
+                f"Imported {imported} images into {len(sorted_images)} classes "
+                f"({format_type} format)"
+            ),
+            "format": format_type,
+            "images": imported,
+            "classes": len(sorted_images),
+        }

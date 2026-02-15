@@ -41,7 +41,7 @@ EOF
         sed -i "s|digits_model:.*|digits_model: \"/app/models/digits/${MODEL_NAME}/${MODEL_NAME}.xml\"|" /config/config.yaml
         echo "OK digits model: ${MODEL_NAME}"
     else
-        echo "WARN no default digits model in /app/digits/selected"
+        echo "INFO: No default digits model shipped. Train or import a model via the Training page."
     fi
 else
     echo "OK digits models (existing)"
@@ -71,7 +71,7 @@ EOF
         sed -i "s|arrows_model:.*|arrows_model: \"/app/models/arrows/${MODEL_NAME}/${MODEL_NAME}.xml\"|" /config/config.yaml
         echo "OK arrows model: ${MODEL_NAME}"
     else
-        echo "WARN no default arrows model in /app/arrows/selected"
+        echo "INFO: No default arrows model shipped. Train or import a model via the Training page."
     fi
 else
     echo "OK arrows models (existing)"

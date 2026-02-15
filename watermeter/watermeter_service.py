@@ -1388,6 +1388,12 @@ class WatermeterService:
                 logger.info("Skipping reading -- confirmation pending for previous reading")
                 return self.current_state
 
+            # If no inference models are loaded, exit early
+            if not get_inference_service().models_loaded:
+                self.current_state["status"] = "no_models"
+                self.current_state["warnings"] = ["No inference models loaded. Train or import models via the Training page."]
+                return self.current_state
+
             try:
                 self.current_state["processing"] = True
                 self.current_state["warnings"] = []

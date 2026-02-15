@@ -1051,6 +1051,73 @@
         <div id="message" class="message"></div>
 
         <main class="training-content">
+            <!-- Getting Started Guide -->
+            <section class="section">
+                <h2>Getting Started</h2>
+                <details open>
+                    <summary style="cursor: pointer; font-weight: 600; margin-bottom: 12px;">How to get training data</summary>
+                    <div class="getting-started-content">
+                        <h4 style="margin: 16px 0 8px 0; color: var(--primary);">Option A: Collect your own data (recommended)</h4>
+                        <p style="margin-bottom: 12px;">Connect your AI-on-the-edge (AIOTE) device, configure ROIs,
+                           and use the labeling interface to collect and label images.
+                           This produces the highest quality models for your specific meter.</p>
+                        <ol style="padding-left: 24px; margin-bottom: 16px;">
+                            <li style="margin-bottom: 6px;">Configure your meter in <a href="/roi-config" style="color: var(--primary);">ROI Config</a></li>
+                            <li style="margin-bottom: 6px;">Let the system collect low-confidence images automatically</li>
+                            <li style="margin-bottom: 6px;">Label images in the <a href="/label" style="color: var(--primary);">Labeling</a> interface</li>
+                            <li style="margin-bottom: 6px;">Train a model below</li>
+                        </ol>
+
+                        <h4 style="margin: 16px 0 8px 0; color: var(--primary);">Option B: Upload community reference data</h4>
+                        <p style="margin-bottom: 12px;">Download a ZIP of training images from one of these community repos,
+                           then upload it here:</p>
+                        <ul class="repo-links">
+                            <li><strong>Digits (0-9):</strong>
+                                <a href="https://github.com/jomjol/neural-network-digital-counter-readout/archive/refs/heads/master.zip"
+                                   target="_blank" rel="noopener" style="color: var(--primary);">Download ZIP</a>
+                                (9.6 MB, ~1162 images)
+                                &mdash; <a href="https://github.com/jomjol/neural-network-digital-counter-readout"
+                                     target="_blank" rel="noopener" style="color: var(--text-light);">Repository</a>
+                            </li>
+                            <li><strong>Analog dials (0.0-9.9):</strong>
+                                <a href="https://github.com/jomjol/neural-network-analog-needle-readout/archive/refs/heads/main.zip"
+                                   target="_blank" rel="noopener" style="color: var(--primary);">Download ZIP</a>
+                                (127 MB, ~2493 images)
+                                &mdash; <a href="https://github.com/jomjol/neural-network-analog-needle-readout"
+                                     target="_blank" rel="noopener" style="color: var(--text-light);">Repository</a>
+                            </li>
+                        </ul>
+
+                        <div class="upload-area">
+                            <label for="data-type-select">Upload as:</label>
+                            <select id="data-type-select">
+                                <option value="digits">Digits</option>
+                                <option value="arrows">Analog / Arrows</option>
+                            </select>
+                            <input type="file" id="training-data-zip" accept=".zip">
+                            <button id="upload-data-btn" class="btn btn-primary"
+                                    onclick="uploadTrainingData()">Upload ZIP</button>
+                        </div>
+                        <div id="upload-status" style="margin-top: 8px; font-size: 14px;"></div>
+                        <div id="upload-progress" style="display:none">
+                            <progress id="upload-progress-bar" max="100" value="0"></progress>
+                            <span id="upload-progress-text"></span>
+                        </div>
+
+                        <p class="license-notice"><strong>Note:</strong> The community repos above have
+                           no explicit license. Use for personal/local training only.
+                           <a href="https://github.com/jomjol/AI-on-the-edge-device/issues/4041"
+                              target="_blank" rel="noopener" style="color: var(--text-dark);">License tracking issue</a></p>
+
+                        <h4 style="margin: 16px 0 8px 0; color: var(--primary);">Option C: Import a pre-trained model</h4>
+                        <p style="margin-bottom: 12px;">If someone shares an exported model (.xml + .bin + metadata.json),
+                           place the files in <code style="background: var(--bg-light); padding: 2px 6px; border-radius: 3px; font-family: monospace;">/app/models/digits/&lt;model_id&gt;/</code> or
+                           <code style="background: var(--bg-light); padding: 2px 6px; border-radius: 3px; font-family: monospace;">/app/models/arrows/&lt;model_id&gt;/</code> and activate it
+                           in the Models section below.</p>
+                    </div>
+                </details>
+            </section>
+
             <!-- Training Data Stats -->
             <section class="section section-compact" id="stats-section">
                 <h2>Training Data</h2>

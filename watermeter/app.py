@@ -47,6 +47,15 @@ async def lifespan(app: FastAPI):
     service = get_service()
     trigger_mode = service.trigger_mode
 
+    # Initialize inference service (tolerates missing models)
+    from .inference import get_inference_service
+    inference_svc = get_inference_service()
+    try:
+        inference_svc.initialize(service.config)
+    except Exception as e:
+        logger.warning(f"Inference initialization failed (no models?): {e}")
+        logger.info("App starting without inference -- train or import models via /training")
+
     # Start MQTT in all modes (needed for publishing + reset even in cyclic mode)
     service.start_mqtt()
 
@@ -71,9 +80,12 @@ async def lifespan(app: FastAPI):
                     gt_dirs = [d for d in gt_base.iterdir() if d.is_dir()]
             purge_duplicates(input_dir, threshold, gt_dirs)
 
-    # Initial reading on startup
-    logger.info("Triggering initial reading...")
-    _create_background_task(service.process_reading())
+    # Initial reading on startup (only if models are loaded)
+    if inference_svc.models_loaded:
+        logger.info("Triggering initial reading...")
+        _create_background_task(service.process_reading())
+    else:
+        logger.info("Skipping initial reading (no models loaded)")
 
     yield
 

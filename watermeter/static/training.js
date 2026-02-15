@@ -1015,3 +1015,82 @@ async function deleteModel(modelType, modelId) {
         showMessage('Error: ' + error.message, 'error');
     }
 }
+
+// ============================================================================
+// Training Data Upload
+// ============================================================================
+
+function uploadTrainingData() {
+    const fileInput = document.getElementById('training-data-zip');
+    const dataType = document.getElementById('data-type-select').value;
+    const statusEl = document.getElementById('upload-status');
+    const progressEl = document.getElementById('upload-progress');
+    const progressBar = document.getElementById('upload-progress-bar');
+    const progressText = document.getElementById('upload-progress-text');
+    const btn = document.getElementById('upload-data-btn');
+
+    if (!fileInput.files.length) {
+        statusEl.textContent = 'Please select a ZIP file.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const file = fileInput.files[0];
+    if (!file.name.endsWith('.zip')) {
+        statusEl.textContent = 'Only ZIP files are supported.';
+        statusEl.style.color = 'var(--danger)';
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('type', dataType);
+
+    btn.disabled = true;
+    btn.textContent = 'Uploading...';
+    statusEl.textContent = '';
+    progressEl.style.display = 'flex';
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/training-data/upload');
+
+    xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+            const pct = Math.round((e.loaded / e.total) * 100);
+            progressBar.value = pct;
+            progressText.textContent = `${pct}% uploaded`;
+        }
+    };
+
+    xhr.onload = () => {
+        progressEl.style.display = 'none';
+        btn.disabled = false;
+        btn.textContent = 'Upload ZIP';
+
+        try {
+            const data = JSON.parse(xhr.responseText);
+            if (xhr.status === 200) {
+                statusEl.textContent = data.message;
+                statusEl.style.color = 'var(--success)';
+                loadTrainingStats();  // Refresh dataset stats
+                fileInput.value = '';  // Clear file input
+            } else {
+                statusEl.textContent = 'Error: ' + (data.detail || 'Upload failed');
+                statusEl.style.color = 'var(--danger)';
+            }
+        } catch (e) {
+            statusEl.textContent = 'Error: Invalid response from server';
+            statusEl.style.color = 'var(--danger)';
+        }
+    };
+
+    xhr.onerror = () => {
+        progressEl.style.display = 'none';
+        btn.disabled = false;
+        btn.textContent = 'Upload ZIP';
+        statusEl.textContent = 'Upload failed.';
+        statusEl.style.color = 'var(--danger)';
+    };
+
+    xhr.send(formData);
+}

@@ -1348,3 +1348,148 @@ main {
     }
 }
 
+/* ============================================================================
+   Setup Wizard (WP-9)
+   ============================================================================ */
+
+.setup-wizard-banner {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 24px 32px;
+    border-radius: 12px;
+    margin-bottom: 24px;
+}
+
+.setup-wizard-banner h2 {
+    color: white;
+    font-size: 24px;
+    margin-bottom: 8px;
+}
+
+.setup-wizard-banner p {
+    opacity: 0.9;
+    font-size: 16px;
+    line-height: 1.5;
+}
+
+.image-source-controls {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 12px;
+}
+
+.image-source-input {
+    flex: 1;
+    min-width: 280px;
+    padding: 10px 14px;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    font-size: 15px;
+    font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
+    transition: border-color 0.2s;
+}
+
+.image-source-input:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+#image-source-status {
+    margin-top: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    min-height: 20px;
+}
+
+.setup-complete-section {
+    text-align: center;
+    padding: 48px 24px;
+    margin: 24px 32px;
+}
+
+.setup-complete-section h2 {
+    font-size: 28px;
+    color: var(--success);
+    margin-bottom: 12px;
+}
+
+.setup-complete-section p {
+    font-size: 16px;
+    color: var(--text-light);
+    margin-bottom: 24px;
+}
+
+/* ============================================================================
+   Training Page - Getting Started / Data Upload
+   ============================================================================ */
+
+.upload-area {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 16px;
+    background: var(--bg-light);
+    border-radius: 8px;
+    margin: 12px 0;
+}
+
+.upload-area select {
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: white;
+    color: var(--text-dark);
+    font-size: 14px;
+}
+
+.upload-area input[type="file"] {
+    flex: 1;
+    min-width: 200px;
+}
+
+.license-notice {
+    font-size: 0.9em;
+    color: var(--text-dark);
+    background: #fef3cd;
+    padding: 8px 12px;
+    border-radius: 6px;
+    margin-top: 12px;
+}
+
+.repo-links {
+    list-style: none;
+    padding-left: 0;
+    margin-bottom: 16px;
+}
+
+.repo-links li {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.repo-links li:last-child {
+    border-bottom: none;
+}
+
+#upload-progress {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+#upload-progress progress {
+    flex: 1;
+    height: 8px;
+    border-radius: 4px;
+}
+
+#upload-progress-text {
+    font-size: 13px;
+    color: var(--text-light);
+    min-width: 100px;
+}
+

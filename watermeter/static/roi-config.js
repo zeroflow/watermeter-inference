@@ -1,4 +1,50 @@
         // ============================================================
+        // Setup Mode: Image Source (Step 0)
+        // ============================================================
+        async function testImageSource() {
+            const url = document.getElementById('image-source-url').value.trim();
+            const status = document.getElementById('image-source-status');
+            const btn = document.getElementById('test-image-btn');
+
+            if (!url) {
+                status.textContent = 'Please enter a URL.';
+                status.style.color = 'var(--danger)';
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Testing...';
+            status.textContent = 'Connecting to device...';
+            status.style.color = 'var(--text-light)';
+
+            try {
+                const resp = await fetch('/api/roi/image-source', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({url})
+                });
+                const data = await resp.json();
+
+                if (data.success) {
+                    status.textContent = data.message;
+                    status.style.color = 'var(--success)';
+                    // Hide step 0, reload image onto canvas
+                    document.getElementById('step-image-source').style.display = 'none';
+                    fetchAndReload();
+                } else {
+                    status.textContent = data.message;
+                    status.style.color = 'var(--danger)';
+                }
+            } catch (e) {
+                status.textContent = 'Connection failed: ' + e.message;
+                status.style.color = 'var(--danger)';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Test & Save';
+            }
+        }
+
+        // ============================================================
         // Canvas & Image State
         // ============================================================
         const canvas = document.getElementById('roi-canvas');
@@ -1236,6 +1282,12 @@
             document.getElementById('step-analogs').style.display = 'none';
             document.getElementById('step-analogs').classList.remove('roi-step-disabled');
             updateCompletedSteps();
+
+            // In setup mode, show setup-complete section
+            if (window.setupMode) {
+                const el = document.getElementById('setup-complete');
+                if (el) el.style.display = 'block';
+            }
         }
 
         function showAnalogsDisabledMode() {
@@ -1486,5 +1538,32 @@
         // ============================================================
         // Initialize
         // ============================================================
+
+        // In setup mode, if Step 0 is visible (no image source yet),
+        // hide the canvas and subsequent steps until Step 0 completes.
+        if (window.setupMode) {
+            const step0 = document.getElementById('step-image-source');
+            if (step0 && step0.style.display !== 'none') {
+                // Step 0 is showing - hide canvas and wizard steps until image source is set
+                document.querySelector('.canvas-container').style.display = 'none';
+                document.getElementById('step-rotation').style.display = 'none';
+                document.getElementById('step-markers').style.display = 'none';
+                document.getElementById('step-digits').style.display = 'none';
+                document.getElementById('step-analogs').style.display = 'none';
+
+                // Override fetchAndReload to also reveal the wizard steps after image loads
+                const _originalFetchAndReload = fetchAndReload;
+                fetchAndReload = async function() {
+                    await _originalFetchAndReload();
+                    document.querySelector('.canvas-container').style.display = '';
+                    document.getElementById('step-rotation').style.display = '';
+                    document.getElementById('step-markers').style.display = '';
+                    document.getElementById('step-digits').style.display = '';
+                    document.getElementById('step-analogs').style.display = '';
+                    loadConfig();
+                };
+            }
+        }
+
         loadConfig();
         loadImage();

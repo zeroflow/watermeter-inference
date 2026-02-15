@@ -4,7 +4,20 @@
 </div>
 {% endif %}
 
-{% if status == 'idle' or not total_value %}
+{% if status == 'no_models' %}
+<div class="no-data">
+    <h3>No Models Loaded</h3>
+    <p>The application is running, but no inference models are configured.</p>
+    <p>Visit the <a href="/training">Training page</a> to train or import a model.</p>
+    {% if warnings %}
+    <ul>
+        {% for warning in warnings %}
+        <li>{{ warning }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</div>
+{% elif status == 'idle' or not total_value %}
 <div class="no-data">
     <h3>No data available</h3>
     <p>Click "Read Now" to start a measurement.</p>

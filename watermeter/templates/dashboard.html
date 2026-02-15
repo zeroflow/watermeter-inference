@@ -14,6 +14,7 @@
         <header>
             <h1>🌊 AI Water Meter Dashboard</h1>
             <div class="header-actions">
+                {% if models_loaded %}
                 <button
                     hx-post="/api/trigger"
                     hx-target="#status-message"
@@ -21,6 +22,11 @@
                     class="btn btn-primary">
                     🔄 Read Now
                 </button>
+                {% else %}
+                <button class="btn btn-primary" disabled title="No models loaded -- train or import a model first">
+                    🔄 Read Now
+                </button>
+                {% endif %}
                 <div class="meter-input-group">
                     <input type="number" id="meter-value-input"
                            step="0.0001" min="0" placeholder="e.g. 34.8961"

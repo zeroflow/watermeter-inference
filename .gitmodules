@@ -1,6 +1,0 @@
-[submodule "arrows/ground_truth"]
-	path = arrows/ground_truth
-	url = ssh://gitea@192.168.4.38:2222/zeroflow/watermeter-arrows.git
-[submodule "digits/ground_truth"]
-	path = digits/ground_truth
-	url = ssh://gitea@192.168.4.38:2222/zeroflow/watermeter-digits.git

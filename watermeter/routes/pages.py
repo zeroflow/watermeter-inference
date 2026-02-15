@@ -3,10 +3,11 @@
 from pathlib import Path
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from .. import watermeter_service
+from ..inference import get_inference_service
 
 router = APIRouter()
 
@@ -23,7 +24,17 @@ templates = Jinja2Templates(directory=str(_pkg_dir / "templates"))
 )
 async def dashboard(request: Request):
     """Render the main dashboard page."""
-    return templates.TemplateResponse(request, "dashboard.html", context={"nav_active": "dashboard"})
+    # First-run detection: no digit ROIs configured -> redirect to setup wizard
+    service = watermeter_service.get_service()
+    rois = service.config.get("detection", {}).get("digits", {}).get("rois", [])
+    if len(rois) == 0:
+        return RedirectResponse("/roi-config?setup=1", status_code=303)
+
+    inference_svc = get_inference_service()
+    return templates.TemplateResponse(request, "dashboard.html", context={
+        "nav_active": "dashboard",
+        "models_loaded": inference_svc.models_loaded,
+    })
 
 
 @router.get(
@@ -47,7 +58,14 @@ async def label_page(request: Request):
 )
 async def roi_config_page(request: Request):
     """Render the ROI configuration page."""
-    return templates.TemplateResponse(request, "roi_config.html", context={"nav_active": "roi"})
+    service = watermeter_service.get_service()
+    setup_mode = request.query_params.get("setup") == "1"
+    image_src = service.config.get("images", {}).get("src", "")
+    return templates.TemplateResponse(request, "roi_config.html", context={
+        "nav_active": "roi",
+        "setup_mode": setup_mode,
+        "image_src": image_src,
+    })
 
 
 @router.get(
