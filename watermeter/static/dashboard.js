@@ -38,6 +38,40 @@ function hideStatusMessage() {
     }, 5000);
 }
 
+// Display status message
+function showStatusMessage(message) {
+    const msg = document.getElementById('status-message');
+    if (msg) {
+        msg.textContent = message;
+        hideStatusMessage();
+    }
+}
+
+// Set meter value manually
+function setMeterValue() {
+    const input = document.getElementById('meter-value-input');
+    const value = parseFloat(input.value);
+    if (isNaN(value) || value < 0) {
+        showStatusMessage('Please enter a valid positive number');
+        return;
+    }
+    if (!confirm(`Set meter to ${value.toFixed(4)} m³?`)) return;
+    fetch('/api/set-value', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({value: value})
+    })
+    .then(response => {
+        if (!response.ok) throw new Error(`Status ${response.status}`);
+        return response.json();
+    })
+    .then(data => {
+        showStatusMessage(data.message || `Meter set to ${value.toFixed(4)} m³`);
+        input.value = '';
+    })
+    .catch(error => showStatusMessage('Error: ' + error.message));
+}
+
 // HTMX Event Listener
 document.body.addEventListener('htmx:afterSwap', function(evt) {
     if (evt.detail.target.id === 'status-message') {

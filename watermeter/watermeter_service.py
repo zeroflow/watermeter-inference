@@ -57,7 +57,12 @@ class WatermeterService:
             'predictions': [],
             'processing': False,
             'ha_publish_enabled': self.ha_publish_enabled,
-            'leak_warning': False
+            'leak_warning': False,
+            'last_published_value': None,
+            'last_published_timestamp': None,
+            'last_rejected_value': None,
+            'last_rejected_timestamp': None,
+            'last_rejected_reasons': [],
         }
 
         # Persistence
@@ -66,6 +71,12 @@ class WatermeterService:
             self.state_store = StateStore(persistence_config['state_file'])
             # Load previous state
             self.previous_value, self.last_update_time = self.state_store.load()
+            # Populate last_published from persisted state (BL-14)
+            if self.previous_value is not None:
+                self.current_state['last_published_value'] = self.previous_value
+                self.current_state['last_published_timestamp'] = (
+                    self.last_update_time.strftime('%H:%M') if self.last_update_time else None
+                )
         else:
             self.state_store = None
             logger.info("Persistence disabled")
@@ -1531,6 +1542,13 @@ class WatermeterService:
                     self.current_state['status'] = 'warning' if all_warnings else 'ok'
                     self.current_state['warnings'] = all_warnings
 
+                    # Track last-published / clear last-rejected (BL-14)
+                    self.current_state['last_published_value'] = total_value
+                    self.current_state['last_published_timestamp'] = self.last_update_time.strftime('%H:%M')
+                    self.current_state['last_rejected_value'] = None
+                    self.current_state['last_rejected_timestamp'] = None
+                    self.current_state['last_rejected_reasons'] = []
+
                     logger.info(f"✓ Reading accepted: {total_value:.4f} m³")
 
                     # Check if user confirmation is needed (BL-07)
@@ -1562,6 +1580,12 @@ class WatermeterService:
                     self.current_state['status'] = 'error'
                     self.current_state['warnings'] = all_warnings
                     self.current_state['total_value'] = total_value
+
+                    # Track last-rejected state (BL-14)
+                    self.current_state['last_rejected_value'] = total_value
+                    self.current_state['last_rejected_timestamp'] = datetime.now().strftime('%H:%M')
+                    self.current_state['last_rejected_reasons'] = plausibility_warnings
+
                     logger.error(f"✗ Reading rejected: {total_value:.4f} m³ (consecutive: {self.consecutive_rejections})")
 
                     # Check for stuck state
@@ -1655,6 +1679,13 @@ class WatermeterService:
         self.leak_warning = False
         self.current_state['leak_warning'] = False
 
+        # Clear last-published and last-rejected tracking (BL-14)
+        self.current_state['last_published_value'] = None
+        self.current_state['last_published_timestamp'] = None
+        self.current_state['last_rejected_value'] = None
+        self.current_state['last_rejected_timestamp'] = None
+        self.current_state['last_rejected_reasons'] = []
+
         # Clear any pending confirmation (BL-07)
         self._cancel_confirmation_timer()
         self._pending_confirmation = None
@@ -1662,6 +1693,80 @@ class WatermeterService:
         # Clear persisted state
         if self.state_store:
             self.state_store.clear()
+
+    def set_manual_value(self, value: float) -> bool:
+        """Manually set the meter value (BL-15).
+
+        Updates all internal state as if a reading was accepted, seeds rate
+        history so the next automated reading doesn't trigger a false spike,
+        and publishes the value to MQTT.
+
+        Returns:
+            True if value was published to MQTT, False otherwise
+        """
+        logger.info(f"Manual meter set: {value:.4f} m³")
+
+        now = datetime.now()
+
+        # Update core state
+        self.previous_value = value
+        self.last_update_time = now
+
+        # Clear and re-seed rate history
+        self.rate_history = [(value, now)]
+
+        # Reset plausibility tracking
+        self.consecutive_rejections = 0
+        self.leak_warning = False
+        self.current_state['leak_warning'] = False
+
+        # Cancel any pending confirmation (BL-07)
+        self._cancel_confirmation_timer()
+        self._pending_confirmation = None
+
+        # Persist state
+        if self.state_store:
+            self.state_store.save(self.previous_value, self.last_update_time)
+
+        # Update current_state for UI
+        self.current_state['total_value'] = value
+        self.current_state['last_update'] = now.isoformat()
+        self.current_state['status'] = 'ok'
+        self.current_state['warnings'] = []
+
+        # Update last-published / clear last-rejected (BL-14)
+        self.current_state['last_published_value'] = value
+        self.current_state['last_published_timestamp'] = now.strftime('%H:%M')
+        self.current_state['last_rejected_value'] = None
+        self.current_state['last_rejected_timestamp'] = None
+        self.current_state['last_rejected_reasons'] = []
+
+        # Publish to MQTT
+        mqtt_published = False
+        if self.ha_publish_enabled:
+            if self.mqtt_client and self.mqtt_client.is_connected():
+                try:
+                    ha_config = self.config['homeassistant']
+                    topic = ha_config.get('publish_topic', 'homeassistant/sensor/watermeter/state')
+                    payload = json.dumps({
+                        'state': round(value, 4),
+                        'attributes': {
+                            'last_update': now.isoformat(),
+                            'warnings': ['Manual input'],
+                            'leak_warning': False,
+                            'confidences': {},
+                            'source': 'manual'
+                        }
+                    })
+                    self.mqtt_client.publish(topic, payload, qos=2, retain=True)
+                    mqtt_published = True
+                    logger.info(f"Published manual value {value:.4f} to MQTT: {topic}")
+                except Exception as e:
+                    logger.error(f"Failed to publish manual value to MQTT: {e}")
+            else:
+                logger.warning("MQTT not connected, manual value not published to Home Assistant")
+
+        return mqtt_published
 
     def toggle_ha_publish(self, enabled: bool) -> None:
         """Toggle Home Assistant MQTT publishing."""

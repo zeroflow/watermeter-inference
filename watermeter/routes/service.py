@@ -4,6 +4,7 @@ import asyncio
 import base64
 from datetime import datetime
 import logging
+import math
 from pathlib import Path
 
 from fastapi import APIRouter
@@ -35,6 +36,11 @@ class TrainingSubmission(BaseModel):
     image_base64: str
     model: str
     next_image_base64: str = None  # Optional: next dial image for annotation help
+
+
+class SetValueRequest(BaseModel):
+    """Request model for manually setting the meter value (BL-15)."""
+    value: float
 
 
 @router.get("/api/status")
@@ -69,6 +75,42 @@ async def reset_previous_value():
     service = watermeter_service.get_service()
     service.reset_previous_value()
     return JSONResponse({"message": "Previous value reset successfully"})
+
+
+@router.post("/api/set-value")
+async def set_value(request: SetValueRequest):
+    """Manually set the meter value (BL-15)."""
+    if request.value < 0:
+        return JSONResponse(
+            {"success": False, "message": "Value must be >= 0"},
+            status_code=400
+        )
+    if math.isnan(request.value) or math.isinf(request.value):
+        return JSONResponse(
+            {"success": False, "message": "Value must be a finite number"},
+            status_code=400
+        )
+    if request.value >= 1_000_000:
+        return JSONResponse(
+            {"success": False, "message": "Value must be less than 1,000,000"},
+            status_code=400
+        )
+
+    service = watermeter_service.get_service()
+
+    if service.current_state.get('processing'):
+        return JSONResponse(
+            {"success": False, "message": "Cannot set value while a reading is in progress. Please try again."},
+            status_code=409
+        )
+
+    mqtt_published = service.set_manual_value(request.value)
+    return JSONResponse({
+        "success": True,
+        "message": f"Meter set to {request.value:.4f} m\u00b3",
+        "value": round(request.value, 4),
+        "mqtt_published": mqtt_published
+    })
 
 
 @router.post("/api/toggle-ha-publish")

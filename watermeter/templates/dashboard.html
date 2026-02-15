@@ -21,14 +21,18 @@
                     class="btn btn-primary">
                     🔄 Read Now
                 </button>
-                <button
-                    hx-post="/api/reset"
-                    hx-target="#status-message"
-                    hx-swap="innerHTML"
-                    class="btn btn-secondary"
-                    onclick="return confirm('Reset previous value?')">
-                    ↺ Reset
-                </button>
+                <div class="meter-input-group">
+                    <input type="number" id="meter-value-input"
+                           step="0.0001" min="0" placeholder="e.g. 34.8961"
+                           class="meter-value-input">
+                    <button class="btn btn-primary btn-small" onclick="setMeterValue()">
+                        Set
+                    </button>
+                    <button class="btn btn-secondary btn-small"
+                            onclick="if(confirm('Reset previous value to unknown? The next reading will be accepted without plausibility check.')) { fetch('/api/reset', {method:'POST'}).then(r=>r.json()).then(d=>{showStatusMessage(d.message || 'Reset complete'); }); }">
+                        Reset
+                    </button>
+                </div>
                 <label class="toggle">
                     <input type="checkbox" id="auto-refresh" checked onchange="toggleAutoRefresh(this)">
                     <span>Auto-Refresh</span>

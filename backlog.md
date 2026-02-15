@@ -86,6 +86,24 @@ Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
   - **Timeout**: if no response within N minutes, auto-reject (don't publish uncertain readings; wait for next cycle)
   - **Depends on**: existing MQTT infra (already has publish + subscribe); BL-06 stale detection could also trigger confirmation requests
 
+- **BL-14** `planned` — **Show rejected reading on dashboard**: when the last cycle was rejected (plausibility check), show both the last published value and the rejected reading so the user can compare
+  - **Display**: only when they differ — if last reading was accepted, show only the current value as before
+  - **What to show**: "Last sent: 34.6808 m³ (15:32)" vs "Last read: 34.8961 m³ (15:37) — rejected: Change per reading too high"
+  - **Where**: below or next to the current meter reading card on the dashboard
+  - **Data source**: `current_state` already has `total_value`, `previous_value`, `status`, `errors` — may need to also store `last_published_value` + `last_published_timestamp` separately
+  - **MQTT**: no changes needed, this is display-only
+- **BL-15** `planned` — **Manual meter reading input**: replace the Reset button with a manual input field that sets the current meter value, stores it as `previous_value`, and publishes to HA via MQTT
+  - **UI**: text input field + "Set" button (replaces the current "Reset" button)
+  - **Behavior on submit**:
+    1. Validate input is a valid positive number
+    2. Update `previous_value` to the entered value
+    3. Publish the value to MQTT/HA as a normal reading
+    4. Reset rejection counter and error state
+    5. Show confirmation on dashboard
+  - **Use case**: meter was misread for several cycles, user reads the physical meter and enters the correct value to re-sync
+  - **Safety**: confirmation dialog before applying ("Set meter to X.XXXX m³?")
+  - **API**: `POST /api/set-value` with `{"value": 34.8961}`
+
 ## Internationalization
 
 - **BL-11** `done` — **Translate UI to English**: replace remaining German text in templates and backend with English

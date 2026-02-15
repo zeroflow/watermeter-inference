@@ -1243,3 +1243,108 @@ main {
     color: var(--text-dark);
 }
 
+/* ========================================
+   BL-14: Rejected Reading Comparison
+   ======================================== */
+.rejected-comparison {
+    border-radius: 12px;
+    margin-bottom: 24px;
+    overflow: hidden;
+}
+
+.comparison-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px 12px;
+    padding: 12px 20px;
+}
+
+.comparison-row.published {
+    background: rgba(5, 150, 105, 0.1);
+    border-left: 3px solid var(--success);
+}
+
+.comparison-row.rejected {
+    background: rgba(220, 38, 38, 0.1);
+    border-left: 3px solid var(--danger);
+}
+
+.comparison-label {
+    font-weight: 600;
+    min-width: 70px;
+}
+
+.comparison-value {
+    font-family: monospace;
+    font-weight: 700;
+    font-size: 15px;
+}
+
+.comparison-time {
+    color: var(--text-light);
+    font-size: 13px;
+}
+
+.comparison-reason {
+    font-size: 13px;
+    color: var(--danger);
+    font-style: italic;
+    width: 100%;
+}
+
+@media (max-width: 768px) {
+    .comparison-row {
+        flex-direction: column;
+        gap: 4px;
+    }
+}
+
+/* ========================================
+   BL-15: Manual Meter Input UI
+   ======================================== */
+.meter-input-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.meter-value-input {
+    width: 140px;
+    padding: 10px 12px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    transition: all 0.2s;
+}
+
+.meter-value-input::placeholder {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.meter-value-input:focus {
+    outline: none;
+    border-color: rgba(255, 255, 255, 0.6);
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.btn-small {
+    padding: 8px 14px;
+    font-size: 13px;
+}
+
+@media (max-width: 768px) {
+    .meter-input-group {
+        width: 100%;
+        flex-wrap: wrap;
+    }
+
+    .meter-value-input {
+        flex: 1;
+        min-width: 120px;
+    }
+}
+

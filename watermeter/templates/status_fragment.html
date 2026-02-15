@@ -32,6 +32,29 @@
 </div>
 {% endif %}
 
+<!-- Rejected Reading Comparison -->
+{% if last_rejected_value is not none and last_published_value is not none %}
+<div class="rejected-comparison">
+    <div class="comparison-row published">
+        <span class="comparison-label">Last sent</span>
+        <span class="comparison-value">{{ "%.4f"|format(last_published_value) }} {{ unit }}</span>
+        {% if last_published_timestamp %}
+        <span class="comparison-time">({{ last_published_timestamp }})</span>
+        {% endif %}
+    </div>
+    <div class="comparison-row rejected">
+        <span class="comparison-label">Last read</span>
+        <span class="comparison-value">{{ "%.4f"|format(last_rejected_value) }} {{ unit }}</span>
+        {% if last_rejected_timestamp %}
+        <span class="comparison-time">({{ last_rejected_timestamp }})</span>
+        {% endif %}
+        {% if last_rejected_reasons %}
+        <span class="comparison-reason">rejected: {{ last_rejected_reasons | join('; ') }}</span>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
 <!-- Warnings and Errors -->
 {% if warnings %}
 <div class="{% if status == 'error' %}error{% else %}warnings{% endif %}">
