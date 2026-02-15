@@ -69,7 +69,7 @@
 {% endif %}
 
 <!-- Warnings and Errors -->
-{% if warnings %}
+{% if warnings and not last_rejected_reasons %}
 <div class="{% if status == 'error' %}error{% else %}warnings{% endif %}">
     <h3>{% if status == 'error' %}⚠️ Error occurred{% else %}⚠️ Warnings{% endif %}</h3>
     <ul>

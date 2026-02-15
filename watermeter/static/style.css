@@ -1362,13 +1362,13 @@ main {
 }
 
 .comparison-row.published {
-    background: rgba(5, 150, 105, 0.1);
-    border-left: 3px solid var(--success);
+    background: var(--success-bg);
+    border-left: 4px solid var(--success);
 }
 
 .comparison-row.rejected {
-    background: rgba(220, 38, 38, 0.1);
-    border-left: 3px solid var(--danger);
+    background: var(--danger-bg);
+    border-left: 4px solid var(--danger);
 }
 
 .comparison-label {
@@ -1389,7 +1389,7 @@ main {
 
 .comparison-reason {
     font-size: 13px;
-    color: var(--danger);
+    color: var(--danger-text);
     font-style: italic;
     width: 100%;
 }
