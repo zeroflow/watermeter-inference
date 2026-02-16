@@ -295,13 +295,15 @@ async function loadTrainingStats() {
         const unlabeled = (data.unlabeled.digits || 0) + (data.unlabeled.arrows || 0);
         document.getElementById('total-unlabeled').textContent = unlabeled;
 
-        // Show "Getting Started" section only if there are classes with 0 images
+        // Auto-collapse "Getting Started" when all classes have data; expand if classes are missing
         const hasEmptyClasses = checkForEmptyClasses(digitsStats, arrowsStats, totalDigits, totalArrows);
-        const gettingStartedSection = document.getElementById('getting-started-section');
-        if (hasEmptyClasses) {
-            gettingStartedSection.style.display = 'block';
-        } else {
-            gettingStartedSection.style.display = 'none';
+        const gettingStartedDetails = document.getElementById('getting-started-details');
+        if (gettingStartedDetails) {
+            if (hasEmptyClasses) {
+                gettingStartedDetails.setAttribute('open', '');
+            } else {
+                gettingStartedDetails.removeAttribute('open');
+            }
         }
 
     } catch (error) {
