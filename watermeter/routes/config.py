@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from .. import config_utils
+from .. import watermeter_service
 
 logger = logging.getLogger(__name__)
 
@@ -69,10 +70,18 @@ async def save_config(submission: ConfigSaveSubmission):
 
         logger.info(f"Config saved (option: {submission.save_option})")
 
-        # If restart requested, we'd need to trigger a service reload
-        message = "Config saved successfully"
-        if submission.save_option == "restart":
-            message += ". Please restart the service to apply changes."
+        # Reload config into running service
+        import yaml
+
+        with open(config_path, "r") as f:
+            plain_config = yaml.safe_load(f)
+
+        service = watermeter_service.get_service()
+        reload_result = service.reload_config(plain_config)
+
+        message = "Config saved and applied"
+        if reload_result.get("mqtt_reconnected"):
+            message += " (MQTT reconnected)"
 
         return JSONResponse({"success": True, "message": message})
 
