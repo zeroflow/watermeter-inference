@@ -931,7 +931,7 @@ function renderModels() {
         const modelType = model.model_type;
         const isActive = activeModels[modelType] === model.id;
         const isFailed = model.status === 'failed';
-        const createdAt = model.created_at ? new Date(model.created_at).toLocaleDateString() : '-';
+        const createdAt = model.created_at ? new Date(model.created_at).toLocaleString() : '-';
         const bm = model.benchmark;
 
         // Accuracy cell
