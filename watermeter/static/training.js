@@ -58,40 +58,76 @@ function onModelTypeChange() {
 // Architecture combobox
 const CURATED_MODELS = [
     { group: 'Lightweight', models: [
+        { value: 'resnet18', label: 'ResNet-18' },
+        { value: 'efficientnet_lite0', label: 'EfficientNet-Lite0' },
         { value: 'mobilenetv3_small_100', label: 'MobileNetV3 Small' },
-        { value: 'mobileone_s0', label: 'MobileOne S0' },
-        { value: 'efficientnet_b0', label: 'EfficientNet B0' },
-        { value: 'mobilenetv3_large_100', label: 'MobileNetV3 Large' },
-        { value: 'mobileone_s1', label: 'MobileOne S1' },
-        { value: 'resnet18', label: 'ResNet18' },
-        { value: 'convnextv2_atto', label: 'ConvNeXtV2 Atto' },
-        { value: 'convnextv2_femto', label: 'ConvNeXtV2 Femto' },
-        { value: 'convnextv2_pico', label: 'ConvNeXtV2 Pico' },
     ]},
     { group: 'Medium', models: [
-        { value: 'ghostnet_100', label: 'GhostNet' },
-        { value: 'edgenext_small', label: 'EdgeNeXt Small' },
-        { value: 'efficientnet_b2', label: 'EfficientNet B2' },
-        { value: 'efficientnet_b3', label: 'EfficientNet B3' },
-        { value: 'efficientnet_b4', label: 'EfficientNet B4' },
-        { value: 'efficientnet_lite0', label: 'EfficientNet Lite0' },
-        { value: 'efficientnetv2_rw_t', label: 'EfficientNetV2-T' },
-        { value: 'densenet121', label: 'DenseNet121' },
-        { value: 'densenet169', label: 'DenseNet169' },
-        { value: 'regnetx_032', label: 'RegNetX-032' },
-        { value: 'resnet34', label: 'ResNet34' },
-        { value: 'convnextv2_nano', label: 'ConvNeXtV2 Nano' },
+        { value: 'efficientnetv2_rw_t', label: 'EfficientNetV2-RW Tiny' },
+        { value: 'efficientnetv2_rw_s', label: 'EfficientNetV2-RW Small' },
+        { value: 'convnext_nano', label: 'ConvNeXt Nano' },
     ]},
     { group: 'Heavy', models: [
-        { value: 'efficientnetv2_rw_s', label: 'EfficientNetV2-S' },
-        { value: 'resnext50_32x4d', label: 'ResNeXt50 32x4d' },
-        { value: 'convnextv2_tiny', label: 'ConvNeXtV2 Tiny' },
+        { value: 'resnext50_32x4d', label: 'ResNeXt-50 32×4d' },
+        { value: 'convnextv2_tiny', label: 'ConvNeXt-V2 Tiny' },
+        { value: 'efficientnetv2_rw_m', label: 'EfficientNetV2-RW Medium' },
     ]},
 ];
 
 // Build a lookup from value -> label for curated models
 const CURATED_LABELS = {};
 CURATED_MODELS.forEach(g => g.models.forEach(m => CURATED_LABELS[m.value] = m.label));
+
+// Convert a timm model name to a human-friendly display name
+// e.g. "convnextv2_base.fcmae_ft_in22k_in1k" -> "ConvNeXtV2 Base"
+function prettifyModelName(timmName) {
+    // Check curated labels first
+    if (CURATED_LABELS[timmName]) return CURATED_LABELS[timmName];
+
+    // Strip training recipe suffix (everything after first dot)
+    let name = timmName.split('.')[0];
+
+    // Known family mappings (order matters — check longer prefixes first)
+    const families = [
+        ['efficientnetv2_rw_', 'EfficientNetV2-RW '],
+        ['efficientnet_lite', 'EfficientNet-Lite'],
+        ['efficientnetv2_', 'EfficientNetV2-'],
+        ['efficientnet_', 'EfficientNet-'],
+        ['mobilenetv3_', 'MobileNetV3 '],
+        ['mobilenetv2_', 'MobileNetV2 '],
+        ['mobileone_', 'MobileOne '],
+        ['convnextv2_', 'ConvNeXt-V2 '],
+        ['convnext_', 'ConvNeXt '],
+        ['resnext50_', 'ResNeXt-50 '],
+        ['resnext101_', 'ResNeXt-101 '],
+        ['resnetv2_', 'ResNetV2-'],
+        ['resnet', 'ResNet-'],
+        ['regnetx_', 'RegNetX-'],
+        ['regnety_', 'RegNetY-'],
+        ['densenet', 'DenseNet-'],
+        ['ghostnet_', 'GhostNet '],
+        ['edgenext_', 'EdgeNeXt '],
+        ['lcnet_', 'LCNet '],
+        ['tinynet_', 'TinyNet-'],
+        ['mnasnet_', 'MnasNet '],
+        ['seresnext', 'SE-ResNeXt-'],
+    ];
+
+    for (const [prefix, label] of families) {
+        if (name.startsWith(prefix)) {
+            let suffix = name.slice(prefix.length);
+            // Capitalize first letter of suffix
+            suffix = suffix.charAt(0).toUpperCase() + suffix.slice(1);
+            // Replace underscores with spaces
+            suffix = suffix.replace(/_/g, ' ');
+            return label + suffix;
+        }
+    }
+
+    // Fallback: capitalize first char, replace underscores with spaces
+    name = name.replace(/_/g, ' ');
+    return name.charAt(0).toUpperCase() + name.slice(1);
+}
 
 function initArchCombobox() {
     const input = document.getElementById('arch-search');
@@ -142,7 +178,8 @@ function initArchCombobox() {
             if (timmOnly.length > 0) {
                 html += `<div class="arch-search-info">${models.length} timm models found${models.length >= 50 ? ' (showing first 50)' : ''}</div>`;
                 timmOnly.forEach(m => {
-                    html += `<div class="arch-option" data-value="${m}" data-label="${m}">${m}</div>`;
+                    const pretty = prettifyModelName(m);
+                    html += `<div class="arch-option" data-value="${m}" data-label="${pretty}">${pretty} <span class="arch-value">${m}</span></div>`;
                 });
             }
             if (!html) html = `<div class="arch-search-info">No models found</div>`;
@@ -154,7 +191,7 @@ function initArchCombobox() {
     }
 
     input.addEventListener('focus', () => {
-        if (!input.value || input.value === (CURATED_LABELS[hidden.value] || hidden.value)) {
+        if (!input.value || input.value === (CURATED_LABELS[hidden.value] || prettifyModelName(hidden.value))) {
             input.select();
             showCurated();
         } else {
@@ -190,7 +227,7 @@ function initArchCombobox() {
             dropdown.classList.remove('open');
             // Reset display if value was not changed
             if (hidden.value) {
-                input.value = CURATED_LABELS[hidden.value] || hidden.value;
+                input.value = CURATED_LABELS[hidden.value] || prettifyModelName(hidden.value);
             }
         }
     });
