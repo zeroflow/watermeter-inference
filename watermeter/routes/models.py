@@ -14,6 +14,7 @@ from .. import watermeter_service
 from ..inference import get_inference_service
 from ..model_manager import get_model_manager
 from ..image_hash import purge_duplicates, compute_prune_preview, confirm_prune
+from ..training_core import circular_error
 from ..training_manager import get_training_manager
 
 logger = logging.getLogger(__name__)
@@ -487,7 +488,7 @@ def scan_mislabeled(model_type: str, training_path: Path) -> dict:
                 try:
                     folder_val = float(folder_label)
                     pred_val = float(predicted_label)
-                    is_match = abs(pred_val - folder_val) < 0.5
+                    is_match = circular_error(pred_val, folder_val) < 0.5
                 except (ValueError, TypeError):
                     is_match = predicted_label == folder_label
             else:
