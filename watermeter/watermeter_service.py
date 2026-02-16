@@ -24,6 +24,7 @@ from .persistence import StateStore
 from .image_pipeline import ImagePipeline
 from .position_utils import get_position_ids
 from .low_confidence_capture import LowConfidenceCapture
+from .scheduling import SchedulingManager
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -313,14 +314,15 @@ class WatermeterService:
         # MQTT client
         self.mqtt_client = None
 
-        # Cyclic loop task
-        self._cyclic_task: Optional[asyncio.Task] = None
-
-        # Training stats publishing loop task
-        self._stats_task: Optional[asyncio.Task] = None
-
         # Image pipeline (fetching, rotation, alignment, ROI extraction)
         self._image_pipeline = ImagePipeline(self.config)
+
+        # Scheduling manager (cyclic loop and stats publishing)
+        self._scheduler = SchedulingManager(
+            cyclic_interval=self.cyclic_interval,
+            process_fn=self.process_reading,
+            stats_fn=self.publish_training_stats,
+        )
 
         # Confirmation state (BL-07)
         self._pending_confirmation: Optional[Dict] = None
@@ -1741,31 +1743,15 @@ class WatermeterService:
 
     async def _stats_loop(self) -> None:
         """Periodically publish training data stats to HA (every 5 minutes)."""
-        logger.info("Training stats publish loop started (interval=300s)")
-        try:
-            while True:
-                await asyncio.sleep(300)
-                try:
-                    self.publish_training_stats()
-                except Exception:
-                    logger.exception("Error publishing training stats")
-        except asyncio.CancelledError:
-            logger.info("Training stats publish loop cancelled")
+        return await self._scheduler._stats_loop()
 
     def start_stats_loop(self) -> None:
         """Start the periodic training stats background task."""
-        if self._stats_task is not None:
-            logger.warning("Stats loop already running")
-            return
-        self._stats_task = asyncio.create_task(self._stats_loop())
-        logger.info("Training stats loop task created")
+        return self._scheduler.start_stats_loop()
 
     def stop_stats_loop(self) -> None:
         """Cancel the periodic training stats background task."""
-        if self._stats_task is not None:
-            self._stats_task.cancel()
-            self._stats_task = None
-            logger.info("Training stats loop stopped")
+        return self._scheduler.stop_stats_loop()
 
     def publish_discovery(self) -> None:
         """Publish Home Assistant MQTT Discovery messages for all entities.
@@ -1984,6 +1970,9 @@ class WatermeterService:
         self.rate_history_size = new_config.get("plausibility", {}).get("rate_history_size", 5)
         self.ha_publish_enabled = new_config.get("homeassistant", {}).get("enabled", True)
 
+        # Sync cyclic interval to scheduler
+        self._scheduler.cyclic_interval = self.cyclic_interval
+
         # Reconnect MQTT if connection params changed
         if mqtt_changed and self.mqtt_client:
             logger.info("MQTT config changed — reconnecting")
@@ -2002,29 +1991,15 @@ class WatermeterService:
 
     async def _cyclic_loop(self):
         """Periodically trigger process_reading at the configured interval."""
-        logger.info(f"Cyclic trigger loop started (interval={self.cyclic_interval}s)")
-        try:
-            while True:
-                await asyncio.sleep(self.cyclic_interval)
-                logger.info("Cyclic trigger — starting reading")
-                await self.process_reading()
-        except asyncio.CancelledError:
-            logger.info("Cyclic trigger loop cancelled")
+        return await self._scheduler._cyclic_loop()
 
     def start_cyclic_loop(self):
         """Start the cyclic trigger background task."""
-        if self._cyclic_task is not None:
-            logger.warning("Cyclic loop already running")
-            return
-        self._cyclic_task = asyncio.create_task(self._cyclic_loop())
-        logger.info("Cyclic trigger loop task created")
+        return self._scheduler.start_cyclic_loop()
 
     def stop_cyclic_loop(self):
         """Cancel the cyclic trigger background task."""
-        if self._cyclic_task is not None:
-            self._cyclic_task.cancel()
-            self._cyclic_task = None
-            logger.info("Cyclic trigger loop stopped")
+        return self._scheduler.stop_cyclic_loop()
 
 
 # Global service instance

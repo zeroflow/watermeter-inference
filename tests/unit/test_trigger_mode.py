@@ -30,6 +30,7 @@ for _name in ['watermeter_service', 'watermeter.watermeter_service']:
         _ws_mock_backup[_name] = sys.modules.pop(_name)
 
 from watermeter.watermeter_service import WatermeterService  # noqa: E402
+from watermeter.scheduling import SchedulingManager  # noqa: E402
 
 # Keep a reference to the real module (for patching module-level names like `mqtt`)
 _real_ws_module = sys.modules['watermeter.watermeter_service']
@@ -127,8 +128,6 @@ class TestCyclicLoop:
     @pytest.mark.asyncio
     async def test_cyclic_loop_calls_process_reading(self):
         """The cyclic loop should call process_reading after the interval."""
-        service = MagicMock()
-        service.cyclic_interval = 0.05  # 50ms for fast test
         call_count = 0
         target_calls = 3
         done = asyncio.Event()
@@ -139,9 +138,13 @@ class TestCyclicLoop:
             if call_count >= target_calls:
                 done.set()
 
-        service.process_reading = mock_process
+        scheduler = SchedulingManager(
+            cyclic_interval=0.05,  # 50ms for fast test
+            process_fn=mock_process,
+            stats_fn=MagicMock(),
+        )
 
-        loop_coro = WatermeterService._cyclic_loop(service)
+        loop_coro = scheduler._cyclic_loop()
         task = asyncio.create_task(loop_coro)
         try:
             # Wait for expected calls with timeout instead of fixed sleep
@@ -157,11 +160,13 @@ class TestCyclicLoop:
     @pytest.mark.asyncio
     async def test_cyclic_loop_cancellation(self):
         """The cyclic loop should exit cleanly when cancelled."""
-        service = MagicMock()
-        service.cyclic_interval = 10  # Long interval, we cancel before it fires
-        service.process_reading = AsyncMock()
+        scheduler = SchedulingManager(
+            cyclic_interval=10,  # Long interval, we cancel before it fires
+            process_fn=AsyncMock(),
+            stats_fn=MagicMock(),
+        )
 
-        loop_coro = WatermeterService._cyclic_loop(service)
+        loop_coro = scheduler._cyclic_loop()
         task = asyncio.create_task(loop_coro)
         await asyncio.sleep(0.01)
         task.cancel()
@@ -171,42 +176,56 @@ class TestCyclicLoop:
 
     def test_start_cyclic_loop_creates_task(self):
         """start_cyclic_loop should create an asyncio task."""
-        service = MagicMock()
-        service._cyclic_task = None
-        service._cyclic_loop = AsyncMock()
+        scheduler = SchedulingManager(
+            cyclic_interval=300,
+            process_fn=AsyncMock(),
+            stats_fn=MagicMock(),
+        )
 
         mock_task = MagicMock()
         with patch('asyncio.create_task', return_value=mock_task) as mock_create:
-            WatermeterService.start_cyclic_loop(service)
+            scheduler.start_cyclic_loop()
             mock_create.assert_called_once()
-            assert service._cyclic_task == mock_task
+            assert scheduler._cyclic_task == mock_task
 
     def test_start_cyclic_loop_noop_when_already_running(self):
         """start_cyclic_loop should not create a second task if one is running."""
-        service = MagicMock()
-        service._cyclic_task = MagicMock()  # Already running
+        scheduler = SchedulingManager(
+            cyclic_interval=300,
+            process_fn=AsyncMock(),
+            stats_fn=MagicMock(),
+        )
+        scheduler._cyclic_task = MagicMock()  # Already running
 
         with patch('asyncio.create_task') as mock_create:
-            WatermeterService.start_cyclic_loop(service)
+            scheduler.start_cyclic_loop()
             mock_create.assert_not_called()
 
     def test_stop_cyclic_loop_cancels_task(self):
         """stop_cyclic_loop should cancel the running task."""
-        service = MagicMock()
+        scheduler = SchedulingManager(
+            cyclic_interval=300,
+            process_fn=AsyncMock(),
+            stats_fn=MagicMock(),
+        )
         mock_task = MagicMock()
-        service._cyclic_task = mock_task
+        scheduler._cyclic_task = mock_task
 
-        WatermeterService.stop_cyclic_loop(service)
+        scheduler.stop_cyclic_loop()
 
         mock_task.cancel.assert_called_once()
-        assert service._cyclic_task is None
+        assert scheduler._cyclic_task is None
 
     def test_stop_cyclic_loop_noop_when_not_running(self):
         """stop_cyclic_loop should do nothing if no task is running."""
-        service = MagicMock()
-        service._cyclic_task = None
+        scheduler = SchedulingManager(
+            cyclic_interval=300,
+            process_fn=AsyncMock(),
+            stats_fn=MagicMock(),
+        )
+        scheduler._cyclic_task = None
 
-        WatermeterService.stop_cyclic_loop(service)
+        scheduler.stop_cyclic_loop()
         # Should not raise
 
 

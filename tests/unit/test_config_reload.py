@@ -63,6 +63,7 @@ class TestReloadConfig:
         service._cyclic_task = None
         service._image_pipeline = MagicMock()
         service._low_confidence = MagicMock()
+        service._scheduler = MagicMock()
         # Bind the real method
         service.reload_config = WatermeterService.reload_config.__get__(service)
         return service
