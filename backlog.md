@@ -10,7 +10,7 @@ See `backlog_archiv.md` for completed items (BL-01 through BL-25).
 
 ## P1 — Critical
 
-- **BL-26** `idea` — **Paho-MQTT v2 API migration**: code uses v1 API (`mqtt.Client(client_id=...)`) but v2 is installed; runs on deprecated compat layer that breaks in v3
+- **BL-26** `done` — **Paho-MQTT v2 API migration**: code uses v1 API (`mqtt.Client(client_id=...)`) but v2 is installed; runs on deprecated compat layer that breaks in v3
   - Add `CallbackAPIVersion` parameter, update callback signatures (5 args)
   - Wire up MQTT authentication (username/password) — `docker-compose.yml` mentions env vars but code never reads them
   - **Ref**: `watermeter_service.py:2293`, `requirements-docker.txt:15`
