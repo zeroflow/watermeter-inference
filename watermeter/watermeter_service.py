@@ -543,14 +543,6 @@ class WatermeterService:
             last_update_time=self.last_update_time,
         )
 
-    def _add_to_rate_history(self, value: float) -> None:
-        """Add a reading to rate history."""
-        self._rate_tracker.add(value)
-
-    def _calculate_average_rate_per_hour(self) -> Optional[float]:
-        """Calculate average rate per hour from history."""
-        return self._rate_tracker.average_rate_per_hour
-
     def _check_sustained_consumption(self) -> Optional[str]:
         """Check if the last N consecutive readings all show rate above threshold."""
         return self._leak_detector.check()
@@ -599,7 +591,7 @@ class WatermeterService:
 
         # Condition 3: rate jump relative to average
         if self.previous_value is not None and self.last_update_time is not None:
-            avg_rate = self._calculate_average_rate_per_hour()
+            avg_rate = self._rate_tracker.average_rate_per_hour
             if avg_rate is not None and avg_rate > 0:
                 time_diff = (datetime.now() - self.last_update_time).total_seconds()
                 if time_diff > 0:
@@ -855,9 +847,9 @@ class WatermeterService:
 
     def _estimate_expected_range(self) -> Optional[Tuple[float, float]]:
         """Estimate plausible range for next reading based on rate history."""
-        if self.previous_value is None or len(self.rate_history) < 3:
+        if self.previous_value is None or len(self._rate_tracker) < 3:
             return None
-        avg_rate = self._calculate_average_rate_per_hour()
+        avg_rate = self._rate_tracker.average_rate_per_hour
         if avg_rate is None or avg_rate <= 0:
             return None
         hours_elapsed = 0.0
@@ -1269,7 +1261,7 @@ class WatermeterService:
                     self.consecutive_rejections = 0  # Reset rejection counter
 
                     # Add to rate history for plausibility checks
-                    self._add_to_rate_history(total_value)
+                    self._rate_tracker.add(total_value)
 
                     # Persist state to disk
                     if self.state_store:
@@ -1449,7 +1441,7 @@ class WatermeterService:
             min_conf = None
 
         # Average consumption rate
-        avg_rate = self._calculate_average_rate_per_hour()
+        avg_rate = self._rate_tracker.average_rate_per_hour
 
         # Last rejected reason — may be a list; join if so
         rejected_reasons = self.current_state.get("last_rejected_reasons") or []
