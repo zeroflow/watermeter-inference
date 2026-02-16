@@ -143,7 +143,7 @@ Singleton: `get_model_manager()` L335
 - `set_all_seeds(seed)` L28, `worker_init_fn(worker_id)` L39
 - `create_transforms(resolution)` L53, `stratified_split(dataset, train_ratio)` L82
 - `compute_class_weights(dataset, indices, device)` L109
-- `export_to_openvino(model, resolution, output_dir, filename)` L130
+- `export_to_openvino(model, resolution, output_dir, filename)` L130 -- dual export: ov.convert_model() direct + ONNX dynamo=False
 - `preprocess_image(image_path, resolution)` L172
 - **class `RegressionArrowDataset`** L190: `__init__` L199, `__len__` L219, `__getitem__` L222
 - `stratified_split_regression(dataset, train_ratio)` L232

@@ -64,6 +64,9 @@ const CURATED_MODELS = [
         { value: 'mobilenetv3_large_100', label: 'MobileNetV3 Large' },
         { value: 'mobileone_s1', label: 'MobileOne S1' },
         { value: 'resnet18', label: 'ResNet18' },
+        { value: 'convnextv2_atto', label: 'ConvNeXtV2 Atto' },
+        { value: 'convnextv2_femto', label: 'ConvNeXtV2 Femto' },
+        { value: 'convnextv2_pico', label: 'ConvNeXtV2 Pico' },
     ]},
     { group: 'Medium', models: [
         { value: 'ghostnet_100', label: 'GhostNet' },
@@ -77,10 +80,12 @@ const CURATED_MODELS = [
         { value: 'densenet169', label: 'DenseNet169' },
         { value: 'regnetx_032', label: 'RegNetX-032' },
         { value: 'resnet34', label: 'ResNet34' },
+        { value: 'convnextv2_nano', label: 'ConvNeXtV2 Nano' },
     ]},
     { group: 'Heavy', models: [
         { value: 'efficientnetv2_rw_s', label: 'EfficientNetV2-S' },
         { value: 'resnext50_32x4d', label: 'ResNeXt50 32x4d' },
+        { value: 'convnextv2_tiny', label: 'ConvNeXtV2 Tiny' },
     ]},
 ];
 
