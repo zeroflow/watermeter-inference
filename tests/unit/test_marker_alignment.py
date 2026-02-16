@@ -34,7 +34,8 @@ import numpy as np
 # Save conftest mocks that we will temporarily replace
 _saved_cv2_mock = sys.modules.get('cv2')
 _saved_ws_mocks = {}
-for _ws_name in ['watermeter_service', 'watermeter.watermeter_service']:
+for _ws_name in ['watermeter_service', 'watermeter.watermeter_service',
+                  'watermeter.image_pipeline']:
     if _ws_name in sys.modules:
         _saved_ws_mocks[_ws_name] = sys.modules[_ws_name]
 
@@ -81,8 +82,10 @@ for _inf_name in ['inference', 'watermeter.inference']:
 # Note: watermeter.persistence is NOT mocked -- it imports cleanly on the host
 # and other test files (test_persistence.py) need the real module.
 
-# Remove the conftest "full mock" of watermeter_service so we can import the real one.
-for _ws_name in ['watermeter_service', 'watermeter.watermeter_service']:
+# Remove the conftest "full mock" of watermeter_service and image_pipeline
+# so we can import the real ones with the real cv2.
+for _ws_name in ['watermeter_service', 'watermeter.watermeter_service',
+                  'watermeter.image_pipeline']:
     if _ws_name in sys.modules:
         del sys.modules[_ws_name]
 
@@ -91,8 +94,9 @@ from watermeter.watermeter_service import WatermeterService  # noqa: E402
 
 # Keep a reference to the real module for patch.object targets
 import watermeter.watermeter_service as _ws_mod
-assert hasattr(_ws_mod.cv2, 'cvtColor'), (
-    "watermeter_service.cv2 is still a mock -- alignment tests cannot run"
+import watermeter.image_pipeline as _ip_mod
+assert hasattr(_ip_mod.cv2, 'cvtColor'), (
+    "image_pipeline.cv2 is still a mock -- alignment tests cannot run"
 )
 
 # ---------------------------------------------------------------------------
@@ -126,9 +130,13 @@ def make_service():
     """
     Create a WatermeterService with only alignment-related state,
     bypassing __init__ (which requires config.yaml, MQTT, etc.).
+
+    Uses _ip_mod.ImagePipeline (the fresh module with real cv2), not
+    'from watermeter.image_pipeline import ...' which may resolve to a
+    stale module restored by the conftest mock cleanup.
     """
     svc = object.__new__(WatermeterService)
-    svc._marker_templates = None
+    svc._image_pipeline = _ip_mod.ImagePipeline(config={})
     return svc
 
 
@@ -191,14 +199,14 @@ class TestFewerThanTwoMarkers:
     def test_zero_markers(self):
         svc = make_service()
         img = make_synthetic_image()
-        result = svc._align_with_markers(img, [])
+        result = svc._image_pipeline._align_with_markers(img, [])
         assert result is img, "Should return the exact same object when no markers given"
 
     def test_one_marker(self):
         svc = make_service()
         img = make_synthetic_image()
         single = [{'x': 0.1, 'y': 0.1, 'width': 0.05, 'height': 0.05}]
-        result = svc._align_with_markers(img, single)
+        result = svc._image_pipeline._align_with_markers(img, single)
         assert result is img, "Should return the exact same object with only 1 marker"
 
 
@@ -212,7 +220,7 @@ class TestMissingTemplateFiles:
 
         # _load_marker_templates checks Path('/data/marker_1.jpg').exists()
         # Those files do not exist on the test host, so it returns None.
-        result = svc._align_with_markers(img, markers)
+        result = svc._image_pipeline._align_with_markers(img, markers)
         assert result is img, "Should return original image when template files are missing"
 
     def test_template_file_exists_but_unreadable(self):
@@ -223,8 +231,8 @@ class TestMissingTemplateFiles:
 
         # Patch cv2.imread on the module where it was imported
         with patch.object(Path, 'exists', return_value=True), \
-             patch.object(_ws_mod.cv2, 'imread', return_value=None):
-            result = svc._align_with_markers(img, markers)
+             patch.object(_ip_mod.cv2, 'imread', return_value=None):
+            result = svc._image_pipeline._align_with_markers(img, markers)
         assert result is img
 
 
@@ -246,10 +254,10 @@ class TestLowConfidenceMatch:
         noise_template_1 = rng.randint(0, 256, (30, 30), dtype=np.uint8)
         noise_template_2 = rng.randint(0, 256, (30, 30), dtype=np.uint8)
 
-        svc._marker_templates = [noise_template_1, noise_template_2]
+        svc._image_pipeline._marker_templates = [noise_template_1, noise_template_2]
 
         markers = make_markers_config(110, 110, 490, 350, width, height)
-        result = svc._align_with_markers(img, markers)
+        result = svc._image_pipeline._align_with_markers(img, markers)
         # With random noise templates against structured patterns the
         # normalized cross-correlation confidence will typically be below 0.5.
         # Either way the method must not crash and must return a valid image.
@@ -272,12 +280,12 @@ class TestAlreadyAlignedImage:
         template1 = draw_marker(img, cx1, cy1, radius=15)
         template2 = draw_marker(img, cx2, cy2, radius=15)
 
-        svc._marker_templates = [template1, template2]
+        svc._image_pipeline._marker_templates = [template1, template2]
 
         markers = make_markers_config(cx1, cy1, cx2, cy2, width, height,
                                       marker_w=30, marker_h=30)
 
-        result = svc._align_with_markers(img, markers)
+        result = svc._image_pipeline._align_with_markers(img, markers)
 
         # The transform should be very close to identity; pixel differences tiny.
         diff = np.abs(result.astype(np.float32) - img.astype(np.float32))
@@ -303,7 +311,7 @@ class TestShiftedImageCorrected:
         template1 = draw_marker(ref_img, cx1, cy1, radius=18)
         template2 = draw_marker(ref_img, cx2, cy2, radius=18)
 
-        svc._marker_templates = [template1, template2]
+        svc._image_pipeline._marker_templates = [template1, template2]
 
         # Shift the reference image by (dx, dy) to simulate camera drift
         dx, dy = 10, 7
@@ -315,7 +323,7 @@ class TestShiftedImageCorrected:
         markers = make_markers_config(cx1, cy1, cx2, cy2, width, height,
                                       marker_w=36, marker_h=36)
 
-        aligned = svc._align_with_markers(shifted_img, markers)
+        aligned = svc._image_pipeline._align_with_markers(shifted_img, markers)
 
         # After alignment, run template matching on the aligned image to verify
         # markers are back near their reference positions.
@@ -346,17 +354,17 @@ class TestTemplateCaching:
         t2 = np.ones((20, 20), dtype=np.uint8) * 128
 
         with patch.object(Path, 'exists', return_value=True), \
-             patch.object(_ws_mod.cv2, 'imread',
+             patch.object(_ip_mod.cv2, 'imread',
                           side_effect=[t1, t2]) as mock_imread:
 
             # First load -- should call imread twice (once per template)
-            result1 = svc._load_marker_templates(2)
+            result1 = svc._image_pipeline._load_marker_templates(2)
             assert result1 is not None
             assert len(result1) == 2
             assert mock_imread.call_count == 2
 
             # Second load -- should return cached, no additional imread calls
-            result2 = svc._load_marker_templates(2)
+            result2 = svc._image_pipeline._load_marker_templates(2)
             assert result2 is result1, "Second call should return the cached list"
             assert mock_imread.call_count == 2, (
                 "cv2.imread should not be called again on second load"
@@ -373,20 +381,20 @@ class TestCacheInvalidation:
         t2 = np.ones((20, 20), dtype=np.uint8) * 128
 
         with patch.object(Path, 'exists', return_value=True), \
-             patch.object(_ws_mod.cv2, 'imread',
+             patch.object(_ip_mod.cv2, 'imread',
                           side_effect=[t1, t2, t1, t2]) as mock_imread:
 
             # First load
-            result1 = svc._load_marker_templates(2)
+            result1 = svc._image_pipeline._load_marker_templates(2)
             assert result1 is not None
             assert mock_imread.call_count == 2
 
             # Invalidate
             svc.invalidate_marker_cache()
-            assert svc._marker_templates is None
+            assert svc._image_pipeline._marker_templates is None
 
             # Second load -- should call imread again
-            result2 = svc._load_marker_templates(2)
+            result2 = svc._image_pipeline._load_marker_templates(2)
             assert result2 is not None
             assert mock_imread.call_count == 4, (
                 "After invalidation, cv2.imread should be called again"
@@ -397,9 +405,9 @@ class TestCacheInvalidation:
     def test_invalidate_when_already_none(self):
         """Calling invalidate on a fresh service with no cache is a safe no-op."""
         svc = make_service()
-        assert svc._marker_templates is None
+        assert svc._image_pipeline._marker_templates is None
         svc.invalidate_marker_cache()  # should not raise
-        assert svc._marker_templates is None
+        assert svc._image_pipeline._marker_templates is None
 
 
 class TestSearchRegionNearEdge:
@@ -418,13 +426,13 @@ class TestSearchRegionNearEdge:
         cx2, cy2 = 320, 240
         template2 = draw_marker(img, cx2, cy2, radius=8)
 
-        svc._marker_templates = [template, template2]
+        svc._image_pipeline._marker_templates = [template, template2]
 
         markers = make_markers_config(cx, cy, cx2, cy2, width, height,
                                       marker_w=16, marker_h=16)
 
         # Should not crash even though the search region is clipped at image bounds
-        result = svc._align_with_markers(img, markers)
+        result = svc._image_pipeline._align_with_markers(img, markers)
         assert result.shape == img.shape
 
     def test_marker_at_bottom_right_corner(self):
@@ -440,12 +448,12 @@ class TestSearchRegionNearEdge:
         cx2, cy2 = width - 10, height - 10
         template2 = draw_marker(img, cx2, cy2, radius=8)
 
-        svc._marker_templates = [template1, template2]
+        svc._image_pipeline._marker_templates = [template1, template2]
 
         markers = make_markers_config(cx1, cy1, cx2, cy2, width, height,
                                       marker_w=16, marker_h=16)
 
-        result = svc._align_with_markers(img, markers)
+        result = svc._image_pipeline._align_with_markers(img, markers)
         assert result.shape == img.shape
 
     def test_search_region_too_small_for_template(self):
@@ -459,12 +467,12 @@ class TestSearchRegionNearEdge:
 
         # Create oversized templates (bigger than the search region would allow)
         large_template = np.zeros((60, 60), dtype=np.uint8)
-        svc._marker_templates = [large_template, large_template]
+        svc._image_pipeline._marker_templates = [large_template, large_template]
 
         markers = make_markers_config(10, 10, 90, 70, width, height,
                                       marker_w=10, marker_h=10)
 
-        result = svc._align_with_markers(img, markers)
+        result = svc._image_pipeline._align_with_markers(img, markers)
         assert result is img, (
             "Should return original image when search region is too small for template"
         )
