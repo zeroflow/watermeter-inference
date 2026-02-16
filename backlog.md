@@ -39,8 +39,8 @@ See `backlog_archiv.md` for completed items (BL-01 through BL-25).
   - Handles image pipeline, plausibility, correction, MQTT, HA discovery, confirmation, persistence, scheduling
   - Split into focused modules: `image_pipeline.py`, `plausibility.py`, `correction.py`, `mqtt_publisher.py`, `confirmation.py`
   - Phase 1 done: image_pipeline, low_confidence, scheduling, position_utils extracted
-  - Phase 2 planned: plausibility, correction
-  - Phase 3 planned: confirmation, mqtt, manual_control
+  - Phase 2 done: rate_tracker, leak_detector, plausibility extracted; correction rewired
+  - Phase 3 planned: confirmation, mqtt, manual_control, MeterState
   - **Effort**: XL
 
 - **BL-31** `idea` — **Missing HTTP-level API tests**: 11 endpoints without HTTP-layer tests

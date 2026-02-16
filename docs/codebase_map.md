@@ -67,12 +67,13 @@
 
 ### `watermeter_service.py` (1939 lines) -- Main service orchestration
 
-**class `WatermeterService`** L30:
-- `__init__(config_path)` L33
+**class `WatermeterService`** L242:
+- `__init__(config_path)` L245
+- Delegates: `_image_pipeline` (ImagePipeline), `_low_confidence` (LowConfidenceCapture), `_scheduling` (SchedulingManager), `_rate_tracker` (RateTracker), `_leak_detector` (LeakDetector), `_plausibility_checker` (PlausibilityChecker)
 - Image fetching (delegates to ImagePipeline): `fetch_images()`, `fetch_whole_image()`, `process_whole_image(img_bytes)`, `invalidate_marker_cache()`
 - Inference: `run_inference(images)` L397, `calculate_total(predictions)` L468
-- Validation: `check_consistency(predictions)` L533, `validate_plausibility(total, ...)` L595
-- Rate/leak: `_add_to_rate_history(rate)` L660, `_calculate_average_rate_per_hour()` L667, `_check_sustained_consumption()` L684
+- Validation: `check_consistency(predictions)` L533 (delegates to PlausibilityChecker), `validate_plausibility(total, ...)` L595 (delegates to PlausibilityChecker)
+- Rate/leak: `_check_sustained_consumption()` (delegates to LeakDetector)
 - BL-07 Confirmation: `_get_confirmation_config()` L728, `_should_request_confirmation()` L742, `_publish_confirmation_request()` L783, `_cancel_confirmation_timer()` L836, `_confirmation_timeout()` L842, `_do_confirmation_timeout()` L849, `_handle_confirmation_response(payload)` L878, `get_confirmation_status()` L969
 - BL-04 Correction: `_get_ordered_position_ids()` L994, `_estimate_expected_range()` L1008, `_recalculate_with_replacement()` L1027, `_check_consistency_improvement()` L1067, `_check_cross_arrow_consistency()` L1118, `correct_predictions(predictions, ...)` L1172
 - Pipeline: `save_low_confidence(predictions, images)` (delegates to LowConfidenceCapture), `process_reading()` L1371, `publish_to_mqtt(status)` L1615
@@ -179,6 +180,28 @@ Singleton: `get_model_manager()` L335
 - `__init__(cyclic_interval, process_fn, stats_fn)` L26
 - Cyclic loop: `_cyclic_loop()` L45, `start_cyclic_loop()` L56, `stop_cyclic_loop()` L64
 - Stats loop: `_stats_loop()` L71, `start_stats_loop()` L84, `stop_stats_loop()` L92
+
+### `rate_tracker.py` (113 lines) -- Rate history ring buffer for plausibility and leak detection
+
+**class `RateTracker`** L12:
+- `__init__(max_size)` L23
+- Properties: `history` L30, `max_size` L35, `average_rate_per_hour` L45
+- Mutation API: `add(value, timestamp)` L65, `pop_last()` L77, `replace_last(value, timestamp)` L82, `reset()` L87, `seed(value, timestamp)` L91
+- Dunder: `__len__()` L101, `__repr__()` L104
+- Internal: `_trim()` L109
+
+### `leak_detector.py` (69 lines) -- Sustained consumption monitoring
+
+**class `LeakDetector`** L16:
+- `__init__(rate_tracker, config)` L24
+- `check()` L28 -- checks if last N consecutive readings all show rate above threshold, returns warning message or None
+
+### `plausibility.py` (142 lines) -- Consistency and plausibility checking
+
+**class `PlausibilityChecker`** L17:
+- `__init__(config, rate_tracker)` L25
+- `check_consistency(predictions)` L29 -- validates adjacent position consistency (half vs upper-half rule), returns list of warnings
+- `validate_plausibility(new_value, previous_value, last_update_time)` L76 -- checks reverse detection, rate limits, returns (is_valid, warnings)
 
 ### `__main__.py` (4 lines) -- Entry point, calls `app.main()`
 
