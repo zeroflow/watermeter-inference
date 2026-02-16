@@ -69,17 +69,16 @@
 
 **class `WatermeterService`** L30:
 - `__init__(config_path)` L33
-- Image fetching: `fetch_images()` L120, `fetch_whole_image()` L160, `process_whole_image(img_bytes)` L182
-- Marker alignment: `SEARCH_MARGIN` L246, `CONFIDENCE_THRESHOLD` L247, `_load_marker_templates()` L249, `invalidate_marker_cache()` L278, `_align_with_markers(img)` L282, `_extract_roi(img, roi_cfg)` L367
+- Image fetching (delegates to ImagePipeline): `fetch_images()`, `fetch_whole_image()`, `process_whole_image(img_bytes)`, `invalidate_marker_cache()`
 - Inference: `run_inference(images)` L397, `calculate_total(predictions)` L468
 - Validation: `check_consistency(predictions)` L533, `validate_plausibility(total, ...)` L595
 - Rate/leak: `_add_to_rate_history(rate)` L660, `_calculate_average_rate_per_hour()` L667, `_check_sustained_consumption()` L684
 - BL-07 Confirmation: `_get_confirmation_config()` L728, `_should_request_confirmation()` L742, `_publish_confirmation_request()` L783, `_cancel_confirmation_timer()` L836, `_confirmation_timeout()` L842, `_do_confirmation_timeout()` L849, `_handle_confirmation_response(payload)` L878, `get_confirmation_status()` L969
 - BL-04 Correction: `_get_ordered_position_ids()` L994, `_estimate_expected_range()` L1008, `_recalculate_with_replacement()` L1027, `_check_consistency_improvement()` L1067, `_check_cross_arrow_consistency()` L1118, `correct_predictions(predictions, ...)` L1172
-- Pipeline: `save_low_confidence(predictions, images)` L1282, `process_reading()` L1371, `publish_to_mqtt(status)` L1615
+- Pipeline: `save_low_confidence(predictions, images)` (delegates to LowConfidenceCapture), `process_reading()` L1371, `publish_to_mqtt(status)` L1615
 - Manual: `reset_previous_value()` L1652, `set_manual_value(value)` L1677, `toggle_ha_publish()` L1753
 - HA/MQTT: `publish_discovery()` L1759, `on_mqtt_connect()` L1798, `on_mqtt_disconnect(client, userdata, disconnect_flags, reason_code, properties)` L2243, `on_mqtt_message()` L1828, `start_mqtt()` L1864, `reload_config(new_config)` L2329, `stop_mqtt()` L1895
-- Cyclic: `_cyclic_loop()` L1902, `start_cyclic_loop()` L1913, `stop_cyclic_loop()` L1921
+- Cyclic (delegates to SchedulingManager): `start_cyclic_loop()`, `stop_cyclic_loop()`, `start_stats_loop()`, `stop_stats_loop()`
 
 Singleton: `get_service()` L1933
 
@@ -154,6 +153,32 @@ Singleton: `get_model_manager()` L335
 ### `persistence.py` (74 lines) -- JSON state persistence
 
 - **class `StateStore`** L16: `__init__` L19, `save(data)` L23, `load()` L45, `clear()` L66
+
+### `image_pipeline.py` (304 lines) -- Image fetching, rotation, marker alignment, ROI extraction
+
+**class `ImagePipeline`** L20:
+- Constants: `SEARCH_MARGIN` L24, `CONFIDENCE_THRESHOLD` L25
+- `__init__(config)` L27
+- Image fetching: `fetch_images()` L32, `fetch_whole_image()` L72, `process_whole_image(image_bytes)` L94
+- Marker alignment: `_load_marker_templates(marker_count)` L157, `invalidate_marker_cache()` L186, `_align_with_markers(img, markers)` L190
+- ROI extraction: `_extract_roi(img, roi, width, height)` L275
+
+### `low_confidence_capture.py` (112 lines) -- Saves low-confidence images for training
+
+**class `LowConfidenceCapture`** L17:
+- `__init__(config)` L20
+- `save_low_confidence(image_id, image_bytes, prediction, next_image_bytes)` L24
+
+### `position_utils.py` (41 lines) -- Position ID utilities
+
+- `get_position_ids(config)` L11 -- compute digit and arrow position IDs from config
+
+### `scheduling.py` (98 lines) -- Cyclic and periodic background task scheduling
+
+**class `SchedulingManager`** L15:
+- `__init__(cyclic_interval, process_fn, stats_fn)` L26
+- Cyclic loop: `_cyclic_loop()` L45, `start_cyclic_loop()` L56, `stop_cyclic_loop()` L64
+- Stats loop: `_stats_loop()` L71, `start_stats_loop()` L84, `stop_stats_loop()` L92
 
 ### `__main__.py` (4 lines) -- Entry point, calls `app.main()`
 

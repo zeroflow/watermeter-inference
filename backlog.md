@@ -35,9 +35,12 @@ See `backlog_archiv.md` for completed items (BL-01 through BL-25).
   - **Ref**: `routes/models.py:558` (encoding), `routes/label.py:38-89` (no parsing)
   - **Effort**: S
 
-- **BL-30** `idea` — **WatermeterService god object refactoring**: 2352 lines, ~50 methods in single class
+- **BL-30** `in-progress` — **WatermeterService god object refactoring**: 2352 lines, ~50 methods in single class
   - Handles image pipeline, plausibility, correction, MQTT, HA discovery, confirmation, persistence, scheduling
   - Split into focused modules: `image_pipeline.py`, `plausibility.py`, `correction.py`, `mqtt_publisher.py`, `confirmation.py`
+  - Phase 1 done: image_pipeline, low_confidence, scheduling, position_utils extracted
+  - Phase 2 planned: plausibility, correction
+  - Phase 3 planned: confirmation, mqtt, manual_control
   - **Effort**: XL
 
 - **BL-31** `idea` — **Missing HTTP-level API tests**: 11 endpoints without HTTP-layer tests
