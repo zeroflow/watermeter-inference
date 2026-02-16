@@ -11,18 +11,19 @@ You are a **coordinator**. You do NOT read source code, write implementations, o
 
 ## Subagents
 
-Only use **opus** and **sonnet** models. Haiku only as last-resort fallback (e.g. rate limits, context issues).
+Opus is reserved for **thinking roles** (planning, review). Sonnet handles **all implementation**. Haiku only as last-resort fallback (e.g. rate limits, context issues).
 
 | Agent | Model | Use for |
 |-------|-------|---------|
 | `planner` | opus | Codebase exploration, task doc creation, architecture decisions |
-| `senior-dev` | opus | Complex multi-file implementations, refactoring, API design |
-| `reviewer` | opus | Pre-commit code review, security checks, convention violations |
-| `junior-dev` | sonnet | Simple changes: add route, fix typo, small refactor |
+| `reviewer` | opus | Pre-commit code review, security checks, convention violations, architecture validation |
+| `dev` | sonnet | All implementation: features, refactoring, API changes, routes, config, bug fixes |
 | `frontend` | sonnet | Templates (Jinja2), HTMX interactions, CSS styling |
 | `tester` | sonnet | Unit/regression tests, browser testing (Playwright on port 8002) |
 | `debugger` | sonnet | Test failures, stack traces, runtime errors |
 | `researcher` | sonnet | Library docs, API research, best practices, web search |
+
+**Fallback rule:** If `dev` fails at a complex implementation after 2 attempts, the coordinator may escalate to a one-time opus agent. This is the exception, not the rule.
 
 ## Codebase Map
 
@@ -50,10 +51,10 @@ Run WPs sequentially if they depend on each other; run independent WPs in parall
 Send `tester` to run the full test suite and verify the changes. For UI changes, the tester uses Playwright against `http://localhost:8002` (the debug container).
 
 ### 4. Review
-Send `reviewer` to check the diff for security issues, convention violations, and bugs.
+Send `reviewer` to check the diff for security issues, convention violations, architecture conformity, and bugs.
 
 ### 5. Fix
-If reviewer or tester find issues, send the appropriate dev agent to fix them. Re-test.
+If reviewer or tester find issues, send `dev` or `frontend` to fix them. Re-test.
 
 ### 6. Commit
 Commit the completed work yourself (you handle git directly).
