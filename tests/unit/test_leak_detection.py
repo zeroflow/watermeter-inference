@@ -78,6 +78,11 @@ def service():
     svc.ha_publish_enabled = False
     svc._pending_confirmation = None
     svc._confirmation_timer = None
+    svc._last_inference_duration_ms = None
+    svc._last_processing_duration_s = None
+
+    # Mock _get_active_model_name method
+    svc._get_active_model_name = lambda model_type: None
 
     return svc
 
@@ -223,7 +228,7 @@ class TestLeakWarningMqtt:
 
         # Parse the published payload
         payload = json.loads(call_args[1]['json'] if 'json' in call_args[1] else call_args[0][1])
-        assert payload['attributes']['leak_warning'] is True
+        assert payload['leak_warning'] is True
 
     @pytest.mark.asyncio
     async def test_no_leak_warning_in_mqtt_payload(self, service):
@@ -246,7 +251,7 @@ class TestLeakWarningMqtt:
         mock_client.publish.assert_called_once()
         call_args = mock_client.publish.call_args
         payload = json.loads(call_args[0][1])
-        assert payload['attributes']['leak_warning'] is False
+        assert payload['leak_warning'] is False
 
 
 # ---------------------------------------------------------------------------
