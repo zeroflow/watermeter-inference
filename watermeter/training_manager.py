@@ -562,8 +562,17 @@ class TrainingManager:
             num_params = sum(p.numel() for p in model.parameters())
             job.add_log(f"Model parameters: {num_params:,}")
 
-            # Optimizer and loss
-            optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+            # Optimizer: AdamW with weight decay (better for fine-tuning pretrained models)
+            lr = config.get("learning_rate", 3e-4)
+            optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
+
+            # LR scheduler: cosine annealing (decays from lr to eta_min over all epochs)
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                optimizer, T_max=epochs, eta_min=1e-6
+            )
+
+            job.add_log(f"Optimizer: AdamW (lr={lr}, weight_decay=1e-4)")
+            job.add_log(f"LR scheduler: CosineAnnealingLR (T_max={epochs}, eta_min=1e-6)")
 
             if model_type == "arrows" and training_mode == "continuous":
                 criterion = torch.nn.MSELoss()
@@ -670,33 +679,40 @@ class TrainingManager:
                         best_epoch = epoch
                         best_model_state = model.state_dict().copy()
 
+                # Step LR scheduler
+                scheduler.step()
+
                 epoch_time = time.time() - epoch_start
 
                 # Update progress
                 if model_type == "arrows" and training_mode == "continuous":
+                    current_lr = scheduler.get_last_lr()[0]
                     job.update_progress(
                         current_epoch=epoch + 1,
                         total_epochs=epochs,
                         train_loss=round(avg_loss, 4),
                         val_accuracy=round(within_half, 2),  # Repurpose val_accuracy for within-half %
                         epoch_duration=round(epoch_time, 1),
+                        learning_rate=round(current_lr, 8),
                         message=f"Epoch {epoch+1}/{epochs}: Loss={avg_loss:.4f}, MAE={mae:.4f}, Within-half={within_half:.1f}%",
                     )
                     job.add_log(
                         f"Epoch {epoch+1}/{epochs} - Loss: {avg_loss:.4f} - MAE: {mae:.4f} "
-                        f"- RMSE: {rmse:.4f} - Within-half: {within_half:.1f}% - Time: {epoch_time:.1f}s"
+                        f"- RMSE: {rmse:.4f} - Within-half: {within_half:.1f}% - LR: {current_lr:.2e} - Time: {epoch_time:.1f}s"
                     )
                 else:
+                    current_lr = scheduler.get_last_lr()[0]
                     job.update_progress(
                         current_epoch=epoch + 1,
                         total_epochs=epochs,
                         train_loss=round(avg_loss, 4),
                         val_accuracy=round(val_acc, 2),
                         epoch_duration=round(epoch_time, 1),
+                        learning_rate=round(current_lr, 8),
                         message=f"Epoch {epoch+1}/{epochs}: Loss={avg_loss:.4f}, Val Acc={val_acc:.2f}%",
                     )
                     job.add_log(
-                        f"Epoch {epoch+1}/{epochs} - Loss: {avg_loss:.4f} - Val Acc: {val_acc:.2f}% - Time: {epoch_time:.1f}s"
+                        f"Epoch {epoch+1}/{epochs} - Loss: {avg_loss:.4f} - Val Acc: {val_acc:.2f}% - LR: {current_lr:.2e} - Time: {epoch_time:.1f}s"
                     )
 
             total_time = time.time() - total_start
@@ -729,6 +745,7 @@ class TrainingManager:
                 "seed": seed,
                 "epochs": epochs,
                 "batch_size": batch_size,
+                "learning_rate": lr,
                 "best_val_loss": best_val_loss,
                 "best_epoch": best_epoch + 1,
                 "training_time": total_time,
