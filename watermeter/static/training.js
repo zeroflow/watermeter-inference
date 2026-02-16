@@ -50,7 +50,9 @@ function showMessage(text, type) {
 function onModelTypeChange() {
     const modelType = document.getElementById('model-type').value;
     const stepSizeGroup = document.getElementById('step-size-group');
+    const trainingModeGroup = document.getElementById('training-mode-group');
     stepSizeGroup.style.display = modelType === 'arrows' ? '' : 'none';
+    trainingModeGroup.style.display = modelType === 'arrows' ? '' : 'none';
 }
 
 // Architecture combobox
@@ -668,6 +670,8 @@ async function startTraining(event) {
 
     if (modelType === 'arrows') {
         config.step_size = stepSize;
+        const trainingMode = document.getElementById('training-mode').value;
+        config.training_mode = trainingMode;
     }
 
     try {
