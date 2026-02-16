@@ -252,6 +252,8 @@ CONFIG_SCHEMA = {
                 "trigger_topic": {"type": "string", "description": "Topic to listen for triggers"},
                 "trigger_payload": {"type": "string", "description": "Payload that triggers processing"},
                 "reset_topic": {"type": "string", "description": "Topic for reset commands"},
+                "username": {"type": "string", "description": "MQTT broker username (optional, env MQTT_USERNAME overrides)"},
+                "password": {"type": "string", "description": "MQTT broker password (optional, env MQTT_PASSWORD overrides)"},
             },
         },
         "homeassistant": {
