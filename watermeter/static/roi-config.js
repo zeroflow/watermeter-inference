@@ -769,19 +769,28 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    d.prediction = data.prediction;
-                    d.confidence = data.confidence;
-
                     // Update preview with server-rendered image
                     const preview = document.getElementById(`digit-${index + 1}-preview`);
                     preview.innerHTML = `<img src="data:image/jpeg;base64,${data.image_base64}" alt="Digit ${index + 1}">`;
 
-                    result.querySelector('.digit-prediction').textContent = data.prediction;
-                    const conf = (data.confidence * 100).toFixed(0);
-                    const confClass = data.confidence >= 0.8 ? 'high' : data.confidence >= 0.5 ? 'medium' : 'low';
-                    result.querySelector('.digit-confidence').textContent = `${conf}%`;
-                    result.querySelector('.digit-confidence').className = `digit-confidence ${confClass}`;
-                    result.className = `digit-result ${confClass}`;
+                    if (data.no_model) {
+                        // No model loaded - show neutral "No model" indicator
+                        d.prediction = null;
+                        d.confidence = null;
+                        result.querySelector('.digit-prediction').textContent = 'No model';
+                        result.querySelector('.digit-confidence').textContent = '';
+                        result.className = 'digit-result no-model';
+                    } else {
+                        // Model loaded - show prediction and confidence
+                        d.prediction = data.prediction;
+                        d.confidence = data.confidence;
+                        result.querySelector('.digit-prediction').textContent = data.prediction;
+                        const conf = (data.confidence * 100).toFixed(0);
+                        const confClass = data.confidence >= 0.8 ? 'high' : data.confidence >= 0.5 ? 'medium' : 'low';
+                        result.querySelector('.digit-confidence').textContent = `${conf}%`;
+                        result.querySelector('.digit-confidence').className = `digit-confidence ${confClass}`;
+                        result.className = `digit-result ${confClass}`;
+                    }
                 } else {
                     result.querySelector('.digit-prediction').textContent = '!';
                     result.querySelector('.digit-confidence').textContent = 'Error';
@@ -1167,19 +1176,28 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    a.prediction = data.prediction;
-                    a.confidence = data.confidence;
-
                     // Update preview with server-rendered image
                     const preview = document.getElementById(`analog-${index + 1}-preview`);
                     preview.innerHTML = `<img src="data:image/jpeg;base64,${data.image_base64}" alt="Analog ${index + 1}">`;
 
-                    result.querySelector('.analog-prediction').textContent = data.prediction;
-                    const conf = (data.confidence * 100).toFixed(0);
-                    const confClass = data.confidence >= 0.8 ? 'high' : data.confidence >= 0.5 ? 'medium' : 'low';
-                    result.querySelector('.analog-confidence').textContent = `${conf}%`;
-                    result.querySelector('.analog-confidence').className = `analog-confidence ${confClass}`;
-                    result.className = `analog-result ${confClass}`;
+                    if (data.no_model) {
+                        // No model loaded - show neutral "No model" indicator
+                        a.prediction = null;
+                        a.confidence = null;
+                        result.querySelector('.analog-prediction').textContent = 'No model';
+                        result.querySelector('.analog-confidence').textContent = '';
+                        result.className = 'analog-result no-model';
+                    } else {
+                        // Model loaded - show prediction and confidence
+                        a.prediction = data.prediction;
+                        a.confidence = data.confidence;
+                        result.querySelector('.analog-prediction').textContent = data.prediction;
+                        const conf = (data.confidence * 100).toFixed(0);
+                        const confClass = data.confidence >= 0.8 ? 'high' : data.confidence >= 0.5 ? 'medium' : 'low';
+                        result.querySelector('.analog-confidence').textContent = `${conf}%`;
+                        result.querySelector('.analog-confidence').className = `analog-confidence ${confClass}`;
+                        result.className = `analog-result ${confClass}`;
+                    }
                 } else {
                     result.querySelector('.analog-prediction').textContent = '!';
                     result.querySelector('.analog-confidence').textContent = 'Error';

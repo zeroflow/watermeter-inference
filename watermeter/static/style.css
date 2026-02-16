@@ -991,6 +991,13 @@ main {
     color: var(--danger);
 }
 
+.digit-result.no-model,
+.analog-result.no-model {
+    background: rgba(148, 163, 184, 0.15);
+    color: var(--text-light);
+    opacity: 0.8;
+}
+
 .digit-inputs {
     display: flex;
     flex-direction: column;

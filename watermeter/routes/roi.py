@@ -582,6 +582,15 @@ async def preview_digit_inference(submission: SingleRoiSubmission):
 
         roi_img = img[px_y : px_y + px_h, px_x : px_x + px_w]
 
+        # Encode the cropped ROI image
+        _, buffer = cv2.imencode(".jpg", roi_img)
+        image_base64 = base64.b64encode(buffer).decode("utf-8")
+
+        # Check if digits model is available
+        if get_inference_service().get_classifier("digits") is None:
+            return JSONResponse({"success": True, "no_model": True, "image_base64": image_base64})
+
+        # Run inference
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
             temp_path = f.name
             cv2.imwrite(temp_path, roi_img)
@@ -592,9 +601,6 @@ async def preview_digit_inference(submission: SingleRoiSubmission):
             confidence = inference_result["confidence"]
         finally:
             Path(temp_path).unlink(missing_ok=True)
-
-        _, buffer = cv2.imencode(".jpg", roi_img)
-        image_base64 = base64.b64encode(buffer).decode("utf-8")
 
         return JSONResponse(
             {"success": True, "prediction": prediction, "confidence": confidence, "image_base64": image_base64}
@@ -756,6 +762,15 @@ async def preview_analog_inference(submission: SingleRoiSubmission):
 
         roi_img = img[px_y : px_y + px_h, px_x : px_x + px_w]
 
+        # Encode the cropped ROI image
+        _, buffer = cv2.imencode(".jpg", roi_img)
+        image_base64 = base64.b64encode(buffer).decode("utf-8")
+
+        # Check if arrows model is available
+        if get_inference_service().get_classifier("arrows") is None:
+            return JSONResponse({"success": True, "no_model": True, "image_base64": image_base64})
+
+        # Run inference
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
             temp_path = f.name
             cv2.imwrite(temp_path, roi_img)
@@ -766,9 +781,6 @@ async def preview_analog_inference(submission: SingleRoiSubmission):
             confidence = inference_result["confidence"]
         finally:
             Path(temp_path).unlink(missing_ok=True)
-
-        _, buffer = cv2.imencode(".jpg", roi_img)
-        image_base64 = base64.b64encode(buffer).decode("utf-8")
 
         return JSONResponse(
             {"success": True, "prediction": prediction, "confidence": confidence, "image_base64": image_base64}
