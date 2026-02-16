@@ -58,9 +58,51 @@ If reviewer or tester find issues, send the appropriate dev agent to fix them. R
 ### 6. Commit
 Commit the completed work yourself (you handle git directly).
 
-## Git
+## Git — Branch Model
 
-- Commit after every completed task
+**Never commit directly to `main`.** `main` is the release branch.
+
+### Branch Structure
+```
+main                  ← releases only, via PR from claude/main
+  ↑ PR (user merges)
+claude/main           ← persistent dev branch, small changes go here directly
+  ↑ merge
+claude/feature-x      ← large changes, branched from claude/main
+```
+
+### Rules
+- **`main`**: Read-only for Claude. Only receives merges via PR.
+- **`claude/main`**: Persistent development branch. Small fixes, typos, simple tasks commit here directly.
+- **`claude/<feature-name>`**: For large/multi-WP tasks. Branch from `claude/main`, merge back into `claude/main` when done.
+
+### What counts as "small" vs "large"?
+- **Small** (direct to `claude/main`): single-file fixes, typos, config tweaks, simple refactors
+- **Large** (feature branch): multi-file features, new routes, architecture changes, backlog items with 3+ WPs
+
+### Workflow — Small Change
+1. `git checkout claude/main`
+2. Implement, test, commit
+3. Push `claude/main`
+
+### Workflow — Large Change
+1. `git checkout claude/main && git checkout -b claude/<feature-name>`
+2. Implement WPs, commit after each
+3. Push feature branch, merge into `claude/main`
+4. Delete feature branch
+
+### Release (PR to main)
+When user requests a release or after significant work accumulates on `claude/main`:
+```bash
+GITEA_TOKEN=$(cat /home/claude/.config/gitea/token)
+curl -s -X POST "http://192.168.4.38:3000/api/v1/repos/zeroflow/watermeter-inference/pulls" \
+  -H "Authorization: token $GITEA_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"...","body":"...","head":"claude/main","base":"main"}'
+```
+User reviews and merges the PR in Gitea.
+
+### Commit Rules
 - Prefix all commit messages with `claude: `
 - Never amend or force-push existing commits
 - Reference task docs in commit messages when relevant
@@ -79,8 +121,10 @@ When told to "work through the backlog" or "autonomous mode":
 2. Send `planner` to create task doc `docs/tasks/YYYY_MM_DD_BL{NN}_{Name}.md`
 3. Set BL status to `in-progress`
 4. Execute WPs from the task doc using the assigned agents
-5. Commit after each WP. Push after completing a BL item.
-6. Set BL status to `done`, move to next item.
+5. Commit after each WP on `claude/<feature>` branch
+6. After all WPs: merge feature branch into `claude/main`, push
+7. Set BL status to `done`, move to next item
+8. When user requests release: create PR from `claude/main` → `main`
 
 **Resolving questions autonomously**:
 - Send `researcher` to investigate — do NOT stop and ask the user
