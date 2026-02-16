@@ -1053,7 +1053,7 @@ class TrainingManager:
         import numpy as np
         from collections import defaultdict
 
-        from .training_core import preprocess_image, softmax_predict, regression_predict
+        from .training_core import preprocess_image, softmax_predict, regression_predict, circular_error
 
         model_type = job.model_type
 
@@ -1146,7 +1146,7 @@ class TrainingManager:
                     all_times.append(inference_time)
 
                     # "Correct" if within half a dial position
-                    if abs(pred_value - expected_value) < 0.5:
+                    if circular_error(pred_value, expected_value) < 0.5:
                         correct += 1
                 else:
                     # Determine expected label for arrows
@@ -1170,7 +1170,7 @@ class TrainingManager:
         # Calculate results
         if training_mode == "continuous":
             # Regression metrics
-            errors = [abs(p - t) for p, t in all_predictions]
+            errors = [circular_error(p, t) for p, t in all_predictions]
 
             mae = np.mean(errors) if errors else 0
             rmse = np.sqrt(np.mean([e**2 for e in errors])) if errors else 0
@@ -1184,7 +1184,7 @@ class TrainingManager:
             class_errors = defaultdict(list)
             for pred_val, true_val in all_predictions:
                 key = f"{true_val:.1f}"
-                class_errors[key].append(abs(pred_val - true_val))
+                class_errors[key].append(circular_error(pred_val, true_val))
 
             per_class = {}
             for cls, errs in class_errors.items():
