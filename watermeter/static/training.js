@@ -595,6 +595,15 @@ function updateProgress(progress) {
         durationEl.textContent = '-';
         etaEl.textContent = '-';
     }
+
+    // Learning rate
+    const lrEl = document.getElementById('metric-lr');
+    const lr = progress.learning_rate;
+    if (lr !== null && lr !== undefined) {
+        lrEl.textContent = lr.toExponential(2);
+    } else {
+        lrEl.textContent = '-';
+    }
 }
 
 function formatDuration(ms) {
@@ -652,6 +661,7 @@ async function startTraining(event) {
     const resolution = parseInt(document.getElementById('resolution').value);
     const seedsStr = document.getElementById('seeds').value;
     const epochs = parseInt(document.getElementById('epochs').value);
+    const learningRate = parseFloat(document.getElementById('learning-rate').value);
     const stepSize = parseFloat(document.getElementById('step-size').value);
     const notes = document.getElementById('notes').value;
 
@@ -670,6 +680,7 @@ async function startTraining(event) {
         resolution: resolution,
         seeds: seeds,
         epochs: epochs,
+        learning_rate: learningRate,
         batch_size: 16,
         notes: notes,
         auto_benchmark: autoBenchmark
