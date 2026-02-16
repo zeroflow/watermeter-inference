@@ -62,6 +62,7 @@ class TestReloadConfig:
         service.mqtt_client.is_connected.return_value = True
         service._cyclic_task = None
         service._image_pipeline = MagicMock()
+        service._low_confidence = MagicMock()
         # Bind the real method
         service.reload_config = WatermeterService.reload_config.__get__(service)
         return service
