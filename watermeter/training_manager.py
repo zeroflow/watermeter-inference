@@ -290,6 +290,7 @@ class TrainingManager:
             seeds = config.get("seeds", [42])
             epochs = config.get("epochs", 20)
             batch_size = config.get("batch_size", 16)
+            learning_rate = config.get("learning_rate", 3e-4)
 
             # For arrows, we may have step_size
             step_size = config.get("step_size", 1.0) if model_type == "arrows" else None
@@ -324,6 +325,7 @@ class TrainingManager:
                     seed=seed,
                     epochs=epochs,
                     batch_size=batch_size,
+                    learning_rate=learning_rate,
                     step_size=step_size,
                     training_mode=training_mode,
                 )
@@ -435,6 +437,7 @@ class TrainingManager:
         seed: int,
         epochs: int,
         batch_size: int,
+        learning_rate: float,
         step_size: Optional[float],
         training_mode: str = "discrete",
     ) -> Optional[Dict]:
@@ -563,7 +566,7 @@ class TrainingManager:
             job.add_log(f"Model parameters: {num_params:,}")
 
             # Optimizer: AdamW with weight decay (better for fine-tuning pretrained models)
-            lr = config.get("learning_rate", 3e-4)
+            lr = learning_rate
             optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
 
             # LR scheduler: cosine annealing (decays from lr to eta_min over all epochs)
