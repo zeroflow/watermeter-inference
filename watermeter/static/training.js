@@ -204,7 +204,9 @@ function initArchCombobox() {
     input.addEventListener('input', () => {
         clearTimeout(debounceTimer);
         const val = input.value.trim();
-        if (!val) {
+        // If text matches current selection label, show all curated (not filtered)
+        const currentLabel = CURATED_LABELS[hidden.value] || prettifyModelName(hidden.value);
+        if (!val || val === currentLabel) {
             showCurated();
             return;
         }
