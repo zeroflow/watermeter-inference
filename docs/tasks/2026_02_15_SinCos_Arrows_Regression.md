@@ -111,6 +111,8 @@ loss = criterion(model_output, sincos_target)  # Shapes: (batch, 2)
 - Kein zusaetzlicher Hyperparameter (λ fuer Combined Loss).
 - Bei 1794 Bildern ist jede Komplexitaet ein Overfitting-Risiko.
 
+**Einschraenkung:** MSE auf (sin, cos) minimiert den **euklidischen Abstand im 2D-Raum**, nicht den Winkelfehler direkt. Fuer kleine Fehler sind beide proportional (`d ≈ |Δθ|`), aber fuer grosse Fehler saturiert der euklidische Abstand bei 2.0 (gegenueberliegender Punkt). Das Gradient-Signal fuer komplett falsche Vorhersagen ist daher schwaecher als ideal. **In der Praxis irrelevant**, weil ein pretrained Backbone selten Vorhersagen macht, die um π+ danebenliegen.
+
 ### 3.3 Keine Normalisierung im Netz
 
 Die Model-Outputs werden **nicht** auf den Einheitskreis normalisiert.
@@ -119,6 +121,8 @@ Die Model-Outputs werden **nicht** auf den Einheitskreis normalisiert.
 - `atan2` ist **scale-invariant**: `atan2(k·sin, k·cos) = atan2(sin, cos)` fuer jedes k>0
 - Einfacherer ONNX-Export (keine Division, keine Quantisierungsartefakte)
 - Ein trainiertes Netz konvergiert nie zu (0,0)-Outputs — das waere maximal weit von allen Targets
+
+**Klarstellung:** Die Norm ist fuer die **Inferenz** irrelevant (atan2 ist scale-invariant), wird aber waehrend des **Trainings** implizit durch MSE auf ~1.0 gehalten. Targets liegen auf dem Einheitskreis (Norm = 1.0), also hat ein Output mit perfektem Winkel aber doppelter Norm trotzdem MSE > 0. Das ist kein Bug — es ist sogar wuenschenswert, weil es die Outputs nahe am Einheitskreis haelt und die Norm-basierte Confidence (Section 3.4) ermoegliglicht.
 
 **Fallback im Post-Processing:**
 ```python
@@ -171,6 +175,7 @@ Der bestehende Code verwendet `"discrete"` und `"continuous"` — NICHT `"classi
 - Dropdown wird **nur fuer `model_type=arrows`** angezeigt (digits hat kein Wraparound-Problem)
 - Default: `"sincos"`
 - Bei `model_type=digits` wird `training_mode` nicht gesendet (bleibt `"discrete"`)
+- Default-Epochen: Der aktuelle UI-Default ist 20, fuer sincos werden 30 empfohlen. JS sollte beim Wechsel auf `training_mode=sincos` den Epochen-Input auf 30 setzen (und beim Wechsel zurueck auf den Standard 20).
 
 ### API-Aenderung
 
@@ -236,6 +241,8 @@ const config = {
 | Early Stopping | Patience=8 auf Val Angular Error | Verhindert Overfitting |
 | Val Split | 20% | Stratifiziert nach Dial-Wert |
 
+**Dataset-Groesse:** Mit 1794 Bildern auf 100 Positionen (Ø 17.9 pro Position, Minimum 9) ist das Dataset fuer Regression duenn. Der pretrained Backbone mildert dies, aber die **Varianz zwischen Seeds wird hoch sein**. Bei den duennsten Positionen (9 Bilder) muss das Modell interpolieren statt auswendig lernen. Dies unterstreicht die Bedeutung von TODO 1: Wenn der einfachere Classifier (100 diskrete Klassen) im Wraparound-Bereich akzeptabel performt, ist er dem Regressor bei kleinen Datasets ueberlegen.
+
 **Hinweis:** LR Schedule, Warmup und Early Stopping existieren im aktuellen Code NICHT — muessen neu implementiert werden.
 
 ### Balanced Sampling
@@ -293,6 +300,19 @@ angle = math.atan2(sin_raw, cos_raw)
 if angle < 0: angle += 2 * math.pi
 dial = round(angle * 10 / (2 * math.pi), 1)
 if dial >= 10.0: dial = 0.0
+```
+
+### predict_detailed()
+
+`SinCosRegressor.predict_detailed()` gibt — wie der bestehende `Regressor.predict_detailed()` — eine **Single-Element-Liste** zurueck. Es gibt kein Top-K-Konzept fuer Regression:
+
+```python
+def predict_detailed(self, input_tensor):
+    result = self.compiled_model([input_tensor])[0]
+    sin_raw, cos_raw = result[0]
+    dial_position = sincos_to_dial(sin_raw, cos_raw)
+    confidence = min(1.0, math.sqrt(sin_raw**2 + cos_raw**2))
+    return [{"class": f"{dial_position:.1f}", "confidence": confidence}]
 ```
 
 ### Metadata
@@ -373,6 +393,7 @@ Der User waehlt den Modus im Training-UI Dropdown. Default fuer arrows: `"sincos
 | `config.yaml` | training_mode ist im Modell-Metadata, nicht in Config |
 | `model_manager.py` | Aktivierung/Loeschung sind mode-agnostisch |
 | `watermeter_service.py` | Liest `pred["class"]` als String — Format bleibt identisch |
+| `config.yaml → arrows_classes` | Nach Aktivierung eines sincos-Modells bleibt der alte Wert stehen (sincos-Metadata hat kein `classes`-Feld). Harmlos, da sincos den Wert nie liest. |
 | MQTT/Home Assistant | Arrow-Wert fliesst als Float ein — sincos aendert das Format nicht |
 | ONNX-Export | Standard timm-Export, nur `num_classes=2` statt 100 oder 1 |
 
@@ -414,10 +435,31 @@ Begruendung:
 
 **Entscheidung nach TODO 1:** Wenn Benchmark bestaetigt, dass continuous schlecht ist → Replace. Wenn continuous ok performt → ggf. beides beibehalten.
 
-### TODO 3: Alternative evaluieren — Circular Label Smoothing
+### TODO 3: Alternativen evaluieren — Circular MSE Loss, Circular Label Smoothing, Ordinal Regression
 **Prioritaet: MITTEL — koennte sincos ueberfluessig machen**
 
-Der bestehende 100-Klassen-Classifier koennte mit zirkulaerem Label Smoothing den Wraparound loesen:
+Drei Alternativen wurden identifiziert, die den Wraparound mit deutlich weniger Aufwand loesen koennten:
+
+**Alternative A: Circular MSE Loss auf bestehendem Sigmoid-Regressor (~20 Zeilen)**
+
+Den Wraparound-Bug direkt im Loss fixen, ohne neuen Trainingspfad:
+
+```python
+def circular_mse_loss(pred, target, period=1.0):
+    """MSE auf dem kuerzesten Weg um den Kreis."""
+    diff = pred - target
+    diff = diff - period * torch.round(diff / period)  # Wrap to [-period/2, period/2]
+    return (diff ** 2).mean()
+
+# Anwendung: pred und target in [0, 1), period = 1.0
+loss = circular_mse_loss(torch.sigmoid(outputs), labels, period=1.0)
+```
+
+**Aufwand:** ~20 Zeilen Code-Aenderung. Kein neues Dataset, keine neuen Branches, kein neuer Inference-Pfad.
+
+**Einschraenkung:** Sigmoid kann 0.0 und 1.0 nicht sauber darstellen (asymptotisch). Der "Sprung" von 0.99 nach 0.01 existiert immer noch im Funktionsraum des Netzes, auch wenn der Loss ihn bestraft. Sin/cos hat dieses Problem nicht, weil die Repraesentation nativ zirkulaer ist. **Sin/cos ist die sauberere Loesung, aber Circular MSE waere ein valider Quickfix.**
+
+**Alternative B: Circular Label Smoothing auf bestehendem Classifier (~30 Zeilen)**
 
 ```python
 def circular_label_smoothing(target_class, num_classes=100, sigma=1.0):
@@ -428,9 +470,14 @@ def circular_label_smoothing(target_class, num_classes=100, sigma=1.0):
     return labels / labels.sum()
 ```
 
-**Aufwand:** ~30 Zeilen Code vs. ~200+ Zeilen fuer sincos.
+**Aufwand:** ~30 Zeilen Code-Aenderung, kein neuer Inference-Pfad, keine neuen Branches. Der Classifier bleibt, nur der Loss aendert sich.
 **Nachteil:** Output bleibt diskret (1 von 100 Klassen). Aber fuer 0.1er-Aufloesung reicht das.
-**TODO:** Nach Benchmark-Ergebnis entscheiden, ob CLS als schnellerer Ansatz getestet wird.
+
+**Alternative C: Ordinal Regression (CORAL, Niu et al. 2016)**
+
+Modelliert kumulative Wahrscheinlichkeiten und respektiert die natuerliche Ordnung der 100 Klassen. **Vorteile:** Interpretierbare Unsicherheit (Wahrscheinlichkeitsverteilung), keine neue Inference-Pipeline noetig, natuerliche Confidence-Metrik. **Nachteil:** Nicht nativ zirkulaer — Kreis muesste bei 5.0 aufgeschnitten werden (maximale Distanz zum Wraparound). Aufwand hoeher als A/B, aber niedriger als sin/cos. **Nicht empfohlen** aufgrund der Komplexitaet, aber der Vollstaendigkeit halber erwaehnt.
+
+**TODO:** Nach Benchmark-Ergebnis (TODO 1) entscheiden: Wenn der Wraparound-Bug marginal ist → Alternative A oder B testen. Wenn signifikant → sin/cos implementieren.
 
 ### TODO 4: Confidence-Strategie ueberdenken
 **Prioritaet: NIEDRIG — betrifft V1 nicht kritisch**
