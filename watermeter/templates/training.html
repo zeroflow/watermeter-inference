@@ -819,6 +819,86 @@
             margin: 0;
         }
 
+        /* Matrix Training Mode */
+        .mode-toggle {
+            display: flex;
+            gap: 16px;
+        }
+        .mode-toggle label {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            cursor: pointer;
+            font-weight: normal;
+        }
+        .checkbox-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .checkbox-group label {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            cursor: pointer;
+            font-weight: normal;
+        }
+        .tag-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+        .arch-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            background: var(--bg-alt);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .arch-tag-remove {
+            cursor: pointer;
+            color: var(--text-light);
+            font-weight: bold;
+        }
+        .arch-tag-remove:hover {
+            color: var(--danger, #e74c3c);
+        }
+        .quick-add {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 6px;
+        }
+        .quick-add button {
+            padding: 4px 10px;
+            font-size: 11px;
+            border: 1px solid var(--border);
+            background: var(--bg-alt);
+            color: var(--text);
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .quick-add button:hover {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+        .matrix-summary {
+            padding: 12px;
+            background: var(--bg-alt);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            margin-top: 12px;
+            font-size: 14px;
+        }
+        .matrix-only {
+            display: none;
+        }
+
         /* Message Toast */
         .message {
             position: fixed;
@@ -1160,14 +1240,25 @@
                 <h2>Start Training</h2>
                 <form id="training-form" onsubmit="startTraining(event)">
                     <div class="form-grid">
-                        <div class="form-group">
+                        <!-- Training Mode Toggle -->
+                        <div class="form-group full-width">
+                            <label>Training Mode</label>
+                            <div class="mode-toggle">
+                                <label><input type="radio" name="training-mode-select" value="single" checked onchange="onTrainingModeToggle(this.value)"> Single</label>
+                                <label><input type="radio" name="training-mode-select" value="matrix" onchange="onTrainingModeToggle(this.value)"> Matrix</label>
+                            </div>
+                        </div>
+
+                        <!-- Single mode: Model Type -->
+                        <div class="form-group single-only">
                             <label for="model-type">Model Type</label>
                             <select id="model-type" required onchange="onModelTypeChange()">
                                 <option value="digits">Digits</option>
                                 <option value="arrows">Arrows</option>
                             </select>
                         </div>
-                        <div class="form-group">
+                        <!-- Single mode: Architecture -->
+                        <div class="form-group single-only">
                             <label for="arch-search">Architecture</label>
                             <input type="hidden" id="architecture" value="resnet18">
                             <div class="arch-combobox">
@@ -1175,7 +1266,8 @@
                                 <div class="arch-dropdown" id="arch-dropdown"></div>
                             </div>
                         </div>
-                        <div class="form-group">
+                        <!-- Single mode: Resolution -->
+                        <div class="form-group single-only">
                             <label for="resolution">Resolution</label>
                             <select id="resolution" required>
                                 <option value="96">96px</option>
@@ -1185,9 +1277,45 @@
                                 <option value="192">192px</option>
                             </select>
                         </div>
+
+                        <!-- Matrix mode: Model Types (checkboxes) -->
+                        <div class="form-group matrix-only" id="matrix-model-types">
+                            <label>Model Types</label>
+                            <div class="checkbox-group">
+                                <label><input type="checkbox" value="digits" checked onchange="onMatrixModelTypeChange(); updateMatrixSummary()"> Digits</label>
+                                <label><input type="checkbox" value="arrows" onchange="onMatrixModelTypeChange(); updateMatrixSummary()"> Arrows</label>
+                            </div>
+                        </div>
+                        <!-- Matrix mode: Architectures (tags) -->
+                        <div class="form-group full-width matrix-only" id="matrix-architectures">
+                            <label>Architectures</label>
+                            <div id="matrix-arch-tags" class="tag-list"></div>
+                            <div class="arch-combobox" id="matrix-arch-combobox">
+                                <input type="text" id="matrix-arch-search" placeholder="Search and add models..." autocomplete="off">
+                                <div class="arch-dropdown" id="matrix-arch-dropdown"></div>
+                            </div>
+                            <div class="quick-add">
+                                <button type="button" onclick="matrixAddGroup('Lightweight')">+ Lightweight</button>
+                                <button type="button" onclick="matrixAddGroup('Medium')">+ Medium</button>
+                                <button type="button" onclick="matrixAddGroup('Heavy')">+ Heavy</button>
+                                <button type="button" onclick="matrixAddGroup('all')">+ All Curated</button>
+                            </div>
+                        </div>
+                        <!-- Matrix mode: Resolutions (checkboxes) -->
+                        <div class="form-group matrix-only" id="matrix-resolutions">
+                            <label>Resolutions</label>
+                            <div class="checkbox-group">
+                                <label><input type="checkbox" value="128" checked onchange="updateMatrixSummary()"> 128</label>
+                                <label><input type="checkbox" value="160" onchange="updateMatrixSummary()"> 160</label>
+                                <label><input type="checkbox" value="192" onchange="updateMatrixSummary()"> 192</label>
+                                <label><input type="checkbox" value="224" onchange="updateMatrixSummary()"> 224</label>
+                            </div>
+                        </div>
+
+                        <!-- Shared params (both modes) -->
                         <div class="form-group">
                             <label for="seeds">Seeds</label>
-                            <input type="text" id="seeds" value="42" required placeholder="42, 67, 69">
+                            <input type="text" id="seeds" value="42" required placeholder="42, 67, 69" oninput="updateMatrixSummary()">
                             <span class="hint">Comma-separated (e.g., 42, 67, 69)</span>
                         </div>
                         <div class="form-group">
@@ -1220,11 +1348,19 @@
                             <textarea id="notes" placeholder="Training notes..."></textarea>
                         </div>
                     </div>
+
+                    <!-- Matrix Summary -->
+                    <div class="matrix-summary" id="matrix-summary" style="display:none">
+                        <strong>Matrix:</strong> <span id="matrix-count">0</span> jobs
+                        (<span id="matrix-detail">0 types × 0 arch × 0 res</span>)
+                        × <span id="matrix-seeds">0</span> seeds each
+                    </div>
+
                     <div class="form-actions">
                         <button type="submit" id="start-training-btn" class="btn btn-primary">
                             Start Training
                         </button>
-                        <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-dark); cursor: pointer;">
+                        <label class="single-only" style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-dark); cursor: pointer;">
                             <input type="checkbox" id="auto-benchmark" checked>
                             Auto-benchmark after training
                         </label>

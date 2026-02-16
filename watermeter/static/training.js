@@ -239,6 +239,234 @@ function initArchCombobox() {
 
 initArchCombobox();
 
+// ============================================================================
+// Matrix Training Mode
+// ============================================================================
+
+let matrixArchitectures = []; // [{value: 'resnet18', label: 'ResNet-18'}, ...]
+
+function onTrainingModeToggle(mode) {
+    const isSingle = mode === 'single';
+    // Show/hide single-mode elements
+    document.querySelectorAll('.single-only').forEach(el => el.style.display = isSingle ? '' : 'none');
+    // Show/hide matrix-mode elements
+    document.querySelectorAll('.matrix-only').forEach(el => el.style.display = isSingle ? 'none' : '');
+    // Show/hide matrix summary
+    document.getElementById('matrix-summary').style.display = isSingle ? 'none' : '';
+    // Update arrows-specific fields visibility for matrix mode
+    if (!isSingle) {
+        onMatrixModelTypeChange();
+        updateMatrixSummary();
+    } else {
+        // Restore single-mode arrows field visibility
+        onModelTypeChange();
+    }
+}
+
+function onMatrixModelTypeChange() {
+    const arrowsChecked = document.querySelector('#matrix-model-types input[value="arrows"]').checked;
+    const stepSizeGroup = document.getElementById('step-size-group');
+    const trainingModeGroup = document.getElementById('training-mode-group');
+    const mode = document.querySelector('input[name="training-mode-select"]:checked').value;
+    if (mode === 'matrix') {
+        stepSizeGroup.style.display = arrowsChecked ? '' : 'none';
+        trainingModeGroup.style.display = arrowsChecked ? '' : 'none';
+    }
+}
+
+function matrixAddArch(value, label) {
+    if (matrixArchitectures.find(a => a.value === value)) return; // no dupes
+    matrixArchitectures.push({value, label});
+    renderMatrixArchTags();
+    updateMatrixSummary();
+}
+
+function matrixRemoveArch(value) {
+    matrixArchitectures = matrixArchitectures.filter(a => a.value !== value);
+    renderMatrixArchTags();
+    updateMatrixSummary();
+}
+
+function matrixAddGroup(group) {
+    const groups = group === 'all' ? CURATED_MODELS : CURATED_MODELS.filter(g => g.group === group);
+    groups.forEach(g => g.models.forEach(m => matrixAddArch(m.value, m.label)));
+}
+
+function renderMatrixArchTags() {
+    const container = document.getElementById('matrix-arch-tags');
+    const tags = matrixArchitectures.map(a => {
+        const tag = document.createElement('span');
+        tag.className = 'arch-tag';
+        tag.textContent = a.label + ' ';
+        const removeBtn = document.createElement('span');
+        removeBtn.className = 'arch-tag-remove';
+        removeBtn.textContent = '\u00d7';
+        removeBtn.addEventListener('click', () => matrixRemoveArch(a.value));
+        tag.appendChild(removeBtn);
+        return tag;
+    });
+    container.replaceChildren(...tags);
+}
+
+function updateMatrixSummary() {
+    const mode = document.querySelector('input[name="training-mode-select"]:checked').value;
+    if (mode !== 'matrix') return;
+
+    const types = [...document.querySelectorAll('#matrix-model-types input:checked')].map(i => i.value);
+    const resolutions = [...document.querySelectorAll('#matrix-resolutions input:checked')].map(i => parseInt(i.value));
+    const archs = matrixArchitectures.length;
+    const seedsStr = document.getElementById('seeds').value;
+    const seeds = seedsStr.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+
+    const jobCount = types.length * archs * resolutions.length;
+    document.getElementById('matrix-count').textContent = jobCount;
+    document.getElementById('matrix-detail').textContent =
+        types.length + ' types \u00d7 ' + archs + ' arch \u00d7 ' + resolutions.length + ' res';
+    document.getElementById('matrix-seeds').textContent = seeds.length;
+}
+
+function initMatrixArchCombobox() {
+    const input = document.getElementById('matrix-arch-search');
+    const dropdown = document.getElementById('matrix-arch-dropdown');
+    let debounceTimer = null;
+
+    function showCurated(filter) {
+        const lf = (filter || '').toLowerCase();
+        dropdown.replaceChildren();
+        CURATED_MODELS.forEach(group => {
+            const filtered = lf
+                ? group.models.filter(m => m.label.toLowerCase().includes(lf) || m.value.includes(lf))
+                : group.models;
+            if (filtered.length === 0) return;
+            const groupLabel = document.createElement('div');
+            groupLabel.className = 'arch-group-label';
+            groupLabel.textContent = group.group;
+            dropdown.appendChild(groupLabel);
+            filtered.forEach(m => {
+                const opt = document.createElement('div');
+                opt.className = 'arch-option';
+                opt.dataset.value = m.value;
+                opt.dataset.label = m.label;
+                const labelSpan = document.createElement('span');
+                labelSpan.className = 'arch-label';
+                labelSpan.textContent = m.label;
+                const subSpan = document.createElement('span');
+                subSpan.className = 'arch-sub';
+                subSpan.textContent = m.params ? (m.params + ' \u00b7 ' + m.value) : m.value;
+                opt.appendChild(labelSpan);
+                opt.appendChild(subSpan);
+                dropdown.appendChild(opt);
+            });
+        });
+        if (dropdown.children.length === 0 && lf) return false;
+        dropdown.classList.add('open');
+        return true;
+    }
+
+    async function searchTimm(query) {
+        try {
+            const resp = await fetch('/api/models/architectures?q=' + encodeURIComponent(query));
+            const models = await resp.json();
+            if (input.value !== query) return;
+            dropdown.replaceChildren();
+            const lf = query.toLowerCase();
+            // Curated matches first
+            CURATED_MODELS.forEach(group => {
+                const filtered = group.models.filter(m => m.label.toLowerCase().includes(lf) || m.value.includes(lf));
+                if (filtered.length === 0) return;
+                const groupLabel = document.createElement('div');
+                groupLabel.className = 'arch-group-label';
+                groupLabel.textContent = group.group;
+                dropdown.appendChild(groupLabel);
+                filtered.forEach(m => {
+                    const opt = document.createElement('div');
+                    opt.className = 'arch-option';
+                    opt.dataset.value = m.value;
+                    opt.dataset.label = m.label;
+                    const labelSpan = document.createElement('span');
+                    labelSpan.className = 'arch-label';
+                    labelSpan.textContent = m.label;
+                    const subSpan = document.createElement('span');
+                    subSpan.className = 'arch-sub';
+                    subSpan.textContent = m.params ? (m.params + ' \u00b7 ' + m.value) : m.value;
+                    opt.appendChild(labelSpan);
+                    opt.appendChild(subSpan);
+                    dropdown.appendChild(opt);
+                });
+            });
+            // Then timm results
+            const curatedValues = new Set(Object.keys(CURATED_LABELS));
+            const timmOnly = models.filter(m => !curatedValues.has(m));
+            if (timmOnly.length > 0) {
+                const info = document.createElement('div');
+                info.className = 'arch-search-info';
+                info.textContent = models.length + ' timm models found' + (models.length >= 50 ? ' (showing first 50)' : '');
+                dropdown.appendChild(info);
+                timmOnly.forEach(m => {
+                    const pretty = prettifyModelName(m);
+                    const opt = document.createElement('div');
+                    opt.className = 'arch-option';
+                    opt.dataset.value = m;
+                    opt.dataset.label = pretty;
+                    const labelSpan = document.createElement('span');
+                    labelSpan.className = 'arch-label';
+                    labelSpan.textContent = pretty;
+                    const subSpan = document.createElement('span');
+                    subSpan.className = 'arch-sub';
+                    subSpan.textContent = m;
+                    opt.appendChild(labelSpan);
+                    opt.appendChild(subSpan);
+                    dropdown.appendChild(opt);
+                });
+            }
+            if (dropdown.children.length === 0) {
+                const info = document.createElement('div');
+                info.className = 'arch-search-info';
+                info.textContent = 'No models found';
+                dropdown.appendChild(info);
+            }
+            dropdown.classList.add('open');
+        } catch(e) {
+            console.error('Matrix architecture search failed:', e);
+        }
+    }
+
+    input.addEventListener('focus', () => {
+        input.select();
+        showCurated();
+    });
+
+    input.addEventListener('input', () => {
+        clearTimeout(debounceTimer);
+        const val = input.value.trim();
+        if (!val) {
+            showCurated();
+            return;
+        }
+        showCurated(val);
+        if (val.length >= 2) {
+            debounceTimer = setTimeout(() => searchTimm(val), 300);
+        }
+    });
+
+    dropdown.addEventListener('click', (e) => {
+        const opt = e.target.closest('.arch-option');
+        if (!opt) return;
+        matrixAddArch(opt.dataset.value, opt.dataset.label);
+        input.value = '';
+        dropdown.classList.remove('open');
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('#matrix-arch-combobox')) {
+            dropdown.classList.remove('open');
+            if (input.value) input.value = '';
+        }
+    });
+}
+
+initMatrixArchCombobox();
+
 // Load training data stats
 async function loadTrainingStats() {
     try {
@@ -697,6 +925,13 @@ async function loadLogs(jobId) {
 async function startTraining(event) {
     event.preventDefault();
 
+    const mode = document.querySelector('input[name="training-mode-select"]:checked').value;
+
+    if (mode === 'matrix') {
+        await startMatrixTraining();
+        return;
+    }
+
     const modelType = document.getElementById('model-type').value;
     const architecture = document.getElementById('architecture').value;
     const resolution = parseInt(document.getElementById('resolution').value);
@@ -757,6 +992,84 @@ async function startTraining(event) {
         console.error('Error starting training:', error);
         showMessage('Error starting training: ' + error.message, 'error');
     }
+}
+
+// Start matrix training (multiple combinatorial jobs)
+async function startMatrixTraining() {
+    const types = [...document.querySelectorAll('#matrix-model-types input:checked')].map(i => i.value);
+    const resolutions = [...document.querySelectorAll('#matrix-resolutions input:checked')].map(i => parseInt(i.value));
+    const archs = matrixArchitectures.map(a => a.value);
+
+    if (types.length === 0 || archs.length === 0 || resolutions.length === 0) {
+        showMessage('Select at least one option for each matrix dimension', 'error');
+        return;
+    }
+
+    const epochs = parseInt(document.getElementById('epochs').value);
+    const learningRate = parseFloat(document.getElementById('learning-rate').value);
+    const seedsStr = document.getElementById('seeds').value;
+    const seeds = seedsStr.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+    if (seeds.length === 0) {
+        showMessage('Please enter at least one valid seed.', 'error');
+        return;
+    }
+    const notes = document.getElementById('notes').value;
+    const stepSize = parseFloat(document.getElementById('step-size').value);
+    const trainingMode = document.getElementById('training-mode') ? document.getElementById('training-mode').value : 'discrete';
+
+    // Build all combinations
+    const jobs = [];
+    for (const type of types) {
+        for (const arch of archs) {
+            for (const res of resolutions) {
+                const config = {
+                    model_type: type,
+                    architecture: arch,
+                    resolution: res,
+                    seeds: seeds,
+                    epochs: epochs,
+                    batch_size: 16,
+                    learning_rate: learningRate,
+                    notes: notes ? '[Matrix] ' + notes : '[Matrix]',
+                    auto_benchmark: false
+                };
+                if (type === 'arrows') {
+                    config.step_size = stepSize;
+                    config.training_mode = trainingMode;
+                }
+                jobs.push(config);
+            }
+        }
+    }
+
+    // Last job gets auto_benchmark
+    jobs[jobs.length - 1].auto_benchmark = true;
+
+    // Disable start button during submission
+    const startBtn = document.getElementById('start-training-btn');
+    startBtn.disabled = true;
+    startBtn.textContent = 'Queuing...';
+
+    // Submit all jobs
+    let queued = 0;
+    for (const config of jobs) {
+        try {
+            const resp = await fetch('/api/training/start', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(config)
+            });
+            if (resp.ok) queued++;
+        } catch(e) {
+            console.error('Failed to queue job:', e);
+        }
+    }
+
+    startBtn.disabled = false;
+    startBtn.textContent = 'Start Training';
+
+    showMessage('Matrix: ' + queued + '/' + jobs.length + ' jobs queued', 'success');
+    pollTrainingStatus();
 }
 
 // Cancel training
