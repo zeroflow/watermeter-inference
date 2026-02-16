@@ -141,6 +141,44 @@ class TestScanMislabeled:
         assert result["suspects"][0]["current_label"] == "3.5"
         assert result["suspects"][0]["predicted_label"] == "5.1"
 
+    def test_arrows_regression_wraparound(self, tmp_path):
+        """Regression arrows: wraparound case 9.9 vs 0.1 should NOT be a suspect."""
+        from watermeter.routes.models import scan_mislabeled
+
+        gt_base = tmp_path / "arrows" / "ground_truth"
+        _make_gt_image(gt_base / "9.9", "wrap_close.jpg")
+        _make_gt_image(gt_base / "9.9", "wrap_far.jpg")
+
+        mock_regressor = MagicMock(spec=['predict', 'predict_detailed',
+                                         'preprocess', 'compiled',
+                                         'resolution', 'label_config_tag',
+                                         'model_path'])
+
+        def side_effect(path):
+            fname = Path(path).name
+            if fname == "wrap_close.jpg":
+                # 0.1 is within 0.2 of 9.9 circularly -- should NOT be a suspect
+                return {'class': '0.1', 'confidence': 0.80}
+            else:
+                # 7.0 is 2.9 away from 9.9 -- should be a suspect
+                return {'class': '7.0', 'confidence': 0.65}
+
+        mock_regressor.predict.side_effect = side_effect
+        mock_regressor.resolution = 128
+
+        mock_svc = MagicMock()
+        mock_svc.get_classifier.return_value = mock_regressor
+
+        with patch('watermeter.routes.models.get_inference_service', return_value=mock_svc):
+            result = scan_mislabeled("arrows", tmp_path)
+
+        # Only the far one should be a suspect
+        assert result["total_scanned"] == 2
+        assert len(result["suspects"]) == 1
+        assert result["suspects"][0]["filename"] == "wrap_far.jpg"
+        assert result["suspects"][0]["current_label"] == "9.9"
+        assert result["suspects"][0]["predicted_label"] == "7.0"
+
     def test_arrows_classification_exact_match(self, tmp_path):
         """Classification arrows: exact string match required."""
         from watermeter.routes.models import scan_mislabeled
