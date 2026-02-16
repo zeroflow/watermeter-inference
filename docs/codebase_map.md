@@ -147,7 +147,9 @@ Singleton: `get_model_manager()` L335
 - `preprocess_image(image_path, resolution)` L172
 - **class `RegressionArrowDataset`** L190: `__init__` L199, `__len__` L219, `__getitem__` L222
 - `stratified_split_regression(dataset, train_ratio)` L232
-- `regression_predict(raw_output)` L265, `softmax_predict(logits, classes)` L281
+- `regression_predict(raw_output)` L265
+- `circular_error(pred, true, period=10.0)` — L281: Shortest-path error on circular dial scale
+- `softmax_predict(logits, classes)` L299
 
 ### `persistence.py` (74 lines) -- JSON state persistence
 
