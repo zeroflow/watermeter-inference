@@ -61,6 +61,24 @@ class TestConfigEndpoints:
         assert data['success'] is False
         assert 'Missing required' in data['message']
 
+    def test_save_config_reloads_service(self, test_client, mock_service):
+        """Saving config should call reload_config on the service."""
+        valid_yaml = (
+            "images:\n  source: url\n"
+            "mqtt:\n  broker: localhost\n  port: 1883\n"
+            "inference:\n  confidence_threshold: 0.5\n"
+        )
+
+        mock_service.reload_config.return_value = {"mqtt_reconnected": False}
+
+        response = test_client.post(
+            "/api/config/save",
+            json={"content": valid_yaml, "save_option": "saveonly"},
+        )
+
+        assert response.status_code == 200
+        mock_service.reload_config.assert_called_once()
+
 
 class TestTrainingStatus:
     """Tests for /api/training/status endpoint."""
