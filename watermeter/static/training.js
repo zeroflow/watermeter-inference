@@ -1324,7 +1324,7 @@ function renderModels() {
         if (isFailed) {
             actionsHtml = `
                 <button class="btn-viewlog" onclick="viewModelLog('${modelType}', '${model.id}')">Log</button>
-                <button class="btn-delete" onclick="deleteModel('${modelType}', '${model.id}')">Delete</button>
+                <button class="btn-delete" onclick="deleteModel('${modelType}', '${model.id}', true)">Delete</button>
             `;
         } else {
             // Benchmark button: show accuracy if already benchmarked
@@ -1418,8 +1418,8 @@ function closeLogModal(event) {
 }
 
 // Delete model
-async function deleteModel(modelType, modelId) {
-    if (!confirm(`Are you sure you want to delete model "${modelId}"? This cannot be undone.`)) {
+async function deleteModel(modelType, modelId, skipConfirm = false) {
+    if (!skipConfirm && !confirm(`Are you sure you want to delete model "${modelId}"? This cannot be undone.`)) {
         return;
     }
 
