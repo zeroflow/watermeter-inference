@@ -27,6 +27,7 @@ from .low_confidence_capture import LowConfidenceCapture
 from .scheduling import SchedulingManager
 from .rate_tracker import RateTracker
 from .leak_detector import LeakDetector
+from .plausibility import PlausibilityChecker
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -302,6 +303,12 @@ class WatermeterService:
             config=self.config,
         )
 
+        # Plausibility checking
+        self._plausibility_checker = PlausibilityChecker(
+            config=self.config,
+            rate_tracker=self._rate_tracker,
+        )
+
         # Consecutive rejection tracking for stuck state detection
         self.consecutive_rejections = 0
         self.max_consecutive_rejections = 5  # Warn user after this many rejections
@@ -525,122 +532,16 @@ class WatermeterService:
         return total, raw_values
 
     def check_consistency(self, predictions: Dict[str, Dict]) -> List[str]:
-        """
-        Check consistency between adjacent positions.
-        A position with .5 (half) should have next position >= 5.
-
-        Args:
-            predictions: Dict of prediction results
-
-        Returns:
-            List of warning messages
-        """
-        warnings = []
-
-        # Check if consistency check is enabled
-        if not self.config["plausibility"].get("enable_consistency_check", True):
-            return warnings
-
-        # Determine IDs based on processing mode
-        digit_ids, arrow_ids = get_position_ids(self.config)
-        all_ids = digit_ids + arrow_ids
-
-        # Collect all values in order
-        all_values = []
-
-        for image_id in all_ids:
-            if image_id in predictions:
-                pred = predictions[image_id]
-                if pred["class"] not in ["NAN", "ERROR"]:
-                    if pred["model"] == "digits":
-                        all_values.append((image_id, int(pred["class"])))
-                    else:
-                        all_values.append((image_id, float(pred["class"])))
-
-        # Check consistency
-        for i in range(len(all_values) - 1):
-            current_id, current_val = all_values[i]
-            next_id, next_val = all_values[i + 1]
-
-            # Check if current has fractional part >= 0.4 (represents .5)
-            current_frac = current_val % 1
-            current_has_half = current_frac >= 0.4
-
-            # Check if next is in upper half (>= 5)
-            next_int_part = int(next_val)
-            next_is_upper_half = next_int_part >= 5
-
-            if current_has_half != next_is_upper_half:
-                msg = f"{current_id}={current_val} (half={current_has_half}) vs {next_id}={next_val} (upper={next_is_upper_half})"
-                warnings.append(msg)
-                logger.warning(f"Consistency check: {msg}")
-
-        return warnings
+        """Check consistency between adjacent positions."""
+        return self._plausibility_checker.check_consistency(predictions)
 
     def validate_plausibility(self, new_value: float) -> Tuple[bool, List[str]]:
-        """
-        Validate plausibility of new reading.
-
-        Args:
-            new_value: New meter reading
-
-        Returns:
-            (is_valid, warnings)
-        """
-        warnings = []
-        config = self.config["plausibility"]
-
-        # Check if we have a previous value
-        if self.previous_value is None:
-            logger.info("No previous value - accepting first reading")
-            self._add_to_rate_history(new_value)
-            return True, warnings
-
-        # Reverse detection
-        if config["enable_reverse_detection"]:
-            if new_value < self.previous_value:
-                msg = f"Reverse detected: {self.previous_value:.4f} → {new_value:.4f}"
-                warnings.append(msg)
-                logger.error(msg)
-                return False, warnings
-
-        # Rate check
-        if config["enable_rate_limit"]:
-            value_diff = new_value - self.previous_value
-
-            # Max rate per reading - immediate rejection (time-independent)
-            if value_diff > config["max_rate_per_reading"]:
-                msg = f"Change per reading too high: {value_diff:.4f} m³ (max: {config['max_rate_per_reading']})"
-                warnings.append(msg)
-                logger.error(msg)
-                return False, warnings
-
-            # Rate per hour - check against history if available
-            if self.last_update_time:
-                time_diff = (datetime.now() - self.last_update_time).total_seconds()
-                if time_diff > 0:
-                    rate_per_hour = (value_diff / time_diff) * 3600
-                    if rate_per_hour > config["max_rate_per_hour"]:
-                        # If we have history, verify the rate is consistently high
-                        if len(self.rate_history) >= 2:
-                            avg_rate = self._calculate_average_rate_per_hour()
-                            if avg_rate is not None and avg_rate > config["max_rate_per_hour"]:
-                                msg = f"Rate per hour too high: {rate_per_hour:.2f} m³/h (avg: {avg_rate:.2f}, max: {config['max_rate_per_hour']})"
-                                warnings.append(msg)
-                                logger.error(msg)
-                                return False, warnings
-                            else:
-                                # Single spike, warn but accept
-                                msg = f"Rate spike: {rate_per_hour:.2f} m³/h (avg: {avg_rate:.2f if avg_rate else 'N/A'}, max: {config['max_rate_per_hour']})"
-                                warnings.append(msg)
-                                logger.warning(msg)
-                        else:
-                            # No history yet, warn but accept
-                            msg = f"Rate per hour high (no history): {rate_per_hour:.2f} m³/h (max: {config['max_rate_per_hour']})"
-                            warnings.append(msg)
-                            logger.warning(msg)
-
-        return True, warnings
+        """Validate plausibility of new reading."""
+        return self._plausibility_checker.validate_plausibility(
+            new_value=new_value,
+            previous_value=self.previous_value,
+            last_update_time=self.last_update_time,
+        )
 
     def _add_to_rate_history(self, value: float) -> None:
         """Add a reading to rate history."""
@@ -1957,6 +1858,9 @@ class WatermeterService:
 
         # Sync config to leak detector
         self._leak_detector.config = new_config
+
+        # Sync config to plausibility checker
+        self._plausibility_checker.config = new_config
 
         # Sync cyclic interval to scheduler
         self._scheduler.cyclic_interval = self.cyclic_interval

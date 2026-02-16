@@ -66,6 +66,7 @@ class TestReloadConfig:
         service._rate_tracker = MagicMock()
         service._rate_tracker.max_size = config["plausibility"].get("rate_history_size", 5)
         service._leak_detector = MagicMock()
+        service._plausibility_checker = MagicMock()
         # Bind the real method and properties
         service.reload_config = WatermeterService.reload_config.__get__(service)
         # Bind properties to make them work with the mock
