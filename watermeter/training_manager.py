@@ -996,6 +996,7 @@ class TrainingManager:
                             "rmse": result["rmse"],
                             "within_half_pct": result["within_half_pct"],
                             "within_one_pct": result["within_one_pct"],
+                            "accuracy": result["within_half_pct"],  # Alias for UI compatibility
                             "mean_confidence": result["mean_confidence"],
                             "inference_time_ms": result["inference_time_ms"],
                             "total_images": result["total_images"],

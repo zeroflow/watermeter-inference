@@ -893,7 +893,7 @@ function renderModels() {
                 cmp = (a.resolution || 0) - (b.resolution || 0);
                 break;
             case 'accuracy':
-                cmp = ((a.benchmark?.accuracy ?? -1)) - ((b.benchmark?.accuracy ?? -1));
+                cmp = ((a.benchmark?.accuracy ?? a.benchmark?.within_half_pct ?? -1)) - ((b.benchmark?.accuracy ?? b.benchmark?.within_half_pct ?? -1));
                 break;
             case 'inftime':
                 cmp = ((a.benchmark?.inference_time_ms ?? 9999)) - ((b.benchmark?.inference_time_ms ?? 9999));
@@ -937,8 +937,14 @@ function renderModels() {
         // Accuracy cell
         let accuracyHtml = '-';
         if (bm && bm.accuracy !== undefined) {
-            const accClass = bm.accuracy >= 90 ? 'good' : bm.accuracy >= 70 ? 'warning' : 'bad';
-            accuracyHtml = `<span class="accuracy-cell ${accClass}">${bm.accuracy}%</span>`;
+            const accVal = bm.accuracy;
+            const accClass = accVal >= 90 ? 'good' : accVal >= 70 ? 'warning' : 'bad';
+            const tooltip = bm.mae !== undefined ? ` title="MAE: ${bm.mae}, RMSE: ${bm.rmse}"` : '';
+            accuracyHtml = `<span class="accuracy-cell ${accClass}"${tooltip}>${accVal}%</span>`;
+        } else if (bm && bm.within_half_pct !== undefined) {
+            const accVal = bm.within_half_pct;
+            const accClass = accVal >= 90 ? 'good' : accVal >= 70 ? 'warning' : 'bad';
+            accuracyHtml = `<span class="accuracy-cell ${accClass}" title="MAE: ${bm.mae}, RMSE: ${bm.rmse}">${accVal}%</span>`;
         }
 
         // Inference time cell
@@ -953,8 +959,9 @@ function renderModels() {
         } else {
             // Benchmark button: show accuracy if already benchmarked
             let benchBtnHtml;
-            if (bm && bm.accuracy !== undefined) {
-                benchBtnHtml = `<button class="btn-benchmark benchmarked" onclick="startBenchmark('${modelType}', '${model.id}')">${bm.accuracy}%</button>`;
+            const bmValue = bm?.accuracy ?? bm?.within_half_pct;
+            if (bm && bmValue !== undefined) {
+                benchBtnHtml = `<button class="btn-benchmark benchmarked" onclick="startBenchmark('${modelType}', '${model.id}')">${bmValue}%</button>`;
             } else {
                 benchBtnHtml = `<button class="btn-benchmark" onclick="startBenchmark('${modelType}', '${model.id}')">Benchmark</button>`;
             }
