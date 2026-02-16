@@ -26,6 +26,7 @@ from .position_utils import get_position_ids
 from .low_confidence_capture import LowConfidenceCapture
 from .scheduling import SchedulingManager
 from .rate_tracker import RateTracker
+from .leak_detector import LeakDetector
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -293,6 +294,12 @@ class WatermeterService:
         # Rate history for plausibility checks
         self._rate_tracker = RateTracker(
             max_size=self.config["plausibility"].get("rate_history_size", 5)
+        )
+
+        # Leak detection
+        self._leak_detector = LeakDetector(
+            rate_tracker=self._rate_tracker,
+            config=self.config,
         )
 
         # Consecutive rejection tracking for stuck state detection
@@ -644,46 +651,8 @@ class WatermeterService:
         return self._rate_tracker.average_rate_per_hour
 
     def _check_sustained_consumption(self) -> Optional[str]:
-        """
-        Check if the last N consecutive readings all show rate above threshold.
-
-        Returns:
-            Warning message string if leak detected, None otherwise.
-        """
-        config = self.config["plausibility"]
-
-        if not config.get("enable_leak_detection", True):
-            return None
-
-        threshold = config.get("sustained_rate_threshold", 0.05)
-        min_readings = config.get("sustained_rate_readings", 3)
-
-        if len(self.rate_history) < min_readings + 1:
-            return None
-
-        tail = self.rate_history[-(min_readings + 1) :]
-
-        for i in range(len(tail) - 1):
-            val_prev, ts_prev = tail[i]
-            val_curr, ts_curr = tail[i + 1]
-
-            time_diff_s = (ts_curr - ts_prev).total_seconds()
-            if time_diff_s <= 0:
-                return None
-
-            rate_per_hour = ((val_curr - val_prev) / time_diff_s) * 3600
-
-            if rate_per_hour < threshold:
-                return None
-
-        total_time_s = (tail[-1][1] - tail[0][1]).total_seconds()
-        total_time_min = total_time_s / 60
-        avg_rate = ((tail[-1][0] - tail[0][0]) / total_time_s) * 3600
-
-        return (
-            f"Sustained consumption: {avg_rate:.3f} m\u00b3/h over {total_time_min:.0f} min "
-            f"({min_readings} consecutive readings above {threshold} m\u00b3/h)"
-        )
+        """Check if the last N consecutive readings all show rate above threshold."""
+        return self._leak_detector.check()
 
     # ── User Confirmation (BL-07) ───────────────────────────────────────
 
@@ -1985,6 +1954,9 @@ class WatermeterService:
         self.cyclic_interval = trigger_config.get("cyclic_interval", 300)
         self._rate_tracker.max_size = new_config.get("plausibility", {}).get("rate_history_size", 5)
         self.ha_publish_enabled = new_config.get("homeassistant", {}).get("enabled", True)
+
+        # Sync config to leak detector
+        self._leak_detector.config = new_config
 
         # Sync cyclic interval to scheduler
         self._scheduler.cyclic_interval = self.cyclic_interval

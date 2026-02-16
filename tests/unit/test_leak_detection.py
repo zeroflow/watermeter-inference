@@ -26,6 +26,8 @@ for _name in ['watermeter_service', 'watermeter.watermeter_service']:
         _ws_mock_backup[_name] = sys.modules.pop(_name)
 
 from watermeter.watermeter_service import WatermeterService  # noqa: E402
+from watermeter.rate_tracker import RateTracker  # noqa: E402
+from watermeter.leak_detector import LeakDetector  # noqa: E402
 
 # Restore the mocks so other test files still work
 for _name, _mock in _ws_mock_backup.items():
@@ -57,6 +59,11 @@ def service():
         },
     }
 
+    # Create rate tracker and leak detector
+    svc._rate_tracker = RateTracker(max_size=25)
+    svc._leak_detector = LeakDetector(rate_tracker=svc._rate_tracker, config=svc.config)
+
+    # Backward-compatible property access
     svc.rate_history = []
     svc.leak_warning = False
     svc.current_state = {
