@@ -683,7 +683,7 @@ class TestMqttConnectSubscription:
         }
         service.trigger_mode = 'mqtt'
 
-        service.on_mqtt_connect(mock_client, None, None, 0)
+        service.on_mqtt_connect(mock_client, None, None, 0, None)
 
         # Collect all subscribed topics
         subscribed_topics = [c[0][0] for c in mock_client.subscribe.call_args_list]
@@ -698,7 +698,7 @@ class TestMqttConnectSubscription:
         }
         service_disabled.trigger_mode = 'mqtt'
 
-        service_disabled.on_mqtt_connect(mock_client, None, None, 0)
+        service_disabled.on_mqtt_connect(mock_client, None, None, 0, None)
 
         subscribed_topics = [c[0][0] for c in mock_client.subscribe.call_args_list]
         assert 'watermeter/confirmation_response' not in subscribed_topics

@@ -229,7 +229,7 @@ class TestMqttSubscriptionConditional:
         service = self._make_service('mqtt')
         client = MagicMock()
 
-        WatermeterService.on_mqtt_connect(service, client, None, None, 0)
+        WatermeterService.on_mqtt_connect(service, client, None, None, 0, None)
 
         subscribed_topics = [call[0][0] for call in client.subscribe.call_args_list]
         assert 'watermeter/status' in subscribed_topics
@@ -240,7 +240,7 @@ class TestMqttSubscriptionConditional:
         service = self._make_service('cyclic')
         client = MagicMock()
 
-        WatermeterService.on_mqtt_connect(service, client, None, None, 0)
+        WatermeterService.on_mqtt_connect(service, client, None, None, 0, None)
 
         subscribed_topics = [call[0][0] for call in client.subscribe.call_args_list]
         assert 'watermeter/status' not in subscribed_topics
@@ -251,7 +251,7 @@ class TestMqttSubscriptionConditional:
         service = self._make_service('both')
         client = MagicMock()
 
-        WatermeterService.on_mqtt_connect(service, client, None, None, 0)
+        WatermeterService.on_mqtt_connect(service, client, None, None, 0, None)
 
         subscribed_topics = [call[0][0] for call in client.subscribe.call_args_list]
         assert 'watermeter/status' in subscribed_topics
@@ -261,6 +261,6 @@ class TestMqttSubscriptionConditional:
         service = self._make_service('mqtt')
         client = MagicMock()
 
-        WatermeterService.on_mqtt_connect(service, client, None, None, 5)
+        WatermeterService.on_mqtt_connect(service, client, None, None, 5, None)
 
         client.subscribe.assert_not_called()
