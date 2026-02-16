@@ -25,6 +25,7 @@ from .image_pipeline import ImagePipeline
 from .position_utils import get_position_ids
 from .low_confidence_capture import LowConfidenceCapture
 from .scheduling import SchedulingManager
+from .rate_tracker import RateTracker
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -289,9 +290,10 @@ class WatermeterService:
         # Low confidence capture
         self._low_confidence = LowConfidenceCapture(self.config)
 
-        # Rate history for plausibility checks (list of (value, timestamp) tuples)
-        self.rate_history: List[Tuple[float, datetime]] = []
-        self.rate_history_size = self.config["plausibility"].get("rate_history_size", 5)
+        # Rate history for plausibility checks
+        self._rate_tracker = RateTracker(
+            max_size=self.config["plausibility"].get("rate_history_size", 5)
+        )
 
         # Consecutive rejection tracking for stuck state detection
         self.consecutive_rejections = 0
@@ -333,6 +335,39 @@ class WatermeterService:
         self._last_processing_duration_s: Optional[float] = None
 
         logger.info(f"WatermeterService initialized (trigger_mode={self.trigger_mode})")
+
+    # ── Rate tracker backward-compatible properties ─────────────────────────
+    # These properties keep existing code (confirmation handlers, tests that
+    # set service.rate_history directly) working during the migration.
+    # Phase 3 will remove these when confirmation is extracted.
+
+    @property
+    def rate_history(self) -> list:
+        if not hasattr(self, '_rate_tracker'):
+            return []
+        return self._rate_tracker._history
+
+    @rate_history.setter
+    def rate_history(self, value: list) -> None:
+        if not hasattr(self, '_rate_tracker'):
+            # For tests that use object.__new__ and set rate_history directly
+            from .rate_tracker import RateTracker
+            self._rate_tracker = RateTracker(max_size=5)
+        self._rate_tracker._history = value
+
+    @property
+    def rate_history_size(self) -> int:
+        if not hasattr(self, '_rate_tracker'):
+            return 5
+        return self._rate_tracker.max_size
+
+    @rate_history_size.setter
+    def rate_history_size(self, value: int) -> None:
+        if not hasattr(self, '_rate_tracker'):
+            from .rate_tracker import RateTracker
+            self._rate_tracker = RateTracker(max_size=value)
+        else:
+            self._rate_tracker.max_size = value
 
     # ── Image pipeline delegation ──────────────────────────────────────────
     # These methods delegate to ImagePipeline. Config is synced before each
@@ -602,27 +637,11 @@ class WatermeterService:
 
     def _add_to_rate_history(self, value: float) -> None:
         """Add a reading to rate history."""
-        self.rate_history.append((value, datetime.now()))
-        # Keep only the last N readings
-        if len(self.rate_history) > self.rate_history_size:
-            self.rate_history = self.rate_history[-self.rate_history_size :]
+        self._rate_tracker.add(value)
 
     def _calculate_average_rate_per_hour(self) -> Optional[float]:
         """Calculate average rate per hour from history."""
-        if len(self.rate_history) < 2:
-            return None
-
-        # Calculate rate from oldest to newest in history
-        oldest_value, oldest_time = self.rate_history[0]
-        newest_value, newest_time = self.rate_history[-1]
-
-        time_diff = (newest_time - oldest_time).total_seconds()
-        if time_diff <= 0:
-            return None
-
-        value_diff = newest_value - oldest_value
-        rate_per_hour = (value_diff / time_diff) * 3600
-        return rate_per_hour
+        return self._rate_tracker.average_rate_per_hour
 
     def _check_sustained_consumption(self) -> Optional[str]:
         """
@@ -809,8 +828,7 @@ class WatermeterService:
                 self.state_store.clear()
 
         # Remove the last entry from rate_history (it was added optimistically)
-        if self.rate_history:
-            self.rate_history.pop()
+        self._rate_tracker.pop_last()
 
         self._pending_confirmation = None
         self._confirmation_timer = None
@@ -877,8 +895,7 @@ class WatermeterService:
                 else:
                     self.state_store.clear()
             # Remove the optimistic rate_history entry
-            if self.rate_history:
-                self.rate_history.pop()
+            self._rate_tracker.pop_last()
             self.current_state["status"] = "rejected"
             self.current_state["warnings"] = ["Reading rejected by user"]
 
@@ -911,8 +928,7 @@ class WatermeterService:
                 self.state_store.save(self.previous_value, self.last_update_time)
 
             # Fix up rate_history: replace the last (optimistic) entry
-            if self.rate_history:
-                self.rate_history[-1] = (corrected_value, self.last_update_time)
+            self._rate_tracker.replace_last(corrected_value, self.last_update_time)
 
             self.current_state["total_value"] = corrected_value
             self.current_state["last_update"] = self.last_update_time.isoformat()
@@ -1601,7 +1617,7 @@ class WatermeterService:
         logger.info("Resetting previous value, rate history, and rejection counter")
         self.previous_value = None
         self.last_update_time = None
-        self.rate_history = []
+        self._rate_tracker.reset()
         self.consecutive_rejections = 0
         self.leak_warning = False
         self.current_state["leak_warning"] = False
@@ -1640,7 +1656,7 @@ class WatermeterService:
         self.last_update_time = now
 
         # Clear and re-seed rate history
-        self.rate_history = [(value, now)]
+        self._rate_tracker.seed(value, now)
 
         # Reset plausibility tracking
         self.consecutive_rejections = 0
@@ -1967,7 +1983,7 @@ class WatermeterService:
         trigger_config = new_config.get("trigger", {})
         self.trigger_mode = trigger_config.get("mode", "mqtt")
         self.cyclic_interval = trigger_config.get("cyclic_interval", 300)
-        self.rate_history_size = new_config.get("plausibility", {}).get("rate_history_size", 5)
+        self._rate_tracker.max_size = new_config.get("plausibility", {}).get("rate_history_size", 5)
         self.ha_publish_enabled = new_config.get("homeassistant", {}).get("enabled", True)
 
         # Sync cyclic interval to scheduler

@@ -56,7 +56,6 @@ class TestReloadConfig:
         service.config = deepcopy(config)
         service.trigger_mode = config["trigger"]["mode"]
         service.cyclic_interval = config["trigger"].get("cyclic_interval", 300)
-        service.rate_history_size = config["plausibility"].get("rate_history_size", 5)
         service.ha_publish_enabled = config["homeassistant"]["enabled"]
         service.mqtt_client = MagicMock()
         service.mqtt_client.is_connected.return_value = True
@@ -64,8 +63,12 @@ class TestReloadConfig:
         service._image_pipeline = MagicMock()
         service._low_confidence = MagicMock()
         service._scheduler = MagicMock()
-        # Bind the real method
+        service._rate_tracker = MagicMock()
+        service._rate_tracker.max_size = config["plausibility"].get("rate_history_size", 5)
+        # Bind the real method and properties
         service.reload_config = WatermeterService.reload_config.__get__(service)
+        # Bind properties to make them work with the mock
+        service.__class__.rate_history_size = WatermeterService.rate_history_size
         return service
 
     def test_updates_config_dict(self):
@@ -91,7 +94,7 @@ class TestReloadConfig:
 
         service.reload_config(new)
 
-        assert service.rate_history_size == 10
+        assert service._rate_tracker.max_size == 10
         assert service.ha_publish_enabled is False
 
     def test_resyncs_trigger_mode(self):
