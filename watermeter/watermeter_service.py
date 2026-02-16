@@ -22,6 +22,7 @@ import paho.mqtt.client as mqtt
 from .inference import get_inference_service
 from .persistence import StateStore
 from .image_hash import compute_dhash, HashCache
+from .position_utils import get_position_ids
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -689,19 +690,7 @@ class WatermeterService:
             (total_value, raw_values_dict)
         """
         # Determine digit and arrow IDs based on processing mode
-        process_separate = self.config["images"].get("process_separate", False)
-
-        if process_separate:
-            # Use IDs from config arrays
-            digit_ids = self.config["images"]["digits"]
-            arrow_ids = self.config["images"]["arrows"]
-        else:
-            # Use generated IDs from detection config
-            detection = self.config.get("detection", {})
-            digit_count = detection.get("digits", {}).get("count", 0)
-            analog_count = detection.get("analogs", {}).get("count", 0)
-            digit_ids = [f"digit_{i + 1}" for i in range(digit_count)]
-            arrow_ids = [f"analog_{i + 1}" for i in range(analog_count)]
+        digit_ids, arrow_ids = get_position_ids(self.config)
 
         # Collect predictions in order
         digits = []
@@ -761,17 +750,8 @@ class WatermeterService:
             return warnings
 
         # Determine IDs based on processing mode
-        process_separate = self.config["images"].get("process_separate", False)
-
-        if process_separate:
-            all_ids = self.config["images"]["digits"] + self.config["images"]["arrows"]
-        else:
-            detection = self.config.get("detection", {})
-            digit_count = detection.get("digits", {}).get("count", 0)
-            analog_count = detection.get("analogs", {}).get("count", 0)
-            digit_ids = [f"digit_{i + 1}" for i in range(digit_count)]
-            analog_ids = [f"analog_{i + 1}" for i in range(analog_count)]
-            all_ids = digit_ids + analog_ids
+        digit_ids, arrow_ids = get_position_ids(self.config)
+        all_ids = digit_ids + arrow_ids
 
         # Collect all values in order
         all_values = []
@@ -1234,16 +1214,7 @@ class WatermeterService:
 
     def _get_ordered_position_ids(self) -> List[str]:
         """Return position IDs in order: digit_1, ..., analog_1, ... (most to least significant)."""
-        process_separate = self.config["images"].get("process_separate", False)
-        if process_separate:
-            digit_ids = self.config["images"]["digits"]
-            arrow_ids = self.config["images"]["arrows"]
-        else:
-            detection = self.config.get("detection", {})
-            digit_count = detection.get("digits", {}).get("count", 0)
-            analog_count = detection.get("analogs", {}).get("count", 0)
-            digit_ids = [f"digit_{i + 1}" for i in range(digit_count)]
-            arrow_ids = [f"analog_{i + 1}" for i in range(analog_count)]
+        digit_ids, arrow_ids = get_position_ids(self.config)
         return digit_ids + arrow_ids
 
     def _estimate_expected_range(self) -> Optional[Tuple[float, float]]:
@@ -1269,16 +1240,7 @@ class WatermeterService:
         self, predictions: Dict[str, Dict], replace_id: str, replace_class: str, raw_values: Dict
     ) -> float:
         """Calculate hypothetical total with one position replaced."""
-        process_separate = self.config["images"].get("process_separate", False)
-        if process_separate:
-            digit_ids = self.config["images"]["digits"]
-            arrow_ids = self.config["images"]["arrows"]
-        else:
-            detection = self.config.get("detection", {})
-            digit_count = detection.get("digits", {}).get("count", 0)
-            analog_count = detection.get("analogs", {}).get("count", 0)
-            digit_ids = [f"digit_{i + 1}" for i in range(digit_count)]
-            arrow_ids = [f"analog_{i + 1}" for i in range(analog_count)]
+        digit_ids, arrow_ids = get_position_ids(self.config)
 
         digits = []
         for image_id in digit_ids:
@@ -1697,13 +1659,7 @@ class WatermeterService:
                 low_conf_config = self.config["low_confidence"]
 
                 # Get arrow IDs list for finding "next" arrow
-                process_separate = self.config["images"].get("process_separate", False)
-                if process_separate:
-                    arrow_ids = self.config["images"]["arrows"]
-                else:
-                    detection = self.config.get("detection", {})
-                    analog_count = detection.get("analogs", {}).get("count", 0)
-                    arrow_ids = [f"analog_{i + 1}" for i in range(analog_count)]
+                _, arrow_ids = get_position_ids(self.config)
 
                 for pred in predictions.values():
                     if pred["confidence"] < threshold:
