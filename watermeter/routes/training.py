@@ -39,12 +39,22 @@ class TrainingConfig(BaseModel):
     training_mode: str = "discrete"  # "discrete" or "continuous"
     notes: str = ""
     auto_benchmark: bool = True
+    learning_rate: float = 3e-4
 
     @field_validator("training_mode")
     @classmethod
     def validate_training_mode(cls, v):
         if v not in ("discrete", "continuous"):
             raise ValueError("training_mode must be 'discrete' or 'continuous'")
+        return v
+
+    @field_validator("learning_rate")
+    @classmethod
+    def validate_learning_rate(cls, v):
+        if v <= 0:
+            raise ValueError("learning_rate must be positive")
+        if v > 1.0:
+            raise ValueError("learning_rate must be <= 1.0")
         return v
 
 
