@@ -78,7 +78,7 @@
 - BL-04 Correction: `_get_ordered_position_ids()` L994, `_estimate_expected_range()` L1008, `_recalculate_with_replacement()` L1027, `_check_consistency_improvement()` L1067, `_check_cross_arrow_consistency()` L1118, `correct_predictions(predictions, ...)` L1172
 - Pipeline: `save_low_confidence(predictions, images)` L1282, `process_reading()` L1371, `publish_to_mqtt(status)` L1615
 - Manual: `reset_previous_value()` L1652, `set_manual_value(value)` L1677, `toggle_ha_publish()` L1753
-- HA/MQTT: `publish_discovery()` L1759, `on_mqtt_connect()` L1798, `on_mqtt_disconnect(client, userdata, disconnect_flags, reason_code, properties)` L2243, `on_mqtt_message()` L1828, `start_mqtt()` L1864, `stop_mqtt()` L1895
+- HA/MQTT: `publish_discovery()` L1759, `on_mqtt_connect()` L1798, `on_mqtt_disconnect(client, userdata, disconnect_flags, reason_code, properties)` L2243, `on_mqtt_message()` L1828, `start_mqtt()` L1864, `reload_config(new_config)` L2329, `stop_mqtt()` L1895
 - Cyclic: `_cyclic_loop()` L1902, `start_cyclic_loop()` L1913, `stop_cyclic_loop()` L1921
 
 Singleton: `get_service()` L1933

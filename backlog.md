@@ -16,7 +16,7 @@ See `backlog_archiv.md` for completed items (BL-01 through BL-25).
   - **Ref**: `watermeter_service.py:2293`, `requirements-docker.txt:15`
   - **Effort**: S
 
-- **BL-27** `idea` — **Config editor does not reload service**: saving config via editor only writes to disk, in-memory config is not updated until container restart
+- **BL-27** `done` — **Config editor does not reload service**: saving config via editor only writes to disk, in-memory config is not updated until container restart
   - Plausibility thresholds, trigger mode, MQTT settings, confidence thresholds, correction rules — all stale until restart
   - ROI/model routes reload properly, general config editor does not
   - **Ref**: `routes/config.py:72-75` vs `routes/models.py:117-127`
