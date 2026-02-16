@@ -351,9 +351,11 @@
         .form-group select,
         .form-group textarea {
             padding: 10px 12px;
-            border: 2px solid var(--border);
+            border: 2px solid var(--border-input);
             border-radius: 8px;
             font-size: 14px;
+            background: var(--bg-input);
+            color: var(--text-dark);
             transition: border-color 0.2s;
         }
 
@@ -387,7 +389,7 @@
             top: 100%;
             left: 0;
             right: 0;
-            max-height: 280px;
+            max-height: 560px;
             overflow-y: auto;
             background: var(--bg-surface);
             border: 2px solid var(--primary);
@@ -1164,9 +1166,9 @@
                         </div>
                         <div class="form-group">
                             <label for="arch-search">Architecture</label>
-                            <input type="hidden" id="architecture" value="resnext50_32x4d">
+                            <input type="hidden" id="architecture" value="resnet18">
                             <div class="arch-combobox">
-                                <input type="text" id="arch-search" placeholder="Search timm models..." value="ResNeXt50 32x4d" autocomplete="off">
+                                <input type="text" id="arch-search" placeholder="Search timm models..." value="ResNet18" autocomplete="off">
                                 <div class="arch-dropdown" id="arch-dropdown"></div>
                             </div>
                         </div>
