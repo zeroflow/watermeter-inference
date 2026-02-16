@@ -58,19 +58,19 @@ function onModelTypeChange() {
 // Architecture combobox
 const CURATED_MODELS = [
     { group: 'Lightweight', models: [
-        { value: 'resnet18', label: 'ResNet-18' },
-        { value: 'efficientnet_lite0', label: 'EfficientNet-Lite0' },
-        { value: 'mobilenetv3_small_100', label: 'MobileNetV3 Small' },
+        { value: 'resnet18', label: 'ResNet-18', params: '11.7M' },
+        { value: 'efficientnet_lite0', label: 'EfficientNet-Lite0', params: '4.7M' },
+        { value: 'mobilenetv3_small_100', label: 'MobileNetV3 Small', params: '2.5M' },
     ]},
     { group: 'Medium', models: [
-        { value: 'efficientnetv2_rw_t', label: 'EfficientNetV2-RW Tiny' },
-        { value: 'efficientnetv2_rw_s', label: 'EfficientNetV2-RW Small' },
-        { value: 'convnext_nano', label: 'ConvNeXt Nano' },
+        { value: 'efficientnetv2_rw_t', label: 'EfficientNetV2-RW Tiny', params: '13.6M' },
+        { value: 'efficientnetv2_rw_s', label: 'EfficientNetV2-RW Small', params: '23.9M' },
+        { value: 'convnext_nano', label: 'ConvNeXt Nano', params: '15.6M' },
     ]},
     { group: 'Heavy', models: [
-        { value: 'resnext50_32x4d', label: 'ResNeXt-50 32×4d' },
-        { value: 'convnextv2_tiny', label: 'ConvNeXt-V2 Tiny' },
-        { value: 'efficientnetv2_rw_m', label: 'EfficientNetV2-RW Medium' },
+        { value: 'resnext50_32x4d', label: 'ResNeXt-50 32×4d', params: '25.0M' },
+        { value: 'convnextv2_tiny', label: 'ConvNeXt-V2 Tiny', params: '28.6M' },
+        { value: 'efficientnetv2_rw_m', label: 'EfficientNetV2-RW Medium', params: '53.2M' },
     ]},
 ];
 
@@ -145,7 +145,8 @@ function initArchCombobox() {
             if (filtered.length === 0) return;
             html += `<div class="arch-group-label">${group.group}</div>`;
             filtered.forEach(m => {
-                html += `<div class="arch-option" data-value="${m.value}" data-label="${m.label}">${m.label} <span class="arch-value">${m.value}</span></div>`;
+                const paramsTag = m.params ? ` <span class="arch-params">${m.params}</span>` : '';
+                html += `<div class="arch-option" data-value="${m.value}" data-label="${m.label}">${m.label}${paramsTag} <span class="arch-value">${m.value}</span></div>`;
             });
         });
         if (!html && lf) return false; // no curated matches
@@ -168,7 +169,8 @@ function initArchCombobox() {
                 if (filtered.length === 0) return;
                 curatedHtml += `<div class="arch-group-label">${group.group}</div>`;
                 filtered.forEach(m => {
-                    curatedHtml += `<div class="arch-option" data-value="${m.value}" data-label="${m.label}">${m.label} <span class="arch-value">${m.value}</span></div>`;
+                    const paramsTag = m.params ? ` <span class="arch-params">${m.params}</span>` : '';
+                    curatedHtml += `<div class="arch-option" data-value="${m.value}" data-label="${m.label}">${m.label}${paramsTag} <span class="arch-value">${m.value}</span></div>`;
                 });
             });
             if (curatedHtml) html += curatedHtml;
