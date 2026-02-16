@@ -48,7 +48,7 @@
 
 ### `routes/training.py` (216 lines) -- Training job management
 
-- Pydantic: `TrainingConfig` L17 (field_validator for seeds)
+- Pydantic: `TrainingConfig` L17 (field_validator for seeds, training_mode, learning_rate)
 - `GET /api/training/status` L45, `POST /api/training/start` L68, `POST /api/training/cancel` L95
 - `DELETE /api/training/queue/{index}` L124, `DELETE /api/training/queue` L143
 - `POST /api/benchmark/cancel` L159, `GET /api/training/logs/{job_id}` L183, `GET /api/training/progress/{job_id}` L202
