@@ -128,7 +128,13 @@ def compute_class_weights(dataset, train_indices: List[int], device: torch.devic
 
 
 def export_to_openvino(model: torch.nn.Module, resolution: int, output_dir: Path, filename: str) -> Tuple[Path, Path]:
-    """Export a PyTorch model to ONNX and then OpenVINO IR format.
+    """Export a PyTorch model to ONNX and OpenVINO IR format.
+
+    Uses two independent export strategies:
+    1. OpenVINO: Direct PyTorch -> OpenVINO IR via ov.convert_model()
+       (bypasses ONNX, works for all models including ConvNeXtV2/EdgeNeXt)
+    2. ONNX: Legacy TorchScript export with dynamo=False for portability
+       (avoids SequenceEmpty/ConcatFromSequence ops from Dynamo exporter)
 
     Args:
         model: Trained PyTorch model (must be on CPU and in eval mode).
@@ -145,7 +151,12 @@ def export_to_openvino(model: torch.nn.Module, resolution: int, output_dir: Path
 
     dummy_input = torch.randn(1, 3, resolution, resolution)
 
-    # ONNX export
+    # --- OpenVINO: direct conversion from PyTorch (no ONNX intermediate) ---
+    ov_model = ov.convert_model(model, example_input=dummy_input)
+    ov_path = output_dir / f"{filename}.xml"
+    ov.save_model(ov_model, str(ov_path))
+
+    # --- ONNX: legacy TorchScript exporter (dynamo=False) for portability ---
     onnx_path = output_dir / f"{filename}.onnx"
     torch.onnx.export(
         model,
@@ -153,15 +164,10 @@ def export_to_openvino(model: torch.nn.Module, resolution: int, output_dir: Path
         onnx_path,
         export_params=True,
         opset_version=18,
+        dynamo=False,
         input_names=["input"],
         output_names=["output"],
     )
-
-    # OpenVINO conversion
-    core = ov.Core()
-    model_onnx = core.read_model(str(onnx_path))
-    ov_path = output_dir / f"{filename}.xml"
-    ov.save_model(model_onnx, str(ov_path))
 
     return onnx_path, ov_path
 
