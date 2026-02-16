@@ -278,6 +278,24 @@ def regression_predict(raw_output: np.ndarray) -> Tuple[float, float]:
     return dial_position, confidence
 
 
+def circular_error(pred: float, true: float, period: float = 10.0) -> float:
+    """Compute shortest-path error on a circular scale.
+
+    For dial values that wrap around (e.g., 9.9 → 0.0), this returns the
+    shorter of the two possible distances around the circle.
+
+    Args:
+        pred: Predicted value.
+        true: True/expected value.
+        period: Full period of the circular scale (default 10.0 for dial 0.0-9.9).
+
+    Returns:
+        Shortest circular distance between pred and true.
+    """
+    diff = abs(pred - true)
+    return min(diff, period - diff)
+
+
 def softmax_predict(logits: np.ndarray, classes: List[str]) -> Tuple[str, float]:
     """Apply softmax to logits and return (predicted_class, confidence).
 
