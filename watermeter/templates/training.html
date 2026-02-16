@@ -895,8 +895,13 @@
             margin-top: 12px;
             font-size: 14px;
         }
-        .matrix-only {
-            display: none;
+        .training-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .training-header h2 {
+            margin: 0;
         }
 
         /* Message Toast */
@@ -1237,18 +1242,15 @@
 
             <!-- Training Configuration -->
             <section class="section" id="training-form-section">
-                <h2>Start Training</h2>
+                <div class="training-header">
+                    <h2>Start Training</h2>
+                    <div class="mode-toggle">
+                        <label><input type="radio" name="training-mode-select" value="single" checked onchange="onTrainingModeToggle(this.value)"> Single</label>
+                        <label><input type="radio" name="training-mode-select" value="matrix" onchange="onTrainingModeToggle(this.value)"> Matrix</label>
+                    </div>
+                </div>
                 <form id="training-form" onsubmit="startTraining(event)">
                     <div class="form-grid">
-                        <!-- Training Mode Toggle -->
-                        <div class="form-group full-width">
-                            <label>Training Mode</label>
-                            <div class="mode-toggle">
-                                <label><input type="radio" name="training-mode-select" value="single" checked onchange="onTrainingModeToggle(this.value)"> Single</label>
-                                <label><input type="radio" name="training-mode-select" value="matrix" onchange="onTrainingModeToggle(this.value)"> Matrix</label>
-                            </div>
-                        </div>
-
                         <!-- Single mode: Model Type -->
                         <div class="form-group single-only">
                             <label for="model-type">Model Type</label>
@@ -1279,7 +1281,7 @@
                         </div>
 
                         <!-- Matrix mode: Model Types (checkboxes) -->
-                        <div class="form-group matrix-only" id="matrix-model-types">
+                        <div class="form-group matrix-only" id="matrix-model-types" style="display:none">
                             <label>Model Types</label>
                             <div class="checkbox-group">
                                 <label><input type="checkbox" value="digits" checked onchange="onMatrixModelTypeChange(); updateMatrixSummary()"> Digits</label>
@@ -1287,7 +1289,7 @@
                             </div>
                         </div>
                         <!-- Matrix mode: Architectures (tags) -->
-                        <div class="form-group full-width matrix-only" id="matrix-architectures">
+                        <div class="form-group full-width matrix-only" id="matrix-architectures" style="display:none">
                             <label>Architectures</label>
                             <div id="matrix-arch-tags" class="tag-list"></div>
                             <div class="arch-combobox" id="matrix-arch-combobox">
@@ -1302,7 +1304,7 @@
                             </div>
                         </div>
                         <!-- Matrix mode: Resolutions (checkboxes) -->
-                        <div class="form-group matrix-only" id="matrix-resolutions">
+                        <div class="form-group matrix-only" id="matrix-resolutions" style="display:none">
                             <label>Resolutions</label>
                             <div class="checkbox-group">
                                 <label><input type="checkbox" value="128" checked onchange="updateMatrixSummary()"> 128</label>
