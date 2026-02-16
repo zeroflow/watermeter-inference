@@ -384,10 +384,14 @@ class TestMqttV2Api:
             mock_instance.username_pw_set.assert_not_called()
 
     def test_on_disconnect_exists_with_v2_signature(self, mock_service):
-        """on_mqtt_disconnect should exist and accept v2 signature (5 params)."""
+        """on_mqtt_disconnect should exist and accept v2 signature (5 params + self)."""
         service = mock_service
         assert hasattr(WatermeterService, "on_mqtt_disconnect"), "on_mqtt_disconnect method missing"
 
         import inspect
         sig = inspect.signature(WatermeterService.on_mqtt_disconnect)
-        assert len(sig.parameters) == 5, f"Expected 5 params, got {len(sig.parameters)}: {list(sig.parameters)}"
+        assert len(sig.parameters) == 6, f"Expected 6 params, got {len(sig.parameters)}: {list(sig.parameters)}"
+
+        # Verify parameter names match v2 API
+        param_names = list(sig.parameters.keys())
+        assert param_names == ['self', 'client', 'userdata', 'disconnect_flags', 'reason_code', 'properties']

@@ -2240,6 +2240,13 @@ class WatermeterService:
         else:
             logger.error(f"MQTT connection failed: {reason_code}")
 
+    def on_mqtt_disconnect(self, client, userdata, disconnect_flags, reason_code, properties):
+        """MQTT disconnect callback (paho v2 API)."""
+        if reason_code == 0:
+            logger.info("Disconnected from MQTT broker (clean)")
+        else:
+            logger.warning(f"Disconnected from MQTT broker: {reason_code} — will reconnect automatically")
+
     def on_mqtt_message(self, client, userdata, msg):
         """MQTT message callback."""
         mqtt_config = self.config["mqtt"]
@@ -2305,6 +2312,7 @@ class WatermeterService:
 
         self.mqtt_client.on_connect = self.on_mqtt_connect
         self.mqtt_client.on_message = self.on_mqtt_message
+        self.mqtt_client.on_disconnect = self.on_mqtt_disconnect
 
         logger.info(f"Connecting to MQTT broker {mqtt_config['broker']}:{mqtt_config['port']}")
         try:
