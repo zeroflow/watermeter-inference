@@ -410,30 +410,23 @@
             background: var(--bg-alt);
         }
         .arch-option {
-            padding: 8px 12px;
-            font-size: 13px;
+            padding: 6px 12px;
             cursor: pointer;
             display: flex;
-            align-items: baseline;
-            gap: 6px;
+            flex-direction: column;
         }
         .arch-option:hover {
             background: var(--primary);
             color: white;
         }
-        .arch-option .arch-value {
+        .arch-option .arch-label {
+            font-size: 13px;
+        }
+        .arch-option .arch-sub {
             font-size: 11px;
             color: var(--text-light);
-            margin-left: 6px;
         }
-        .arch-option .arch-params {
-            font-size: 11px;
-            color: var(--text-light);
-            margin-left: auto;
-            white-space: nowrap;
-        }
-        .arch-option:hover .arch-value,
-        .arch-option:hover .arch-params {
+        .arch-option:hover .arch-sub {
             color: rgba(255,255,255,0.7);
         }
         .arch-search-info {

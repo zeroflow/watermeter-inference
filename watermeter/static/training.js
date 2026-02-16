@@ -58,19 +58,19 @@ function onModelTypeChange() {
 // Architecture combobox
 const CURATED_MODELS = [
     { group: 'Lightweight', models: [
-        { value: 'resnet18', label: 'ResNet-18', params: '11.7M' },
+        { value: 'resnet18', label: 'ResNet-18', params: '12M' },
         { value: 'efficientnet_lite0', label: 'EfficientNet-Lite0', params: '4.7M' },
         { value: 'mobilenetv3_small_100', label: 'MobileNetV3 Small', params: '2.5M' },
     ]},
     { group: 'Medium', models: [
-        { value: 'efficientnetv2_rw_t', label: 'EfficientNetV2-RW Tiny', params: '13.6M' },
-        { value: 'efficientnetv2_rw_s', label: 'EfficientNetV2-RW Small', params: '23.9M' },
-        { value: 'convnext_nano', label: 'ConvNeXt Nano', params: '15.6M' },
+        { value: 'efficientnetv2_rw_t', label: 'EfficientNetV2-RW Tiny', params: '14M' },
+        { value: 'efficientnetv2_rw_s', label: 'EfficientNetV2-RW Small', params: '24M' },
+        { value: 'convnext_nano', label: 'ConvNeXt Nano', params: '16M' },
     ]},
     { group: 'Heavy', models: [
-        { value: 'resnext50_32x4d', label: 'ResNeXt-50 32×4d', params: '25.0M' },
-        { value: 'convnextv2_tiny', label: 'ConvNeXt-V2 Tiny', params: '28.6M' },
-        { value: 'efficientnetv2_rw_m', label: 'EfficientNetV2-RW Medium', params: '53.2M' },
+        { value: 'resnext50_32x4d', label: 'ResNeXt-50 32×4d', params: '25M' },
+        { value: 'convnextv2_tiny', label: 'ConvNeXt-V2 Tiny', params: '29M' },
+        { value: 'efficientnetv2_rw_m', label: 'EfficientNetV2-RW Medium', params: '53M' },
     ]},
 ];
 
@@ -145,8 +145,8 @@ function initArchCombobox() {
             if (filtered.length === 0) return;
             html += `<div class="arch-group-label">${group.group}</div>`;
             filtered.forEach(m => {
-                const paramsTag = m.params ? ` <span class="arch-params">${m.params}</span>` : '';
-                html += `<div class="arch-option" data-value="${m.value}" data-label="${m.label}">${m.label}${paramsTag} <span class="arch-value">${m.value}</span></div>`;
+                const sub = m.params ? `${m.params} · ${m.value}` : m.value;
+                html += `<div class="arch-option" data-value="${m.value}" data-label="${m.label}"><span class="arch-label">${m.label}</span><span class="arch-sub">${sub}</span></div>`;
             });
         });
         if (!html && lf) return false; // no curated matches
@@ -169,8 +169,8 @@ function initArchCombobox() {
                 if (filtered.length === 0) return;
                 curatedHtml += `<div class="arch-group-label">${group.group}</div>`;
                 filtered.forEach(m => {
-                    const paramsTag = m.params ? ` <span class="arch-params">${m.params}</span>` : '';
-                    curatedHtml += `<div class="arch-option" data-value="${m.value}" data-label="${m.label}">${m.label}${paramsTag} <span class="arch-value">${m.value}</span></div>`;
+                    const sub = m.params ? `${m.params} · ${m.value}` : m.value;
+                    curatedHtml += `<div class="arch-option" data-value="${m.value}" data-label="${m.label}"><span class="arch-label">${m.label}</span><span class="arch-sub">${sub}</span></div>`;
                 });
             });
             if (curatedHtml) html += curatedHtml;
@@ -181,7 +181,7 @@ function initArchCombobox() {
                 html += `<div class="arch-search-info">${models.length} timm models found${models.length >= 50 ? ' (showing first 50)' : ''}</div>`;
                 timmOnly.forEach(m => {
                     const pretty = prettifyModelName(m);
-                    html += `<div class="arch-option" data-value="${m}" data-label="${pretty}">${pretty} <span class="arch-value">${m}</span></div>`;
+                    html += `<div class="arch-option" data-value="${m}" data-label="${pretty}"><span class="arch-label">${pretty}</span><span class="arch-sub">${m}</span></div>`;
                 });
             }
             if (!html) html = `<div class="arch-search-info">No models found</div>`;
