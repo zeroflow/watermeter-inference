@@ -5,6 +5,7 @@ Combines image fetching, OpenVINO inference, consistency checks, and MQTT publis
 
 import asyncio
 import logging
+import os
 import threading
 import time
 from datetime import datetime
@@ -2208,9 +2209,9 @@ class WatermeterService:
         logger.info(f"Published MQTT Discovery for {len(_HA_ENTITIES)} entities")
 
     # MQTT Callbacks
-    def on_mqtt_connect(self, client, userdata, flags, rc):
-        """MQTT connect callback."""
-        if rc == 0:
+    def on_mqtt_connect(self, client, userdata, connect_flags, reason_code, properties):
+        """MQTT connect callback (paho v2 API)."""
+        if reason_code == 0:
             logger.info("Connected to MQTT broker")
             mqtt_config = self.config["mqtt"]
 
@@ -2237,7 +2238,7 @@ class WatermeterService:
             self.publish_discovery()
             self.publish_training_stats()
         else:
-            logger.error(f"MQTT connection failed with code {rc}")
+            logger.error(f"MQTT connection failed: {reason_code}")
 
     def on_mqtt_message(self, client, userdata, msg):
         """MQTT message callback."""
@@ -2290,7 +2291,18 @@ class WatermeterService:
 
         mqtt_config = self.config["mqtt"]
 
-        self.mqtt_client = mqtt.Client(client_id=mqtt_config["client_id"])
+        self.mqtt_client = mqtt.Client(
+            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+            client_id=mqtt_config["client_id"],
+        )
+
+        # MQTT authentication: env vars override config
+        username = os.environ.get("MQTT_USERNAME") or mqtt_config.get("username")
+        password = os.environ.get("MQTT_PASSWORD") or mqtt_config.get("password")
+        if username:
+            self.mqtt_client.username_pw_set(username, password)
+            logger.info("MQTT authentication configured")
+
         self.mqtt_client.on_connect = self.on_mqtt_connect
         self.mqtt_client.on_message = self.on_mqtt_message
 
