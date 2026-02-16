@@ -31,6 +31,9 @@ for _name in ['watermeter_service', 'watermeter.watermeter_service']:
 
 from watermeter.watermeter_service import WatermeterService  # noqa: E402
 
+# Keep a reference to the real module (for patching module-level names like `mqtt`)
+_real_ws_module = sys.modules['watermeter.watermeter_service']
+
 # Restore the mocks so other test files still work
 for _name, _mock in _ws_mock_backup.items():
     sys.modules[_name] = _mock
@@ -264,3 +267,127 @@ class TestMqttSubscriptionConditional:
         WatermeterService.on_mqtt_connect(service, client, None, None, 5, None)
 
         client.subscribe.assert_not_called()
+
+
+# ===== MQTT v2 API Tests =====
+
+class TestMqttV2Api:
+    """Tests for paho-mqtt v2 API compliance."""
+
+    def test_client_uses_callback_api_v2(self, mock_service):
+        """Client should be constructed with CallbackAPIVersion.VERSION2."""
+        from enum import IntEnum
+
+        # paho v2 defines CallbackAPIVersion; since paho is mocked in
+        # conftest we recreate the enum so the assertion has a concrete value.
+        class CallbackAPIVersion(IntEnum):
+            VERSION1 = 1
+            VERSION2 = 2
+
+        service = mock_service
+        service.config = {
+            "mqtt": {
+                "broker": "localhost",
+                "port": 1883,
+                "client_id": "test",
+                "keepalive": 60,
+                "trigger_topic": "watermeter/status",
+                "trigger_payload": "Flow finished",
+                "reset_topic": "watermeter/reset",
+            }
+        }
+
+        mock_mqtt = MagicMock()
+        mock_mqtt.CallbackAPIVersion = CallbackAPIVersion
+        mock_instance = MagicMock()
+        mock_mqtt.Client.return_value = mock_instance
+        with patch.object(_real_ws_module, "mqtt", mock_mqtt):
+            WatermeterService.start_mqtt(service)
+
+            mock_mqtt.Client.assert_called_once_with(
+                callback_api_version=CallbackAPIVersion.VERSION2,
+                client_id="test",
+            )
+
+    def test_auth_from_config(self, mock_service):
+        """If username/password in config, call username_pw_set()."""
+        service = mock_service
+        service.config = {
+            "mqtt": {
+                "broker": "localhost",
+                "port": 1883,
+                "client_id": "test",
+                "keepalive": 60,
+                "trigger_topic": "watermeter/status",
+                "trigger_payload": "Flow finished",
+                "reset_topic": "watermeter/reset",
+                "username": "myuser",
+                "password": "mypass",
+            }
+        }
+
+        mock_mqtt = MagicMock()
+        mock_instance = MagicMock()
+        mock_mqtt.Client.return_value = mock_instance
+        with patch.object(_real_ws_module, "mqtt", mock_mqtt):
+            WatermeterService.start_mqtt(service)
+
+            mock_instance.username_pw_set.assert_called_once_with("myuser", "mypass")
+
+    def test_auth_from_env_overrides_config(self, mock_service):
+        """Env vars MQTT_USERNAME/MQTT_PASSWORD override config values."""
+        service = mock_service
+        service.config = {
+            "mqtt": {
+                "broker": "localhost",
+                "port": 1883,
+                "client_id": "test",
+                "keepalive": 60,
+                "trigger_topic": "watermeter/status",
+                "trigger_payload": "Flow finished",
+                "reset_topic": "watermeter/reset",
+                "username": "config_user",
+                "password": "config_pass",
+            }
+        }
+
+        mock_mqtt = MagicMock()
+        mock_instance = MagicMock()
+        mock_mqtt.Client.return_value = mock_instance
+        with patch.object(_real_ws_module, "mqtt", mock_mqtt), \
+             patch.dict("os.environ", {"MQTT_USERNAME": "env_user", "MQTT_PASSWORD": "env_pass"}):
+            WatermeterService.start_mqtt(service)
+
+            mock_instance.username_pw_set.assert_called_once_with("env_user", "env_pass")
+
+    def test_no_auth_when_not_configured(self, mock_service):
+        """No username_pw_set() call when auth not configured."""
+        service = mock_service
+        service.config = {
+            "mqtt": {
+                "broker": "localhost",
+                "port": 1883,
+                "client_id": "test",
+                "keepalive": 60,
+                "trigger_topic": "watermeter/status",
+                "trigger_payload": "Flow finished",
+                "reset_topic": "watermeter/reset",
+            }
+        }
+
+        mock_mqtt = MagicMock()
+        mock_instance = MagicMock()
+        mock_mqtt.Client.return_value = mock_instance
+        with patch.object(_real_ws_module, "mqtt", mock_mqtt):
+            WatermeterService.start_mqtt(service)
+
+            mock_instance.username_pw_set.assert_not_called()
+
+    def test_on_disconnect_exists_with_v2_signature(self, mock_service):
+        """on_mqtt_disconnect should exist and accept v2 signature (5 params)."""
+        service = mock_service
+        assert hasattr(WatermeterService, "on_mqtt_disconnect"), "on_mqtt_disconnect method missing"
+
+        import inspect
+        sig = inspect.signature(WatermeterService.on_mqtt_disconnect)
+        assert len(sig.parameters) == 5, f"Expected 5 params, got {len(sig.parameters)}: {list(sig.parameters)}"
