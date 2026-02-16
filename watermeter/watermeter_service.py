@@ -2326,6 +2326,46 @@ class WatermeterService:
         self.mqtt_client.loop_start()
         logger.info("MQTT client started")
 
+    def reload_config(self, new_config: dict) -> dict:
+        """Hot-reload config into the running service.
+
+        Updates self.config, re-syncs cached scalars, and reconnects
+        MQTT if broker/port/auth changed.
+
+        Args:
+            new_config: The new config dict (already validated).
+
+        Returns:
+            Dict with keys: config_updated (bool), mqtt_reconnected (bool).
+        """
+        old_mqtt = self.config.get("mqtt", {})
+        new_mqtt = new_config.get("mqtt", {})
+
+        # Check if MQTT connection params changed
+        mqtt_changed = any(
+            old_mqtt.get(k) != new_mqtt.get(k)
+            for k in ("broker", "port", "username", "password")
+        )
+
+        # Update main config
+        self.config = new_config
+
+        # Re-sync cached scalars
+        trigger_config = new_config.get("trigger", {})
+        self.trigger_mode = trigger_config.get("mode", "mqtt")
+        self.cyclic_interval = trigger_config.get("cyclic_interval", 300)
+        self.rate_history_size = new_config.get("plausibility", {}).get("rate_history_size", 5)
+        self.ha_publish_enabled = new_config.get("homeassistant", {}).get("enabled", True)
+
+        # Reconnect MQTT if connection params changed
+        if mqtt_changed and self.mqtt_client:
+            logger.info("MQTT config changed — reconnecting")
+            self.stop_mqtt()
+            self.start_mqtt()
+
+        logger.info("Config reloaded successfully")
+        return {"config_updated": True, "mqtt_reconnected": mqtt_changed}
+
     def stop_mqtt(self):
         """Stop MQTT client."""
         if self.mqtt_client:
