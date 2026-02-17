@@ -6,12 +6,12 @@ when loading and saving configuration files.
 """
 
 import json
+import logging
 import os
 import re
 from io import StringIO
 from pathlib import Path
 from typing import Any, Dict, Union
-import logging
 
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
@@ -273,8 +273,14 @@ CONFIG_SCHEMA = {
                 "trigger_topic": {"type": "string", "description": "Topic to listen for triggers"},
                 "trigger_payload": {"type": "string", "description": "Payload that triggers processing"},
                 "reset_topic": {"type": "string", "description": "Topic for reset commands"},
-                "username": {"type": "string", "description": "MQTT broker username (optional, env MQTT_USERNAME overrides)"},
-                "password": {"type": "string", "description": "MQTT broker password (optional, env MQTT_PASSWORD overrides)"},
+                "username": {
+                    "type": "string",
+                    "description": "MQTT broker username (optional, env MQTT_USERNAME overrides)",
+                },
+                "password": {
+                    "type": "string",
+                    "description": "MQTT broker password (optional, env MQTT_PASSWORD overrides)",
+                },
             },
         },
         "homeassistant": {

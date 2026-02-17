@@ -4,14 +4,14 @@
 
 ## Python Package: `watermeter/`
 
-### `app.py` (197 lines) -- FastAPI app, lifespan, router wiring
+### `app.py` (200 lines) -- FastAPI app, lifespan, router wiring
 
 - `safe_subpath(base, user_path)` L22 -- path traversal guard
 - `_background_tasks: set` L31, `_create_background_task(coro)` L34
 - `lifespan(app)` L43-101 -- startup/shutdown: service, inference, MQTT, cyclic, dedup on start
 - `tags_metadata` L105-142, `app = FastAPI(...)` L145
-- `main()` L180 -- uvicorn entry
-- Routers included L170-177: pages, service, config, roi, label, training, models, synthetic
+- `main()` L182 -- uvicorn entry
+- Routers included L161-179: pages, service, config, roi, label, training, models, synthetic, mqtt
 
 ### `routes/pages.py` (116 lines) -- HTML page routes
 
@@ -40,6 +40,12 @@
 - `POST /api/roi/digit-preview` L554
 - `POST /api/roi/analogs` L614, `DELETE /api/roi/analogs` L680, `GET /api/roi/analog-image/{id}` L718
 - `POST /api/roi/analog-preview` L734
+
+### `routes/mqtt.py` (207 lines) -- MQTT configuration routes
+
+- `_has_unresolved_tokens(value)` L31 -- checks for unresolved ${...} tokens
+- `GET /api/mqtt/config` L36, `POST /api/mqtt/config` L71, `POST /api/mqtt/test` L124
+- Imports: `config_utils`, `watermeter_service`; references `mqtt_client_class`, `_mqtt_callback_api` L18-28
 
 ### `routes/label.py` (218 lines) -- Labeling interface API
 
@@ -167,13 +173,14 @@ Singleton: `get_model_manager()` L335
 - `validate_model_config(model_path, model_type, classes, resolution)` L390
 - `get_inference_service()` L457 (singleton)
 
-### `config_utils.py` (481 lines) -- YAML config with comment preservation
+### `config_utils.py` (509 lines) -- YAML config with comment preservation
 
-- `_yaml` (global) L20, `get_yaml()` L26
-- `load_config(path)` L31, `save_config(config, path)` L46
-- `load_config_string(yaml_string)` L60, `dump_config_string(config)` L73
-- `update_config(path, updater)` L88, `validate_config(yaml_string)` L108
-- `CONFIG_SCHEMA` L135-473, `get_config_schema()` L474, `get_config_schema_json()` L479
+- `_yaml` (global) L22, `get_yaml()` L28
+- `load_config(path)` L33, `save_config(config, path)` L67
+- `resolve_env_vars(value)` L48 -- replaces ${VAR_NAME} with environment variable values, works recursively
+- `load_config_string(yaml_string)` L81, `dump_config_string(config)` L94
+- `update_config(path, updater)` L109, `validate_config(yaml_string)` L129
+- `CONFIG_SCHEMA` L156-498, `get_config_schema()` L501, `get_config_schema_json()` L506
 
 ### `image_hash.py` (505 lines) -- Perceptual hashing & dedup
 
@@ -262,7 +269,7 @@ Singleton: `get_model_manager()` L335
 | `_theme.html` | 7 | Theme IIFE script | Reads `localStorage('theme')`, sets `data-theme` on `<html>` immediately (prevents FOUC) |
 | `status_fragment.html` | 124 | HTMX fragment: value, rejected, warnings, images | Rendered server-side |
 | `label.html` | 451 | Labeling + keyboard shortcuts | `loadNextImage()`, `submitLabel()`, `deleteImage()` |
-| `roi_config.html` | 267 | 4-step ROI wizard (canvas overlay) | Inline script loads `roi-config.js` |
+| `roi_config.html` | 396 | 5-step ROI wizard + MQTT config (canvas overlay + Step 5) | Loads `roi-config.js` L393, `mqtt-config.js` L394 |
 | `config_editor.html` | 390 | Monaco YAML editor | Loads `config-editor.js`, Monaco from CDN |
 | `training.html` | 1568 | Training: stats, form, queue, progress, models, data tools | Loads `training.js` |
 
@@ -301,6 +308,14 @@ Singleton: `get_model_manager()` L335
 - Analogs: `updateAnalogBoxes` L1016, `selectAnalogInPicture` L1080, `runAnalogInference` L1156, `saveAnalogs` L1213, `changeAnalogs` L1272
 - Rotation: `getTotalRotation` L1332, `saveRotation` L1369, `changeRotation` L1416
 - Image loading: `fetchAndReload` L1436, `loadImage` L1462, `loadConfig` L1488
+
+### `mqtt-config.js` (388 lines)
+- IIFE module: `MqttConfig` with public API: `init` L368, `loadConfig` L113, `save` L163, `edit` L288, `testConnection` L297
+- Helpers: `_getVal` L7, `_setVal` L12, `_setChecked` L17, `_show` L22, `_hide` L27, `_getCheckedRadio` L32, `_setCheckedRadio` L40
+- Trigger mode: `_setupTriggerModeRadios` L51, `_updateTriggerFields` L63
+- HA toggle: `_setupHaToggle` L76
+- Password toggle: `_setupPasswordToggle` L92
+- Auto-init on DOMContentLoaded L383
 
 ### `config-editor.js` (249 lines)
 `initEditor` L17, `updateStatus` L78, `loadConfig` L93, `saveConfig` L118, `showMessage` L170, `toggleHaPublish` L181, `loadHaPublishState` L203, `setMeterValue` L219
