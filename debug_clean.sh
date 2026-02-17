@@ -92,7 +92,7 @@ if [[ $DETACH -eq 1 ]]; then
         --name "$CONTAINER_NAME" \
         $DRI_FLAGS \
         --network "$NETWORK_NAME" \
-        -v "$STUB_DIR/config.yaml:/config/config.yaml" \
+        -v "$STUB_DIR:/config" \
         -p ${PORT}:8001 \
         watermeter-dashboard
 
@@ -125,7 +125,7 @@ else
         --name "$CONTAINER_NAME" \
         $DRI_FLAGS \
         --network "$NETWORK_NAME" \
-        -v "$STUB_DIR/config.yaml:/config/config.yaml" \
+        -v "$STUB_DIR:/config" \
         -p ${PORT}:8001 \
         watermeter-dashboard
 fi
