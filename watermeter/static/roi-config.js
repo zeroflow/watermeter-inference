@@ -1301,9 +1301,9 @@
             document.getElementById('step-analogs').classList.remove('roi-step-disabled');
             updateCompletedSteps();
 
-            // In setup mode, show setup-complete section
+            // In setup mode, show Step 5 (MQTT/HA config) next
             if (window.setupMode) {
-                const el = document.getElementById('setup-complete');
+                const el = document.getElementById('step-mqtt');
                 if (el) el.style.display = 'block';
             }
         }
@@ -1551,6 +1551,12 @@
                 console.error('Error loading config:', error);
                 showRotationEditMode();
             }
+
+            // Step 5: MQTT is always visible in normal mode
+            var stepMqtt = document.getElementById('step-mqtt');
+            if (stepMqtt) {
+                stepMqtt.style.display = 'block';
+            }
         }
 
         // ============================================================
@@ -1568,6 +1574,7 @@
                 document.getElementById('step-markers').style.display = 'none';
                 document.getElementById('step-digits').style.display = 'none';
                 document.getElementById('step-analogs').style.display = 'none';
+                document.getElementById('step-mqtt').style.display = 'none';
 
                 // Override fetchAndReload to also reveal the wizard steps after image loads
                 const _originalFetchAndReload = fetchAndReload;
