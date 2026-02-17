@@ -902,9 +902,6 @@ function hideLogSectionIfIdle() {
     }
 }
 
-// Regex to filter redundant epoch/loss/accuracy lines from training logs
-const epochLogPattern = /Epoch \d+\/\d+ - Loss: .* - Val Acc: /;
-
 // Load logs into the unified log section
 async function loadLogs(jobId) {
     try {
@@ -918,9 +915,8 @@ async function loadLogs(jobId) {
 
             const wasAtBottom = logViewer.scrollHeight - logViewer.scrollTop <= logViewer.clientHeight + 50;
 
-            // Filter out redundant epoch lines (already shown in progress metrics)
-            const filtered = data.logs.filter(log => !epochLogPattern.test(log));
-            logViewer.innerHTML = filtered.map(log => `<div class="log-line">${escapeHtml(log)}</div>`).join('');
+            // Note: innerHTML is safe here because escapeHtml() sanitizes all log content
+            logViewer.innerHTML = data.logs.map(log => `<div class="log-line">${escapeHtml(log)}</div>`).join('');
 
             if (wasAtBottom) {
                 logViewer.scrollTop = logViewer.scrollHeight;
