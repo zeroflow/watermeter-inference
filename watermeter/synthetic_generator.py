@@ -38,7 +38,7 @@ class DigitRenderer:
     HEIGHT = 32
 
     def __init__(self):
-        self._font = _load_font(28)
+        self._font = _load_font(38)
 
     def render(self, digit_class: str) -> Image.Image:
         if digit_class not in DIGIT_CLASSES:
@@ -72,49 +72,33 @@ class ArrowRenderer:
         cx, cy = self.SIZE / 2, self.SIZE / 2
         radius = self.SIZE / 2 - 5
 
-        # Major tick marks
+        # Major tick marks only (10 ticks for 0-9)
         for tick in range(10):
             tick_angle = math.radians((tick / 10.0) * 360.0 - 90)
             outer_r = radius
-            inner_r = radius - 10
+            inner_r = radius - 12
             x1 = cx + inner_r * math.cos(tick_angle)
             y1 = cy + inner_r * math.sin(tick_angle)
             x2 = cx + outer_r * math.cos(tick_angle)
             y2 = cy + outer_r * math.sin(tick_angle)
-            draw.line([(x1, y1), (x2, y2)], fill="black", width=2)
-
-        # Minor tick marks
-        for tick in range(100):
-            if tick % 10 == 0:
-                continue
-            tick_angle = math.radians((tick / 100.0) * 360.0 - 90)
-            outer_r = radius
-            inner_r = radius - 4
-            x1 = cx + inner_r * math.cos(tick_angle)
-            y1 = cy + inner_r * math.sin(tick_angle)
-            x2 = cx + outer_r * math.cos(tick_angle)
-            y2 = cy + outer_r * math.sin(tick_angle)
-            draw.line([(x1, y1), (x2, y2)], fill="black", width=1)
+            draw.line([(x1, y1), (x2, y2)], fill="black", width=3)
 
         # Center dot
-        draw.ellipse([cx - 3, cy - 3, cx + 3, cy + 3], fill="black")
+        draw.ellipse([cx - 4, cy - 4, cx + 4, cy + 4], fill="black")
 
-        # Red pointer
+        # Red pointer — thick triangular wedge (like real dial photos)
         pointer_angle = math.radians(angle_deg - 90)
-        pointer_len = radius - 14
-        px = cx + pointer_len * math.cos(pointer_angle)
-        py = cy + pointer_len * math.sin(pointer_angle)
-        draw.line([(cx, cy), (px, py)], fill="red", width=3)
-
-        # Arrowhead triangle
-        tip_size = 4
+        pointer_len = radius - 12
+        tip_x = cx + pointer_len * math.cos(pointer_angle)
+        tip_y = cy + pointer_len * math.sin(pointer_angle)
+        # Wide base at center, narrow tip
+        base_half_width = 8
         perp_angle = pointer_angle + math.pi / 2
-        t1 = (px, py)
-        t2 = (px - tip_size * math.cos(perp_angle) - tip_size * math.cos(pointer_angle),
-              py - tip_size * math.sin(perp_angle) - tip_size * math.sin(pointer_angle))
-        t3 = (px + tip_size * math.cos(perp_angle) - tip_size * math.cos(pointer_angle),
-              py + tip_size * math.sin(perp_angle) - tip_size * math.sin(pointer_angle))
-        draw.polygon([t1, t2, t3], fill="red")
+        base_x1 = cx + base_half_width * math.cos(perp_angle)
+        base_y1 = cy + base_half_width * math.sin(perp_angle)
+        base_x2 = cx - base_half_width * math.cos(perp_angle)
+        base_y2 = cy - base_half_width * math.sin(perp_angle)
+        draw.polygon([(tip_x, tip_y), (base_x1, base_y1), (base_x2, base_y2)], fill="red")
 
         return img
 

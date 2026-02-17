@@ -1216,7 +1216,47 @@
                            <a href="https://github.com/jomjol/AI-on-the-edge-device/issues/4041"
                               target="_blank" rel="noopener" style="color: var(--text-dark);">License tracking issue</a></p>
 
-                        <h4 style="margin: 16px 0 8px 0; color: var(--primary);">Option C: Import a pre-trained model</h4>
+                        <h4 style="margin: 16px 0 8px 0; color: var(--primary);">Option C: Generate synthetic data</h4>
+                        <p style="margin-bottom: 12px;">Generate license-free synthetic training images with realistic transforms.
+                           Good as a starting point — combine with real photos for best results.</p>
+                        <form id="synthetic-form" onsubmit="startSyntheticGeneration(event)">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label for="synth-type">Type</label>
+                                    <select id="synth-type">
+                                        <option value="digits">Digits</option>
+                                        <option value="arrows">Arrows</option>
+                                        <option value="both" selected>Both</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="synth-count">Images per Class</label>
+                                    <input type="number" id="synth-count" value="500" min="1" max="10000" step="1">
+                                </div>
+                                <div class="form-group">
+                                    <label for="synth-seed">Seed</label>
+                                    <input type="number" id="synth-seed" value="42" min="0" step="1">
+                                </div>
+                            </div>
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn-primary" id="synth-generate-btn">Generate</button>
+                                <button type="button" class="btn btn-danger" id="synth-delete-btn"
+                                        onclick="deleteSyntheticData()">Delete Synthetic Data</button>
+                            </div>
+                        </form>
+                        <div id="synth-progress-section" class="progress-section">
+                            <div class="progress-item">
+                                <div class="progress-label">
+                                    <span class="name" id="synth-progress-message">Generating...</span>
+                                    <span class="value" id="synth-progress-text">0%</span>
+                                </div>
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar-fill" id="synth-progress-bar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <h4 style="margin: 16px 0 8px 0; color: var(--primary);">Option D: Import a pre-trained model</h4>
                         <p style="margin-bottom: 12px;">If someone shares an exported model (.xml + .bin + metadata.json),
                            place the files in <code style="background: var(--bg-light); padding: 2px 6px; border-radius: 3px; font-family: monospace;">/app/models/digits/&lt;model_id&gt;/</code> or
                            <code style="background: var(--bg-light); padding: 2px 6px; border-radius: 3px; font-family: monospace;">/app/models/arrows/&lt;model_id&gt;/</code> and activate it
@@ -1250,50 +1290,6 @@
                     <div class="stat">
                         <span class="stat-label">Unlabeled:</span>
                         <span class="stat-value" id="total-unlabeled">-</span>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Synthetic Data Generator -->
-            <section class="section section-compact" id="synthetic-section">
-                <h2>Synthetic Data Generator</h2>
-                <p style="font-size: 13px; color: var(--text-light); margin-bottom: 16px;">
-                    Generate license-free synthetic training images with realistic transforms.
-                </p>
-                <form id="synthetic-form" onsubmit="startSyntheticGeneration(event)">
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label for="synth-type">Type</label>
-                            <select id="synth-type">
-                                <option value="digits">Digits</option>
-                                <option value="arrows">Arrows</option>
-                                <option value="both" selected>Both</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="synth-count">Images per Class</label>
-                            <input type="number" id="synth-count" value="500" min="1" max="10000" step="1">
-                        </div>
-                        <div class="form-group">
-                            <label for="synth-seed">Seed</label>
-                            <input type="number" id="synth-seed" value="42" min="0" step="1">
-                        </div>
-                    </div>
-                    <div class="form-actions">
-                        <button type="submit" class="btn btn-primary" id="synth-generate-btn">Generate</button>
-                        <button type="button" class="btn btn-danger" id="synth-delete-btn"
-                                onclick="deleteSyntheticData()">Delete Synthetic Data</button>
-                    </div>
-                </form>
-                <div id="synth-progress-section" class="progress-section">
-                    <div class="progress-item">
-                        <div class="progress-label">
-                            <span class="name" id="synth-progress-message">Generating...</span>
-                            <span class="value" id="synth-progress-text">0%</span>
-                        </div>
-                        <div class="progress-bar-container">
-                            <div class="progress-bar-fill" id="synth-progress-bar" style="width: 0%"></div>
-                        </div>
                     </div>
                 </div>
             </section>
