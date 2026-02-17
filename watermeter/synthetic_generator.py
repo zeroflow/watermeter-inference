@@ -2,8 +2,11 @@
 
 import logging
 import math
+import random
 from pathlib import Path
 
+import cv2
+import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 logger = logging.getLogger(__name__)
@@ -106,3 +109,135 @@ class ArrowRenderer:
         draw.polygon([t1, t2, t3], fill="red")
 
         return img
+
+
+class TransformPipeline:
+    """Applies realistic distortions to master images."""
+
+    def __init__(self, seed: int = 42):
+        self._rng = random.Random(seed)
+        self._np_rng = np.random.RandomState(seed)
+
+    def apply(self, img: Image.Image, mode: str = "digit") -> Image.Image:
+        original_size = img.size
+        arr = np.array(img)
+
+        # --- Geometric transforms (OpenCV) ---
+        # X/Y offset
+        if self._rng.random() < 0.8:
+            max_shift = 3 if mode == "digit" else 5
+            dx = self._rng.randint(-max_shift, max_shift)
+            dy = self._rng.randint(-max_shift, max_shift)
+            M = np.float32([[1, 0, dx], [0, 1, dy]])
+            arr = cv2.warpAffine(arr, M, (arr.shape[1], arr.shape[0]),
+                                 borderMode=cv2.BORDER_REPLICATE)
+
+        # Perspective warp
+        if self._rng.random() < 0.7:
+            strength = 3 if mode == "digit" else 8
+            h, w = arr.shape[:2]
+            pts1 = np.float32([[0, 0], [w, 0], [0, h], [w, h]])
+            pts2 = np.float32([
+                [self._rng.randint(0, strength), self._rng.randint(0, strength)],
+                [w - self._rng.randint(0, strength), self._rng.randint(0, strength)],
+                [self._rng.randint(0, strength), h - self._rng.randint(0, strength)],
+                [w - self._rng.randint(0, strength), h - self._rng.randint(0, strength)],
+            ])
+            M = cv2.getPerspectiveTransform(pts1, pts2)
+            arr = cv2.warpPerspective(arr, M, (w, h), borderMode=cv2.BORDER_REPLICATE)
+
+        # Fisheye / barrel distortion (arrows only)
+        if mode == "arrow" and self._rng.random() < 0.8:
+            h, w = arr.shape[:2]
+            k1 = self._rng.uniform(0.1, 0.4)
+            cx, cy = w / 2, h / 2
+            map_x = np.zeros((h, w), dtype=np.float32)
+            map_y = np.zeros((h, w), dtype=np.float32)
+            for y in range(h):
+                for x in range(w):
+                    nx = (x - cx) / cx
+                    ny = (y - cy) / cy
+                    r = math.sqrt(nx * nx + ny * ny)
+                    nr = r * (1 + k1 * r * r)
+                    map_x[y, x] = cx + nr * (nx / max(r, 1e-6)) * cx
+                    map_y[y, x] = cy + nr * (ny / max(r, 1e-6)) * cy
+            arr = cv2.remap(arr, map_x, map_y, cv2.INTER_LINEAR,
+                           borderMode=cv2.BORDER_REPLICATE)
+
+        # --- Color transforms ---
+        arr = arr.astype(np.float32)
+
+        # Brightness
+        if self._rng.random() < 0.8:
+            factor = self._rng.uniform(0.7, 1.3)
+            arr = arr * factor
+
+        # Contrast
+        if self._rng.random() < 0.7:
+            factor = self._rng.uniform(0.8, 1.2)
+            mean = arr.mean()
+            arr = (arr - mean) * factor + mean
+
+        # Color cast
+        if self._rng.random() < 0.5:
+            cast = np.array([
+                self._rng.uniform(-10, 10),
+                self._rng.uniform(-10, 10),
+                self._rng.uniform(-10, 10),
+            ], dtype=np.float32)
+            arr = arr + cast
+
+        # Background variation
+        if self._rng.random() < 0.6:
+            bg_shift = self._rng.uniform(-15, 0)
+            white_mask = (arr > 200).all(axis=2)
+            arr[white_mask] += bg_shift
+
+        # Shadow
+        if self._rng.random() < 0.5:
+            h, w = arr.shape[:2]
+            shadow_dir = self._rng.uniform(0, 2 * math.pi)
+            Y, X = np.mgrid[0:h, 0:w]
+            cx_s, cy_s = w / 2, h / 2
+            gradient = ((X - cx_s) * math.cos(shadow_dir) + (Y - cy_s) * math.sin(shadow_dir))
+            gradient = gradient / max(gradient.max() - gradient.min(), 1e-6)
+            shadow_strength = self._rng.uniform(10, 30)
+            arr = arr - (gradient[:, :, np.newaxis] * shadow_strength)
+
+        # Vignetting (arrows only)
+        if mode == "arrow" and self._rng.random() < 0.6:
+            h, w = arr.shape[:2]
+            Y, X = np.mgrid[0:h, 0:w]
+            cx_v, cy_v = w / 2, h / 2
+            dist = np.sqrt((X - cx_v) ** 2 + (Y - cy_v) ** 2)
+            max_dist = math.sqrt(cx_v ** 2 + cy_v ** 2)
+            vignette = 1.0 - (dist / max_dist) ** 2 * self._rng.uniform(0.2, 0.5)
+            arr = arr * vignette[:, :, np.newaxis]
+
+        # Clip and convert
+        arr = np.clip(arr, 0, 255).astype(np.uint8)
+
+        # Gaussian noise
+        if self._rng.random() < 0.7:
+            sigma = self._rng.uniform(5, 15)
+            noise = self._np_rng.normal(0, sigma, arr.shape).astype(np.float32)
+            arr = np.clip(arr.astype(np.float32) + noise, 0, 255).astype(np.uint8)
+
+        # Blur
+        if self._rng.random() < 0.5:
+            sigma = self._rng.uniform(0.3, 1.5)
+            ksize = int(sigma * 4) | 1
+            if ksize >= 3:
+                arr = cv2.GaussianBlur(arr, (ksize, ksize), sigma)
+
+        # JPEG artifacts
+        if self._rng.random() < 0.6:
+            quality = self._rng.randint(60, 95)
+            _, encoded = cv2.imencode(".jpg", arr, [cv2.IMWRITE_JPEG_QUALITY, quality])
+            arr = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
+            arr = cv2.cvtColor(arr, cv2.COLOR_BGR2RGB)
+
+        result = Image.fromarray(arr)
+        if result.size != original_size:
+            result = result.resize(original_size, Image.BILINEAR)
+        return result
