@@ -678,7 +678,7 @@ class TrainingManager:
                 # Best model tracking
                 if model_type == "arrows" and training_mode == "continuous":
                     val_accs.append(within_half)  # Reuse val_accs list for within-half %
-                    if within_half > best_val_acc:
+                    if within_half > best_val_acc or (within_half == best_val_acc and mae < best_val_mae):
                         best_val_acc = within_half
                         best_val_loss = avg_loss
                         best_val_mae = mae
