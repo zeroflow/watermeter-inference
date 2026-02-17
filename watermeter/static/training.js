@@ -953,6 +953,7 @@ async function startTraining(event) {
     const config = {
         model_type: modelType,
         architecture: architecture,
+        architecture_display: prettifyModelName(architecture),
         resolution: resolution,
         seeds: seeds,
         epochs: epochs,
@@ -1025,6 +1026,7 @@ async function startMatrixTraining() {
                 const config = {
                     model_type: type,
                     architecture: arch,
+                    architecture_display: prettifyModelName(arch),
                     resolution: res,
                     seeds: seeds,
                     epochs: epochs,

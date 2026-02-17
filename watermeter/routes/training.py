@@ -40,6 +40,7 @@ class TrainingConfig(BaseModel):
     notes: str = ""
     auto_benchmark: bool = True
     learning_rate: float = 3e-4
+    architecture_display: str = ""  # Human-readable name (e.g., "ResNet-18")
 
     @field_validator("training_mode")
     @classmethod

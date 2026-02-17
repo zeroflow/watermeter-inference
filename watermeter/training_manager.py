@@ -286,6 +286,7 @@ class TrainingManager:
             config = job.config
             model_type = config["model_type"]
             architecture = config["architecture"]
+            architecture_display = config.get("architecture_display", "")
             resolution = config["resolution"]
             seeds = config.get("seeds", [42])
             epochs = config.get("epochs", 20)
@@ -321,6 +322,7 @@ class TrainingManager:
                     job=job,
                     model_type=model_type,
                     architecture=architecture,
+                    architecture_display=architecture_display,
                     resolution=resolution,
                     seed=seed,
                     epochs=epochs,
@@ -433,12 +435,13 @@ class TrainingManager:
         job: TrainingJob,
         model_type: str,
         architecture: str,
-        resolution: int,
-        seed: int,
-        epochs: int,
-        batch_size: int,
-        learning_rate: float,
-        step_size: Optional[float],
+        architecture_display: str = "",
+        resolution: int = 128,
+        seed: int = 42,
+        epochs: int = 20,
+        batch_size: int = 16,
+        learning_rate: float = 3e-4,
+        step_size: Optional[float] = None,
         training_mode: str = "discrete",
     ) -> Optional[Dict]:
         """
@@ -752,6 +755,7 @@ class TrainingManager:
             metadata = {
                 "model_type": model_type,
                 "architecture": architecture,
+                "architecture_display": architecture_display,
                 "resolution": resolution,
                 "seed": seed,
                 "epochs": epochs,
@@ -913,6 +917,7 @@ class TrainingManager:
         metadata = {
             "model_type": config.get("model_type", "unknown"),
             "architecture": config.get("architecture", "unknown"),
+            "architecture_display": config.get("architecture_display", ""),
             "resolution": config.get("resolution", 0),
             "status": "failed",
             "error": job.error or "Unknown error",
