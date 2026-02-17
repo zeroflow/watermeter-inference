@@ -49,18 +49,18 @@ class SyntheticConfig(BaseModel):
 
 def _run_generation(config: SyntheticConfig, job_id: str):
     """Background thread target for synthetic data generation."""
-    global _generation_status
     try:
         gen = SyntheticGenerator(base_dir="/training")
 
         def on_progress(current, total, message):
-            _generation_status.update(
-                {
-                    "progress": current,
-                    "total": total,
-                    "message": message,
-                }
-            )
+            with _generation_lock:
+                _generation_status.update(
+                    {
+                        "progress": current,
+                        "total": total,
+                        "message": message,
+                    }
+                )
 
         stats = gen.generate(
             type=config.type,
@@ -68,20 +68,22 @@ def _run_generation(config: SyntheticConfig, job_id: str):
             seed=config.seed,
             progress_callback=on_progress,
         )
-        _generation_status.update(
-            {
-                "running": False,
-                "message": f"Complete: {stats}",
-            }
-        )
+        with _generation_lock:
+            _generation_status.update(
+                {
+                    "running": False,
+                    "message": f"Complete: {stats}",
+                }
+            )
     except Exception as e:
         logger.exception("Synthetic generation failed")
-        _generation_status.update(
-            {
-                "running": False,
-                "message": f"Error: {e}",
-            }
-        )
+        with _generation_lock:
+            _generation_status.update(
+                {
+                    "running": False,
+                    "message": f"Error: {e}",
+                }
+            )
 
 
 @router.post(
@@ -91,33 +93,33 @@ def _run_generation(config: SyntheticConfig, job_id: str):
 )
 async def generate_synthetic(config: SyntheticConfig):
     """Start background synthetic data generation."""
-    global _generation_status
+    with _generation_lock:
+        if _generation_status["running"]:
+            return JSONResponse(
+                status_code=409,
+                content={"success": False, "message": "Generation already running"},
+            )
 
-    if _generation_status["running"]:
-        return JSONResponse(
-            status_code=409,
-            content={"success": False, "message": "Generation already running"},
+        tm = get_training_manager()
+        if tm.active_training_job and tm.active_training_job.status.value == "running":
+            return JSONResponse(
+                status_code=409,
+                content={"success": False, "message": "Training is running"},
+            )
+
+        job_id = f"synth_{uuid.uuid4().hex[:8]}"
+        _generation_status.update(
+            {
+                "running": True,
+                "job_id": job_id,
+                "progress": 0,
+                "total": 0,
+                "message": "Starting...",
+                "type": config.type,
+            }
         )
 
-    tm = get_training_manager()
-    if tm.active_training_job and tm.active_training_job.status.value == "running":
-        return JSONResponse(
-            status_code=409,
-            content={"success": False, "message": "Training is running"},
-        )
-
-    job_id = f"synth_{uuid.uuid4().hex[:8]}"
-    _generation_status.update(
-        {
-            "running": True,
-            "job_id": job_id,
-            "progress": 0,
-            "total": 0,
-            "message": "Starting...",
-            "type": config.type,
-        }
-    )
-
+    # Start thread AFTER releasing lock
     thread = threading.Thread(target=_run_generation, args=(config, job_id), daemon=True)
     thread.start()
 
@@ -131,7 +133,8 @@ async def generate_synthetic(config: SyntheticConfig):
 )
 async def get_synthetic_status():
     """Get the current status of synthetic data generation."""
-    return JSONResponse(content=_generation_status)
+    with _generation_lock:
+        return JSONResponse(content=dict(_generation_status))
 
 
 @router.delete(
@@ -144,8 +147,9 @@ async def delete_synthetic(type: str):
     if type not in ("digits", "arrows", "both"):
         raise HTTPException(status_code=400, detail="type must be 'digits', 'arrows', or 'both'")
 
-    if _generation_status["running"]:
-        raise HTTPException(status_code=409, detail="Cannot delete while generation is running")
+    with _generation_lock:
+        if _generation_status["running"]:
+            raise HTTPException(status_code=409, detail="Cannot delete while generation is running")
 
     gen = SyntheticGenerator(base_dir="/training")
     deleted = gen.delete_synthetic(type=type)

@@ -1,5 +1,6 @@
 """Synthetic training data generator for watermeter digits and arrows."""
 
+import hashlib
 import logging
 import math
 import random
@@ -17,6 +18,12 @@ _FALLBACK_FONT_PATH = "/usr/share/fonts/truetype/freefont/FreeMonoBold.ttf"
 
 DIGIT_CLASSES = [str(i) for i in range(10)]
 ARROW_CLASSES = [f"{i}.{j}" for i in range(10) for j in range(10)]
+
+
+def _deterministic_seed(cls: str, i: int) -> int:
+    """Deterministic hash for reproducible seed derivation."""
+    h = hashlib.sha256(f"{cls}:{i}".encode()).digest()
+    return int.from_bytes(h[:4], "big")
 
 
 def _load_font(size: int) -> ImageFont.FreeTypeFont:
@@ -152,16 +159,14 @@ class TransformPipeline:
             h, w = arr.shape[:2]
             k1 = self._rng.uniform(0.1, 0.4)
             cx, cy = w / 2, h / 2
-            map_x = np.zeros((h, w), dtype=np.float32)
-            map_y = np.zeros((h, w), dtype=np.float32)
-            for y in range(h):
-                for x in range(w):
-                    nx = (x - cx) / cx
-                    ny = (y - cy) / cy
-                    r = math.sqrt(nx * nx + ny * ny)
-                    nr = r * (1 + k1 * r * r)
-                    map_x[y, x] = cx + nr * (nx / max(r, 1e-6)) * cx
-                    map_y[y, x] = cy + nr * (ny / max(r, 1e-6)) * cy
+            Y, X = np.mgrid[0:h, 0:w]
+            nx = (X.astype(np.float32) - cx) / cx
+            ny = (Y.astype(np.float32) - cy) / cy
+            r = np.sqrt(nx ** 2 + ny ** 2)
+            nr = r * (1 + k1 * r ** 2)
+            safe_r = np.maximum(r, 1e-6)
+            map_x = (cx + nr * (nx / safe_r) * cx).astype(np.float32)
+            map_y = (cy + nr * (ny / safe_r) * cy).astype(np.float32)
             arr = cv2.remap(arr, map_x, map_y, cv2.INTER_LINEAR,
                            borderMode=cv2.BORDER_REPLICATE)
 
@@ -240,7 +245,7 @@ class TransformPipeline:
 
         result = Image.fromarray(arr)
         if result.size != original_size:
-            result = result.resize(original_size, Image.BILINEAR)
+            result = result.resize(original_size, Image.Resampling.BILINEAR)
         return result
 
 
@@ -288,7 +293,7 @@ class SyntheticGenerator:
                 master = renderer.render(cls)
 
                 for i in range(count_per_class):
-                    img_seed = seed + hash((cls, i)) % (2**31)
+                    img_seed = seed + _deterministic_seed(cls, i)
                     pipeline = TransformPipeline(seed=img_seed)
                     transformed = pipeline.apply(master.copy(), mode=mode)
                     filename = f"synth_{i:04d}.jpg"
