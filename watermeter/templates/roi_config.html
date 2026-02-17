@@ -248,6 +248,134 @@
                     <p class="step-disabled-message">Complete Step 3 first</p>
                 </div>
             </section>
+
+    <!-- Step 5: MQTT & Home Assistant -->
+    <section id="step-mqtt" class="roi-step">
+        <h3>Step 5: MQTT & Home Assistant</h3>
+
+        <div id="mqtt-edit">
+            <!-- 5a: MQTT Broker -->
+            <div class="mqtt-section">
+                <h4 class="mqtt-section-title">MQTT Broker</h4>
+                <div class="mqtt-form-grid">
+                    <label for="mqtt-broker">Broker</label>
+                    <input type="text" id="mqtt-broker" placeholder="192.168.x.x" />
+
+                    <label for="mqtt-port">Port</label>
+                    <input type="number" id="mqtt-port" value="1883" min="1" max="65535" />
+
+                    <label for="mqtt-username">Username <span class="optional-hint">(optional)</span></label>
+                    <input type="text" id="mqtt-username" placeholder="${MQTT_USER} or plain text" />
+
+                    <label for="mqtt-password">Password <span class="optional-hint">(optional)</span></label>
+                    <div class="password-wrapper">
+                        <input type="password" id="mqtt-password" placeholder="${MQTT_PASSWORD} or plain text" />
+                        <button type="button" class="btn-icon" id="mqtt-password-toggle" title="Show/hide password">
+                            <span id="mqtt-password-eye">&#128065;</span>
+                        </button>
+                    </div>
+
+                    <label for="mqtt-client-id">Client ID</label>
+                    <input type="text" id="mqtt-client-id" placeholder="watermeter-ai-service" />
+                </div>
+
+                <div class="mqtt-test-row">
+                    <button class="btn btn-secondary" id="mqtt-test-btn" onclick="MqttConfig.testConnection()">
+                        Test Connection
+                    </button>
+                    <span id="mqtt-test-result"></span>
+                </div>
+            </div>
+
+            <!-- 5b: Trigger Mode -->
+            <div class="mqtt-section">
+                <h4 class="mqtt-section-title">Trigger Mode</h4>
+                <div class="mqtt-radio-group">
+                    <label class="mqtt-radio-label">
+                        <input type="radio" name="trigger-mode" value="mqtt" checked /> MQTT
+                    </label>
+                    <label class="mqtt-radio-label">
+                        <input type="radio" name="trigger-mode" value="cyclic" /> Cyclic
+                    </label>
+                    <label class="mqtt-radio-label">
+                        <input type="radio" name="trigger-mode" value="both" /> Both
+                    </label>
+                </div>
+
+                <div id="trigger-mqtt-fields" class="mqtt-conditional-fields">
+                    <div class="mqtt-form-grid">
+                        <label for="trigger-topic">Trigger Topic</label>
+                        <input type="text" id="trigger-topic" placeholder="watermeter/status" />
+
+                        <label for="trigger-payload">Trigger Payload</label>
+                        <input type="text" id="trigger-payload" placeholder="Flow finished" />
+                    </div>
+                </div>
+
+                <div id="trigger-cyclic-fields" class="mqtt-conditional-fields" style="display: none;">
+                    <div class="mqtt-form-grid">
+                        <label for="cyclic-interval">Interval (seconds)</label>
+                        <input type="number" id="cyclic-interval" value="300" min="10" />
+                    </div>
+                </div>
+            </div>
+
+            <!-- 5c: Home Assistant -->
+            <div class="mqtt-section">
+                <h4 class="mqtt-section-title">Home Assistant</h4>
+                <div class="toggle-row">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="ha-enabled" />
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span>Enable HA Discovery</span>
+                </div>
+
+                <div id="ha-fields" class="mqtt-conditional-fields" style="display: none;">
+                    <div class="mqtt-form-grid">
+                        <label for="ha-publish-topic">Publish Topic</label>
+                        <input type="text" id="ha-publish-topic" placeholder="watermeter/reading" />
+
+                        <label for="ha-discovery-prefix">Discovery Prefix</label>
+                        <input type="text" id="ha-discovery-prefix" placeholder="homeassistant" />
+
+                        <label for="ha-device-name">Device Name</label>
+                        <input type="text" id="ha-device-name" placeholder="Wasserzähler" />
+
+                        <label for="ha-sensor-type">Sensor Type</label>
+                        <select id="ha-sensor-type">
+                            <option value="total_increasing">Total Increasing (meter reading)</option>
+                            <option value="measurement">Measurement (current flow)</option>
+                        </select>
+
+                        <label for="ha-unit">Unit</label>
+                        <select id="ha-unit">
+                            <option value="m³">m³</option>
+                            <option value="L">L</option>
+                            <option value="gal">gal</option>
+                        </select>
+
+                        <label for="ha-update-interval">Update Interval (sec)</label>
+                        <input type="number" id="ha-update-interval" value="300" min="10" />
+                    </div>
+                </div>
+            </div>
+
+            <div class="mqtt-actions">
+                <button class="btn btn-primary" id="mqtt-save-btn" onclick="MqttConfig.save()">
+                    Save & Continue
+                </button>
+                <span id="mqtt-save-result"></span>
+            </div>
+        </div>
+
+        <div id="mqtt-saved" style="display: none;">
+            <div class="saved-indicator">
+                <span class="saved-check">&#10003;</span> MQTT & Home Assistant configured
+            </div>
+            <button class="btn btn-secondary" onclick="MqttConfig.edit()">Change Settings</button>
+        </div>
+    </section>
         </main>
 
         {% if setup_mode %}
@@ -263,5 +391,6 @@
         window.setupMode = {{ "true" if setup_mode else "false" }};
     </script>
     <script src="/static/roi-config.js"></script>
+    <script src="/static/mqtt-config.js"></script>
 </body>
 </html>
