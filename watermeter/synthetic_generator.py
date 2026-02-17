@@ -53,7 +53,9 @@ class DigitRenderer:
         bbox = draw.textbbox((0, 0), digit_class, font=self._font)
         x = (big_size - (bbox[2] - bbox[0])) / 2 - bbox[0]
         y = (big_size - (bbox[3] - bbox[1])) / 2 - bbox[1]
-        draw.text((x, y), digit_class, fill="black", font=self._font)
+        stroke_w = max(1, int(big_size * 0.02))
+        draw.text((x, y), digit_class, fill="black", font=self._font,
+                  stroke_width=stroke_w, stroke_fill="black")
 
         # Crop to tight bounding box of the digit with small margin
         arr = np.array(big)
@@ -266,7 +268,8 @@ class TransformPipeline:
         # JPEG artifacts
         if self._rng.random() < 0.6:
             quality = self._rng.randint(60, 95)
-            _, encoded = cv2.imencode(".jpg", arr, [cv2.IMWRITE_JPEG_QUALITY, quality])
+            arr_bgr = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+            _, encoded = cv2.imencode(".jpg", arr_bgr, [cv2.IMWRITE_JPEG_QUALITY, quality])
             arr = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
             arr = cv2.cvtColor(arr, cv2.COLOR_BGR2RGB)
 
