@@ -3,6 +3,17 @@ set -e
 
 echo "=== Water Meter Dashboard Startup ==="
 
+# Allow runtime UID/GID override via PUID/PGID environment variables.
+# Default: 1000 (matches Dockerfile). Set to host user's UID/GID to avoid
+# permission issues with bind-mounted volumes.
+PUID=${PUID:-1000}
+PGID=${PGID:-1000}
+if [ "$PUID" != "1000" ] || [ "$PGID" != "1000" ]; then
+    echo "Remapping watermeter user to UID=$PUID GID=$PGID..."
+    groupmod -g "$PGID" watermeter 2>/dev/null || true
+    usermod -u "$PUID" -g "$PGID" watermeter 2>/dev/null || true
+fi
+
 # Fix ownership of mounted volumes (may be owned by root from previous container runs)
 chown -R watermeter:watermeter /app/models /training /config /data 2>/dev/null || true
 

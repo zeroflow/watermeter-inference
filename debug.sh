@@ -61,6 +61,7 @@ if [[ $DETACH -eq 1 ]]; then
     --name "$CONTAINER_NAME" \
     $DRI_FLAGS \
     -p 8002:8001 \
+    -e PUID=$(id -u) -e PGID=$(id -g) \
     -v $(pwd)/config_debug:/config \
     -v $(pwd)/data_debug:/data \
     -v $(pwd)/models_debug:/app/models \
@@ -94,6 +95,7 @@ else
     --name "$CONTAINER_NAME" \
     $DRI_FLAGS \
     -p 8002:8001 \
+    -e PUID=$(id -u) -e PGID=$(id -g) \
     -v $(pwd)/config_debug:/config \
     -v $(pwd)/data_debug:/data \
     -v $(pwd)/models_debug:/app/models \

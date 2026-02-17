@@ -33,6 +33,11 @@ services:
       - hf_cache:/app/.cache/huggingface
 
     environment:
+      # Map container UID/GID to host user for correct volume permissions.
+      # Default: 1000. Set in .env or override to match your host user.
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+
       # Hugging Face token for downloading model weights during training
       # Create .env file from .env.example and set your token there
       # Get your token from: https://huggingface.co/settings/tokens
