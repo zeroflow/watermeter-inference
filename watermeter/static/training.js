@@ -632,6 +632,12 @@ function checkForEmptyClasses(digitsStats, arrowsStats, totalDigits, totalArrows
 
 // Poll training and benchmark status
 async function pollTrainingStatus() {
+    // Pause polling while user is selecting text (e.g. copying logs)
+    const selection = window.getSelection();
+    if (selection && selection.toString().length > 0) {
+        return;
+    }
+
     try {
         const response = await fetch('/api/training/status');
         const data = await response.json();
