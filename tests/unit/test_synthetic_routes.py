@@ -162,3 +162,41 @@ class TestSyntheticRoutes:
         response = test_client.delete("/api/synthetic/digits")
         assert response.status_code == 409
         self._reset_status()
+
+    def test_get_annotations_endpoint(self, test_client):
+        response = test_client.get("/api/synthetic/annotations")
+        assert response.status_code == 200
+        data = response.json()
+        assert "annotations" in data
+        assert "photos" in data
+
+    def test_save_annotation(self, test_client, tmp_path, monkeypatch):
+        import watermeter.routes.synthetic as synthetic_module
+
+        # Patch Path to use tmp_path for the input dir
+        input_dir = tmp_path / "arrows" / "input"
+        input_dir.mkdir(parents=True)
+        (input_dir / "test.jpg").write_bytes(b"\xff\xd8\xff\xe0")
+
+        original_path = synthetic_module.Path
+
+        class MockPath(type(original_path("/"))):
+            def __new__(cls, *args, **kwargs):
+                if args and args[0] == "/training/arrows/input":
+                    return original_path(str(input_dir))
+                return original_path(*args, **kwargs)
+
+        monkeypatch.setattr(synthetic_module, "Path", MockPath)
+
+        response = test_client.post(
+            "/api/synthetic/annotate",
+            json={"filename": "test.jpg", "arrow_class": "9.0"},
+        )
+        assert response.status_code == 200
+
+    def test_save_annotation_missing_fields(self, test_client):
+        response = test_client.post(
+            "/api/synthetic/annotate",
+            json={"filename": "test.jpg"},
+        )
+        assert response.status_code == 400
