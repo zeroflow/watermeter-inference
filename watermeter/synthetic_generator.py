@@ -60,6 +60,9 @@ class DigitRenderer:
 class ArrowRenderer:
     SIZE = 100
 
+    def __init__(self):
+        self._num_font = _load_font(11)
+
     def render(self, arrow_class: str) -> Image.Image:
         if arrow_class not in ARROW_CLASSES:
             raise ValueError(f"Invalid arrow class: {arrow_class!r}")
@@ -67,38 +70,84 @@ class ArrowRenderer:
         value = float(arrow_class)
         angle_deg = (value / 10.0) * 360.0
 
-        img = Image.new("RGB", (self.SIZE, self.SIZE), "white")
+        img = Image.new("RGB", (self.SIZE, self.SIZE), (220, 218, 215))
         draw = ImageDraw.Draw(img)
         cx, cy = self.SIZE / 2, self.SIZE / 2
-        radius = self.SIZE / 2 - 5
+        radius = self.SIZE / 2 - 4
 
-        # Major tick marks only (10 ticks for 0-9)
+        # Major tick marks only (10 ticks for 0-9) — thick like real dial
         for tick in range(10):
             tick_angle = math.radians((tick / 10.0) * 360.0 - 90)
             outer_r = radius
-            inner_r = radius - 12
+            inner_r = radius - 10
             x1 = cx + inner_r * math.cos(tick_angle)
             y1 = cy + inner_r * math.sin(tick_angle)
             x2 = cx + outer_r * math.cos(tick_angle)
             y2 = cy + outer_r * math.sin(tick_angle)
             draw.line([(x1, y1), (x2, y2)], fill="black", width=3)
 
-        # Center dot
-        draw.ellipse([cx - 4, cy - 4, cx + 4, cy + 4], fill="black")
+        # Dial numbers 0-9 rendered INSIDE the tick marks
+        num_radius = radius - 20  # inside the ticks
+        for digit in range(10):
+            num_angle = math.radians((digit / 10.0) * 360.0 - 90)
+            nx = cx + num_radius * math.cos(num_angle)
+            ny = cy + num_radius * math.sin(num_angle)
+            text = str(digit)
+            bbox = draw.textbbox((0, 0), text, font=self._num_font)
+            tw = bbox[2] - bbox[0]
+            th = bbox[3] - bbox[1]
+            draw.text(
+                (nx - tw / 2 - bbox[0], ny - th / 2 - bbox[1]),
+                text,
+                fill="black",
+                font=self._num_font,
+            )
 
-        # Red pointer — thick triangular wedge (like real dial photos)
+        # Red pointer — fat wedge: rectangular base at center, tapers to point
         pointer_angle = math.radians(angle_deg - 90)
-        pointer_len = radius - 12
+        pointer_len = radius - 14
         tip_x = cx + pointer_len * math.cos(pointer_angle)
         tip_y = cy + pointer_len * math.sin(pointer_angle)
-        # Wide base at center, narrow tip
-        base_half_width = 8
+
         perp_angle = pointer_angle + math.pi / 2
-        base_x1 = cx + base_half_width * math.cos(perp_angle)
-        base_y1 = cy + base_half_width * math.sin(perp_angle)
-        base_x2 = cx - base_half_width * math.cos(perp_angle)
-        base_y2 = cy - base_half_width * math.sin(perp_angle)
-        draw.polygon([(tip_x, tip_y), (base_x1, base_y1), (base_x2, base_y2)], fill="red")
+
+        # Rectangular base section (wider) from center to ~40% of length
+        base_half_w = 7
+        mid_frac = 0.4
+        mid_half_w = 6
+        mid_x = cx + pointer_len * mid_frac * math.cos(pointer_angle)
+        mid_y = cy + pointer_len * mid_frac * math.sin(pointer_angle)
+
+        # Base corners (at center)
+        bx1 = cx + base_half_w * math.cos(perp_angle)
+        by1 = cy + base_half_w * math.sin(perp_angle)
+        bx2 = cx - base_half_w * math.cos(perp_angle)
+        by2 = cy - base_half_w * math.sin(perp_angle)
+
+        # Mid-section corners (where taper begins)
+        mx1 = mid_x + mid_half_w * math.cos(perp_angle)
+        my1 = mid_y + mid_half_w * math.sin(perp_angle)
+        mx2 = mid_x - mid_half_w * math.cos(perp_angle)
+        my2 = mid_y - mid_half_w * math.sin(perp_angle)
+
+        # Draw as single polygon: base rect -> taper to tip
+        draw.polygon(
+            [
+                (bx1, by1),
+                (mx1, my1),
+                (tip_x, tip_y),
+                (mx2, my2),
+                (bx2, by2),
+            ],
+            fill=(200, 30, 30),
+        )
+
+        # Center hub circle (dark, like the real dial pivot)
+        hub_r = 6
+        draw.ellipse(
+            [cx - hub_r, cy - hub_r, cx + hub_r, cy + hub_r],
+            fill=(60, 60, 60),
+        )
 
         return img
 
