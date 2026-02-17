@@ -119,3 +119,28 @@ class TestSyntheticGenerator:
         gen = SyntheticGenerator(base_dir=str(tmp_path))
         gen.generate(type="digits", count_per_class=1, seed=42)
         assert existing.read_bytes() == b"original"
+
+
+class TestDeleteSynthetic:
+    def test_delete_removes_synth_files(self, tmp_path):
+        gen = SyntheticGenerator(base_dir=str(tmp_path))
+        gen.generate(type="digits", count_per_class=2, seed=42)
+        assert len(list((tmp_path / "digits" / "ground_truth" / "0").glob("synth_*.jpg"))) == 2
+        deleted = gen.delete_synthetic(type="digits")
+        assert deleted > 0
+        assert len(list((tmp_path / "digits" / "ground_truth" / "0").glob("synth_*.jpg"))) == 0
+
+    def test_delete_preserves_real_files(self, tmp_path):
+        gt_dir = tmp_path / "digits" / "ground_truth" / "0"
+        gt_dir.mkdir(parents=True)
+        (gt_dir / "real_001.jpg").write_bytes(b"real")
+        gen = SyntheticGenerator(base_dir=str(tmp_path))
+        gen.generate(type="digits", count_per_class=1, seed=42)
+        gen.delete_synthetic(type="digits")
+        assert (gt_dir / "real_001.jpg").read_bytes() == b"real"
+
+    def test_delete_returns_count(self, tmp_path):
+        gen = SyntheticGenerator(base_dir=str(tmp_path))
+        gen.generate(type="digits", count_per_class=3, seed=42)
+        deleted = gen.delete_synthetic(type="digits")
+        assert deleted == 30  # 10 classes * 3 images

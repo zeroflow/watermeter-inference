@@ -303,3 +303,22 @@ class SyntheticGenerator:
             progress_callback(total_images, total_images, "Generation complete")
 
         return stats
+
+    def delete_synthetic(self, type: str) -> int:
+        """Delete all synthetic images (synth_* prefix) from ground truth."""
+        deleted = 0
+        types = []
+        if type in ("digits", "both"):
+            types.append("digits")
+        if type in ("arrows", "both"):
+            types.append("arrows")
+
+        for t in types:
+            gt_dir = self.base_dir / t / "ground_truth"
+            if not gt_dir.exists():
+                continue
+            for synth_file in gt_dir.rglob("synth_*.jpg"):
+                synth_file.unlink()
+                deleted += 1
+
+        return deleted
