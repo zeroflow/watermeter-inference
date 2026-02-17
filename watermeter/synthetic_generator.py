@@ -86,6 +86,72 @@ class DigitRenderer:
         return Image.fromarray(arr)
 
 
+class DigitCompositor:
+    """Composites rendered digit glyphs onto real photo backgrounds.
+
+    Loads background templates from a directory and randomly selects one
+    per render call, then composites a digit glyph onto it.
+    """
+
+    WIDTH = 20
+    HEIGHT = 32
+    _RENDER_SCALE = 8
+    DIGIT_COLOR = (29, 41, 39)  # very dark greenish, measured from reference
+
+    def __init__(self, background_dir: str):
+        self._backgrounds = []
+        bg_path = Path(background_dir)
+        for ext in ("*.jpg", "*.jpeg", "*.png"):
+            for f in sorted(bg_path.glob(ext)):
+                img = Image.open(f).convert("RGB")
+                self._backgrounds.append(img)
+        if not self._backgrounds:
+            raise ValueError(f"No background images found in {background_dir}")
+        self._font = _load_font(self.HEIGHT * self._RENDER_SCALE)
+        logger.info(f"DigitCompositor loaded {len(self._backgrounds)} backgrounds")
+
+    def render(self, digit_class: str) -> Image.Image:
+        if digit_class not in DIGIT_CLASSES:
+            raise ValueError(f"Invalid digit class: {digit_class!r}")
+
+        # Pick background (deterministic per class for reproducibility)
+        rng = np.random.RandomState(hash(digit_class) & 0xFFFFFFFF)
+        bg = self._backgrounds[rng.randint(len(self._backgrounds))].copy()
+        bg = bg.resize((self.WIDTH, self.HEIGHT), Image.Resampling.LANCZOS)
+
+        # Render digit glyph as RGBA (transparent background)
+        big_size = self.HEIGHT * self._RENDER_SCALE
+        glyph = Image.new("RGBA", (big_size, big_size), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(glyph)
+        bbox = draw.textbbox((0, 0), digit_class, font=self._font)
+        x = (big_size - (bbox[2] - bbox[0])) / 2 - bbox[0]
+        y = (big_size - (bbox[3] - bbox[1])) / 2 - bbox[1]
+        draw.text((x, y), digit_class, fill=(*self.DIGIT_COLOR, 255), font=self._font)
+
+        # Crop tight to digit bounding box
+        alpha = np.array(glyph)[:, :, 3]
+        if alpha.any():
+            rows = np.where(alpha.any(axis=1))[0]
+            cols = np.where(alpha.any(axis=0))[0]
+            margin = max(2, int(0.05 * (rows[-1] - rows[0])))
+            top = max(0, rows[0] - margin)
+            bot = min(big_size, rows[-1] + margin)
+            left = max(0, cols[0] - margin)
+            right = min(big_size, cols[-1] + margin)
+            glyph = glyph.crop((left, top, right, bot))
+
+        # Resize glyph to fit within background (with small padding)
+        pad = 2
+        glyph = glyph.resize(
+            (self.WIDTH - 2 * pad, self.HEIGHT - 2 * pad),
+            Image.Resampling.LANCZOS,
+        )
+
+        # Composite glyph onto background
+        bg.paste(glyph, (pad, pad), glyph)  # use alpha as mask
+        return bg
+
+
 class ArrowRenderer:
     SIZE = 80
 
