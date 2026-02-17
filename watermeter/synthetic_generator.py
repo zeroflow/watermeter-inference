@@ -53,8 +53,7 @@ class DigitRenderer:
         bbox = draw.textbbox((0, 0), digit_class, font=self._font)
         x = (big_size - (bbox[2] - bbox[0])) / 2 - bbox[0]
         y = (big_size - (bbox[3] - bbox[1])) / 2 - bbox[1]
-        draw.text((x, y), digit_class, fill="black", font=self._font,
-                  stroke_width=2, stroke_fill="black")
+        draw.text((x, y), digit_class, fill="black", font=self._font)
 
         # Crop to tight bounding box of the digit with small margin
         arr = np.array(big)
