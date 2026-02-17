@@ -14,6 +14,7 @@ let activeModels = { digits: null, arrows: null };
 let currentFilter = 'all';
 let sortColumn = localStorage.getItem('modelSortCol') || 'accuracy';
 let sortAsc = localStorage.getItem('modelSortAsc') === 'true';
+let cachedTrainingStats = null;
 
 // Initialize
 window.addEventListener('load', function() {
@@ -477,6 +478,8 @@ async function loadTrainingStats() {
             throw new Error(data.message);
         }
 
+        cachedTrainingStats = data;
+
         // Render digits stats
         const digitsContainer = document.getElementById('digits-stats');
         const digitsStats = data.ground_truth.digits || {};
@@ -583,6 +586,13 @@ async function loadTrainingStats() {
     } catch (error) {
         console.error('Error loading training stats:', error);
     }
+}
+
+// Get total sample count for a model type from cached training stats
+function getCurrentDatasetTotal(modelType) {
+    if (!cachedTrainingStats?.ground_truth?.[modelType]) return 0;
+    const classCounts = cachedTrainingStats.ground_truth[modelType];
+    return Object.values(classCounts).reduce((sum, count) => sum + count, 0);
 }
 
 // Check if there are any classes with 0 images or if there's no data at all
@@ -1264,6 +1274,9 @@ function renderModels() {
             case 'res':
                 cmp = (a.resolution || 0) - (b.resolution || 0);
                 break;
+            case 'samples':
+                cmp = (a.training_samples || 0) - (b.training_samples || 0);
+                break;
             case 'accuracy':
                 cmp = ((a.benchmark?.accuracy ?? a.benchmark?.within_half_pct ?? -1)) - ((b.benchmark?.accuracy ?? b.benchmark?.within_half_pct ?? -1));
                 break;
@@ -1283,6 +1296,7 @@ function renderModels() {
         { key: 'type', label: 'Type' },
         { key: 'arch', label: 'Architecture' },
         { key: 'res', label: 'Res' },
+        { key: 'samples', label: 'Samples' },
         { key: 'accuracy', label: 'Accuracy' },
         { key: 'inftime', label: 'Inf. Time' },
         { key: 'created', label: 'Created' },
@@ -1322,6 +1336,19 @@ function renderModels() {
         // Inference time cell
         const infTimeHtml = bm && bm.inference_time_ms !== undefined ? `${bm.inference_time_ms}ms` : '-';
 
+        // Samples cell
+        const samples = model.training_samples;
+        let samplesHtml = '-';
+        if (samples) {
+            samplesHtml = samples.toLocaleString();
+            const currentTotal = getCurrentDatasetTotal(model.model_type);
+            if (currentTotal > 0) {
+                const pct = Math.round((samples / currentTotal) * 100);
+                const color = pct >= 100 ? 'var(--success)' : pct >= 80 ? 'var(--warning)' : 'var(--error, #e74c3c)';
+                samplesHtml += ` <span style="color:${color};font-size:0.85em">(${pct}%)</span>`;
+            }
+        }
+
         let actionsHtml;
         if (isFailed) {
             actionsHtml = `
@@ -1351,8 +1378,9 @@ function renderModels() {
             <tr${isFailed ? ' style="opacity: 0.7"' : ''}>
                 <td class="model-name" title="Seed: ${model.seed || 'N/A'}">${model.id}</td>
                 <td><span class="model-type ${modelType}">${modelType}</span></td>
-                <td>${model.architecture || '-'}</td>
+                <td title="${model.architecture}">${model.architecture_display || prettifyModelName(model.architecture) || '-'}</td>
                 <td>${model.resolution || '-'}px</td>
+                <td>${samplesHtml}</td>
                 <td>${accuracyHtml}</td>
                 <td>${infTimeHtml}</td>
                 <td>${createdAt}</td>
