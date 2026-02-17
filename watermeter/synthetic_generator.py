@@ -98,6 +98,15 @@ class DigitCompositor:
     _RENDER_SCALE = 8
     DIGIT_COLOR = (29, 41, 39)  # very dark greenish, measured from reference
 
+    _FONT_PATHS = [
+        "/usr/share/fonts/truetype/lato/Lato-Heavy.ttf",
+        "/usr/share/fonts/truetype/lato/Lato-Black.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationMono-Bold.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeMonoBold.ttf",
+    ]
+
     def __init__(self, background_dir: str):
         self._backgrounds = []
         bg_path = Path(background_dir)
@@ -107,26 +116,33 @@ class DigitCompositor:
                 self._backgrounds.append(img)
         if not self._backgrounds:
             raise ValueError(f"No background images found in {background_dir}")
-        self._font = _load_font(self.HEIGHT * self._RENDER_SCALE)
-        logger.info(f"DigitCompositor loaded {len(self._backgrounds)} backgrounds")
+        self._fonts = []
+        font_size = self.HEIGHT * self._RENDER_SCALE
+        for path in self._FONT_PATHS:
+            if Path(path).exists():
+                self._fonts.append(ImageFont.truetype(path, font_size))
+        if not self._fonts:
+            self._fonts.append(_load_font(font_size))
+        logger.info(f"DigitCompositor loaded {len(self._backgrounds)} backgrounds, {len(self._fonts)} fonts")
 
     def render(self, digit_class: str) -> Image.Image:
         if digit_class not in DIGIT_CLASSES:
             raise ValueError(f"Invalid digit class: {digit_class!r}")
 
-        # Pick background (deterministic per class for reproducibility)
+        # Pick background and font (deterministic per class for reproducibility)
         rng = np.random.RandomState(hash(digit_class) & 0xFFFFFFFF)
         bg = self._backgrounds[rng.randint(len(self._backgrounds))].copy()
         bg = bg.resize((self.WIDTH, self.HEIGHT), Image.Resampling.LANCZOS)
+        font = self._fonts[rng.randint(len(self._fonts))]
 
         # Render digit glyph as RGBA (transparent background)
         big_size = self.HEIGHT * self._RENDER_SCALE
         glyph = Image.new("RGBA", (big_size, big_size), (0, 0, 0, 0))
         draw = ImageDraw.Draw(glyph)
-        bbox = draw.textbbox((0, 0), digit_class, font=self._font)
+        bbox = draw.textbbox((0, 0), digit_class, font=font)
         x = (big_size - (bbox[2] - bbox[0])) / 2 - bbox[0]
         y = (big_size - (bbox[3] - bbox[1])) / 2 - bbox[1]
-        draw.text((x, y), digit_class, fill=(*self.DIGIT_COLOR, 255), font=self._font)
+        draw.text((x, y), digit_class, fill=(*self.DIGIT_COLOR, 255), font=font)
 
         # Crop tight to digit bounding box
         alpha = np.array(glyph)[:, :, 3]
