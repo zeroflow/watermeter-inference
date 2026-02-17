@@ -55,6 +55,10 @@ config/*
 *.onnx
 *.xml
 
+# Pretrained bootstrap models (override *.bin / *.xml ignore above)
+!pretrained/
+!pretrained/**
+
 # Screenshots and images in root (not in templates/static)
 /*.png
 /*.jpg

@@ -41,6 +41,10 @@ ENV HF_HOME=/app/.cache/huggingface
 # Copy application package
 COPY watermeter/ /app/watermeter/
 
+# Copy pretrained bootstrap models (auto-installed by entrypoint on first run)
+COPY pretrained/digits/ /app/digits/selected/
+COPY pretrained/arrows/ /app/arrows/selected/
+
 # Copy default configuration
 COPY config.yaml /config_default/config.yaml
 
