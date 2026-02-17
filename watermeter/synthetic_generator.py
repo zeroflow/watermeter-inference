@@ -13,8 +13,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 logger = logging.getLogger(__name__)
 
-_FONT_PATH = "/usr/share/fonts/truetype/liberation/LiberationMono-Bold.ttf"
-_FALLBACK_FONT_PATH = "/usr/share/fonts/truetype/freefont/FreeMonoBold.ttf"
+_FONT_PATH = "/usr/share/fonts/truetype/lato/Lato-Heavy.ttf"
+_FALLBACK_FONT_PATH = "/usr/share/fonts/truetype/liberation/LiberationMono-Bold.ttf"
 
 DIGIT_CLASSES = [str(i) for i in range(10)]
 ARROW_CLASSES = [f"{i}.{j}" for i in range(10) for j in range(10)]
