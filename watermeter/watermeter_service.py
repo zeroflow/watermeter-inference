@@ -5,6 +5,7 @@ Combines image fetching, OpenVINO inference, consistency checks, and MQTT publis
 
 import asyncio
 import logging
+import logging.handlers
 import os
 import threading
 import time
@@ -259,7 +260,6 @@ class WatermeterService:
                 "format", "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
             )
             os.makedirs(os.path.dirname(log_file), exist_ok=True)
-            import logging.handlers
             file_handler = logging.handlers.RotatingFileHandler(
                 log_file, maxBytes=10 * 1024 * 1024, backupCount=5
             )
