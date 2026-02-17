@@ -39,10 +39,11 @@ class DigitRenderer:
     # Render at high resolution then downscale for crisp, format-filling digits
     _RENDER_SCALE = 8
 
-    # Style parameters measured from real meter photos
-    BG_COLOR = (190, 188, 185)        # gray background
-    DIGIT_COLOR = (60, 58, 55)        # dark gray digit (not pure black)
-    BG_NOISE_SIGMA = 5                # subtle texture noise
+    # Style parameters measured from real meter counter photos
+    # (measured from digits/reference/0/ and digits/reference/3/)
+    BG_COLOR = (160, 179, 159)            # light gray-green wheel surface
+    DIGIT_COLOR = (29, 41, 39)            # very dark greenish digit
+    BG_NOISE_SIGMA = 5                     # subtle texture noise
 
     def __init__(self):
         self._font = _load_font(self.HEIGHT * self._RENDER_SCALE)
