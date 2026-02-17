@@ -166,6 +166,7 @@ from .routes.label import router as label_router  # noqa: E402
 from .routes.training import router as training_router  # noqa: E402
 from .routes.models import router as models_router  # noqa: E402
 from .routes.synthetic import router as synthetic_router  # noqa: E402
+from .routes.mqtt import router as mqtt_router  # noqa: E402
 
 app.include_router(pages_router)
 app.include_router(service_router)
@@ -175,6 +176,7 @@ app.include_router(label_router)
 app.include_router(training_router)
 app.include_router(models_router)
 app.include_router(synthetic_router)
+app.include_router(mqtt_router)
 
 
 def main():
