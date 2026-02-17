@@ -21,6 +21,7 @@ window.addEventListener('load', function() {
     loadTrainingStats();
     loadModels();
     pollTrainingStatus();
+    loadArrowAnnotations();
 
     // Start polling (only when tab is visible)
     pollingInterval = setInterval(pollTrainingStatus, 2000);
@@ -1642,5 +1643,60 @@ async function deleteSyntheticData() {
     } catch (error) {
         console.error('Error deleting synthetic data:', error);
         showMessage('Error deleting synthetic data', 'error');
+    }
+}
+
+// Arrow annotations
+async function loadArrowAnnotations() {
+    try {
+        const response = await fetch('/api/synthetic/annotations');
+        const data = await response.json();
+        const section = document.getElementById('arrow-annotations-section');
+        const list = document.getElementById('arrow-annotations-list');
+
+        if (data.photos && data.photos.length > 0) {
+            section.style.display = 'block';
+            list.textContent = '';  // clear safely
+
+            data.photos.forEach(photo => {
+                const row = document.createElement('div');
+                row.style.cssText = 'display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem;';
+
+                const label = document.createElement('span');
+                label.style.cssText = 'font-size:0.85rem;min-width:200px;overflow:hidden;text-overflow:ellipsis;';
+                label.textContent = photo.filename;
+
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.placeholder = '0.0 - 9.9';
+                input.value = photo.arrow_class || '';
+                input.style.cssText = 'width:80px;padding:0.2rem 0.4rem;font-size:0.85rem;';
+                input.dataset.filename = photo.filename;
+
+                input.addEventListener('change', async function() {
+                    const val = this.value.trim();
+                    if (val === '') return;
+                    const num = parseFloat(val);
+                    if (isNaN(num) || num < 0 || num > 9.9) {
+                        this.style.borderColor = 'var(--error, red)';
+                        return;
+                    }
+                    this.style.borderColor = '';
+                    await fetch('/api/synthetic/annotate', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({filename: this.dataset.filename, arrow_class: val})
+                    });
+                    this.style.background = 'var(--success-bg, #e8f5e9)';
+                    setTimeout(() => { this.style.background = ''; }, 1000);
+                });
+
+                row.appendChild(label);
+                row.appendChild(input);
+                list.appendChild(row);
+            });
+        }
+    } catch (e) {
+        console.error('Error loading annotations:', e);
     }
 }

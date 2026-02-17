@@ -53,13 +53,20 @@ IMAGENET_STD = [0.229, 0.224, 0.225]
 def create_transforms(resolution: int) -> Tuple[transforms.Compose, transforms.Compose]:
     """Create train and validation transforms.
 
-    Returns:
-        (train_transform, val_transform)
+    Train transforms include geometric and color augmentation for domain
+    robustness. Val transforms are deterministic (resize + normalize only).
     """
     train_transform = transforms.Compose(
         [
             transforms.Resize((resolution, resolution)),
-            transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2),
+            transforms.RandomAffine(
+                degrees=5, translate=(0.05, 0.1), scale=(0.9, 1.1)
+            ),
+            transforms.RandomPerspective(distortion_scale=0.1, p=0.3),
+            transforms.ColorJitter(
+                brightness=0.4, contrast=0.4, saturation=0.3, hue=0.05
+            ),
+            transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 1.0)),
             transforms.ToTensor(),
             transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
         ]

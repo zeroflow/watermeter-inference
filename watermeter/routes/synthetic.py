@@ -1,8 +1,10 @@
 """Synthetic data generation routes."""
 
+import json
 import logging
 import threading
 import uuid
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
@@ -155,3 +157,59 @@ async def delete_synthetic(type: str):
     deleted = gen.delete_synthetic(type=type)
 
     return JSONResponse(content={"success": True, "deleted": deleted, "type": type})
+
+
+@router.get(
+    "/api/synthetic/annotations",
+    tags=["Synthetic Data"],
+    summary="Get arrow photo annotations",
+)
+async def get_annotations():
+    """Get arrow photo annotations and list of input photos."""
+    input_dir = Path("/training/arrows/input")
+    annotations_file = input_dir / "annotations.json"
+
+    annotations = {}
+    if annotations_file.exists():
+        annotations = json.loads(annotations_file.read_text())
+
+    # List all arrow input photos
+    photos = []
+    if input_dir.exists():
+        for f in sorted(input_dir.iterdir()):
+            if f.suffix.lower() in (".jpg", ".jpeg", ".png") and not f.name.startswith("."):
+                photos.append(
+                    {
+                        "filename": f.name,
+                        "annotated": f.name in annotations,
+                        "arrow_class": annotations.get(f.name),
+                    }
+                )
+
+    return JSONResponse({"annotations": annotations, "photos": photos})
+
+
+@router.post(
+    "/api/synthetic/annotate",
+    tags=["Synthetic Data"],
+    summary="Save an arrow photo annotation",
+)
+async def save_annotation(data: dict):
+    """Save an arrow photo annotation (filename -> dial position)."""
+    filename = data.get("filename")
+    arrow_class = data.get("arrow_class")
+
+    if not filename or arrow_class is None:
+        return JSONResponse({"error": "filename and arrow_class required"}, status_code=400)
+
+    input_dir = Path("/training/arrows/input")
+    annotations_file = input_dir / "annotations.json"
+
+    annotations = {}
+    if annotations_file.exists():
+        annotations = json.loads(annotations_file.read_text())
+
+    annotations[filename] = str(arrow_class)
+    annotations_file.write_text(json.dumps(annotations, indent=2))
+
+    return JSONResponse({"success": True, "annotations": annotations})

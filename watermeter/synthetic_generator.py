@@ -39,6 +39,11 @@ class DigitRenderer:
     # Render at high resolution then downscale for crisp, format-filling digits
     _RENDER_SCALE = 8
 
+    # Style parameters measured from real meter photos
+    BG_COLOR = (190, 188, 185)        # gray background
+    DIGIT_COLOR = (60, 58, 55)        # dark gray digit (not pure black)
+    BG_NOISE_SIGMA = 5                # subtle texture noise
+
     def __init__(self):
         self._font = _load_font(self.HEIGHT * self._RENDER_SCALE)
 
@@ -48,16 +53,17 @@ class DigitRenderer:
 
         # Render large, then crop tight, then resize to fill target
         big_size = self.HEIGHT * self._RENDER_SCALE
-        big = Image.new("RGB", (big_size, big_size), "white")
+        big = Image.new("RGB", (big_size, big_size), self.BG_COLOR)
         draw = ImageDraw.Draw(big)
         bbox = draw.textbbox((0, 0), digit_class, font=self._font)
         x = (big_size - (bbox[2] - bbox[0])) / 2 - bbox[0]
         y = (big_size - (bbox[3] - bbox[1])) / 2 - bbox[1]
-        draw.text((x, y), digit_class, fill="black", font=self._font)
+        draw.text((x, y), digit_class, fill=self.DIGIT_COLOR, font=self._font)
 
         # Crop to tight bounding box of the digit with small margin
         arr = np.array(big)
-        dark = arr.mean(axis=2) < 200
+        dark_threshold = np.array(self.BG_COLOR).mean() - 20
+        dark = arr.mean(axis=2) < dark_threshold
         if dark.any():
             rows = np.where(dark.any(axis=1))[0]
             cols = np.where(dark.any(axis=0))[0]
@@ -69,7 +75,14 @@ class DigitRenderer:
             big = big.crop((left, top, right, bot))
 
         # Resize to fill the target canvas
-        return big.resize((self.WIDTH, self.HEIGHT), Image.Resampling.LANCZOS)
+        result = big.resize((self.WIDTH, self.HEIGHT), Image.Resampling.LANCZOS)
+
+        # Add subtle background noise/texture (seeded per-class for reproducibility)
+        arr = np.array(result).astype(np.float32)
+        rng = np.random.RandomState(hash(digit_class) & 0xFFFFFFFF)
+        noise = rng.normal(0, self.BG_NOISE_SIGMA, arr.shape)
+        arr = np.clip(arr + noise, 0, 255).astype(np.uint8)
+        return Image.fromarray(arr)
 
 
 class ArrowRenderer:
@@ -283,6 +296,26 @@ class SyntheticGenerator:
     def __init__(self, base_dir: str = "/training"):
         self.base_dir = Path(base_dir)
 
+    def _get_arrow_renderer(self):
+        """Return photo-based compositor if annotations exist, else programmatic renderer."""
+        input_dir = self.base_dir / "arrows" / "input"
+        annotations_file = input_dir / "annotations.json"
+
+        if annotations_file.exists():
+            import json
+            from .photo_master import build_arrow_compositor
+
+            annotations = json.loads(annotations_file.read_text())
+            # Use the first annotated photo
+            for filename, arrow_class in annotations.items():
+                photo_path = input_dir / filename
+                if photo_path.exists():
+                    logger.info(f"Using photo-based arrow master: {filename} ({arrow_class})")
+                    return build_arrow_compositor(str(photo_path), arrow_class)
+
+        logger.info("No arrow photo annotations found, using programmatic renderer")
+        return ArrowRenderer()
+
     def generate(
         self,
         type: str,
@@ -309,7 +342,7 @@ class SyntheticGenerator:
                 classes = DIGIT_CLASSES
                 mode = "digit"
             else:
-                renderer = ArrowRenderer()
+                renderer = self._get_arrow_renderer()
                 classes = ARROW_CLASSES
                 mode = "arrow"
 

@@ -31,13 +31,14 @@ if not hasattr(cv2, 'warpAffine'):
 
 sys.modules['cv2'] = cv2
 
-# Remove any cached watermeter.synthetic_generator that was imported with the mock cv2
+# Remove any cached modules that were imported with the mock cv2
 for _mod_name in list(sys.modules.keys()):
-    if _mod_name == 'watermeter.synthetic_generator':
+    if _mod_name in ('watermeter.synthetic_generator', 'watermeter.photo_master'):
         del sys.modules[_mod_name]
 
-# Now import SyntheticGenerator -- it will see the real cv2
+# Now import SyntheticGenerator and photo_master -- they will see the real cv2
 from watermeter.synthetic_generator import SyntheticGenerator
+import watermeter.photo_master  # noqa: F401 -- pre-import so it caches real cv2
 
 # Restore the conftest mock so other test files are not affected
 if _saved_cv2_mock is not None:
@@ -144,3 +145,33 @@ class TestDeleteSynthetic:
         gen.generate(type="digits", count_per_class=3, seed=42)
         deleted = gen.delete_synthetic(type="digits")
         assert deleted == 30  # 10 classes * 3 images
+
+
+class TestPhotoBasedGeneration:
+    def test_uses_photo_master_when_annotations_exist(self, tmp_path):
+        import json
+
+        # Create a fake arrow input photo with red region
+        input_dir = tmp_path / "arrows" / "input"
+        input_dir.mkdir(parents=True)
+        img = Image.new("RGB", (80, 80), (200, 200, 200))
+        arr = np.array(img)
+        arr[15:45, 35:45] = [200, 40, 40]
+        Image.fromarray(arr).save(input_dir / "test_arrow.jpg")
+
+        # Create annotation
+        annotations = {"test_arrow.jpg": "9.0"}
+        (input_dir / "annotations.json").write_text(json.dumps(annotations))
+
+        gen = SyntheticGenerator(base_dir=str(tmp_path))
+        stats = gen.generate(type="arrows", count_per_class=2, seed=42)
+        assert stats["arrows"] > 0
+
+        # Verify files were created
+        gt_dir = tmp_path / "arrows" / "ground_truth"
+        assert gt_dir.exists()
+
+    def test_falls_back_to_programmatic_without_annotations(self, tmp_path):
+        gen = SyntheticGenerator(base_dir=str(tmp_path))
+        stats = gen.generate(type="arrows", count_per_class=2, seed=42)
+        assert stats["arrows"] > 0

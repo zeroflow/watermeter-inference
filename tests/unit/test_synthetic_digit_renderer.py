@@ -36,15 +36,36 @@ class TestDigitRenderer:
         arr = np.array(img)
         corners = [arr[0, 0], arr[0, -1], arr[-1, 0], arr[-1, -1]]
         for corner in corners:
-            assert all(c > 200 for c in corner), f"Corner {corner} not white enough"
+            mean = corner.mean()
+            assert 140 < mean < 220, f"Background pixel {corner} should be gray (got mean {mean})"
 
     def test_render_has_dark_pixels(self):
         from watermeter.synthetic_generator import DigitRenderer
         renderer = DigitRenderer()
         img = renderer.render("8")
         arr = np.array(img)
-        dark_pixels = np.sum(arr.mean(axis=2) < 50)
+        dark_pixels = np.sum(arr.mean(axis=2) < 100)
         assert dark_pixels > 10
+
+    def test_render_gray_background(self):
+        from watermeter.synthetic_generator import DigitRenderer
+        renderer = DigitRenderer()
+        img = renderer.render("0")
+        arr = np.array(img)
+        corners = [arr[0, 0], arr[0, -1], arr[-1, 0], arr[-1, -1]]
+        for c in corners:
+            mean = c.mean()
+            assert 140 < mean < 220, f"Background pixel {c} should be gray"
+
+    def test_render_digit_not_pure_black(self):
+        from watermeter.synthetic_generator import DigitRenderer
+        renderer = DigitRenderer()
+        img = renderer.render("8")
+        arr = np.array(img)
+        dark_mask = arr.mean(axis=2) < 100
+        if dark_mask.sum() > 0:
+            darkest = arr[dark_mask].mean()
+            assert darkest > 20, "Digit should be dark gray, not pure black"
 
     def test_different_digits_different_images(self):
         from watermeter.synthetic_generator import DigitRenderer
