@@ -1,5 +1,6 @@
 """MQTT configuration routes: get/save MQTT config and test broker connection."""
 
+import asyncio
 import logging
 import re
 from pathlib import Path
@@ -178,9 +179,9 @@ async def test_mqtt_connection(request: Request):
             client.username_pw_set(username, password or None)
 
         try:
-            client.connect(broker, port, 5)
-            client.disconnect()
-        except (OSError, ConnectionRefusedError) as exc:
+            await asyncio.to_thread(client.connect, broker, port, 5)
+            await asyncio.to_thread(client.disconnect)
+        except (OSError, ConnectionRefusedError, TimeoutError) as exc:
             message = f"Connection failed: {exc}"
             if warnings:
                 message += f" | Warnings: {'; '.join(warnings)}"
