@@ -463,6 +463,10 @@ class TrainingManager:
         )
 
         try:
+            # Initialize sample count trackers
+            train_sample_count = 0
+            val_sample_count = 0
+
             # Set seeds for reproducibility
             set_all_seeds(seed)
             job.add_log(f"Random seed set to {seed}")
@@ -523,6 +527,8 @@ class TrainingManager:
                 class_names = None
 
                 job.add_log(f"Train samples: {len(train_ds)}, Val samples: {len(val_ds)}")
+                train_sample_count = len(train_ds)
+                val_sample_count = len(val_ds)
                 job.add_log("Regression target range: 0.0 - 1.0 (dial position / 10)")
             else:
                 # Classification dataset (existing code for both digits and discrete arrows)
@@ -540,6 +546,8 @@ class TrainingManager:
                 class_names = dataset.classes
 
                 job.add_log(f"Train samples: {len(train_ds)}, Val samples: {len(val_ds)}")
+                train_sample_count = len(train_ds)
+                val_sample_count = len(val_ds)
                 job.add_log(f"Classes: {num_classes_actual}")
 
                 # Compute class weights (classification only)
@@ -752,6 +760,8 @@ class TrainingManager:
                 "best_val_loss": best_val_loss,
                 "best_epoch": best_epoch + 1,
                 "training_time": total_time,
+                "training_samples": train_sample_count,
+                "val_samples": val_sample_count,
                 "num_params": num_params,
                 "created_at": datetime.now().isoformat(),
             }
