@@ -48,7 +48,7 @@ class DigitRenderer:
     def __init__(self):
         self._font = _load_font(self.HEIGHT * self._RENDER_SCALE)
 
-    def render(self, digit_class: str) -> Image.Image:
+    def render(self, digit_class: str, seed: Optional[int] = None) -> Image.Image:
         if digit_class not in DIGIT_CLASSES:
             raise ValueError(f"Invalid digit class: {digit_class!r}. Must be one of {DIGIT_CLASSES}")
 
@@ -125,12 +125,15 @@ class DigitCompositor:
             self._fonts.append(_load_font(font_size))
         logger.info(f"DigitCompositor loaded {len(self._backgrounds)} backgrounds, {len(self._fonts)} fonts")
 
-    def render(self, digit_class: str) -> Image.Image:
+    def render(self, digit_class: str, seed: Optional[int] = None) -> Image.Image:
         if digit_class not in DIGIT_CLASSES:
             raise ValueError(f"Invalid digit class: {digit_class!r}")
 
-        # Pick background and font (deterministic per class for reproducibility)
-        rng = np.random.RandomState(hash(digit_class) & 0xFFFFFFFF)
+        # Pick background and font randomly (seed for reproducibility if given)
+        if seed is not None:
+            rng = np.random.RandomState(seed & 0xFFFFFFFF)
+        else:
+            rng = np.random.RandomState()
         bg = self._backgrounds[rng.randint(len(self._backgrounds))].copy()
         bg = bg.resize((self.WIDTH, self.HEIGHT), Image.Resampling.LANCZOS)
         font = self._fonts[rng.randint(len(self._fonts))]
@@ -174,7 +177,7 @@ class ArrowRenderer:
     def __init__(self):
         self._num_font = _load_font(max(8, int(self.SIZE * 0.12)))
 
-    def render(self, arrow_class: str) -> Image.Image:
+    def render(self, arrow_class: str, seed: Optional[int] = None) -> Image.Image:
         if arrow_class not in ARROW_CLASSES:
             raise ValueError(f"Invalid arrow class: {arrow_class!r}")
 
@@ -380,7 +383,7 @@ class _MultiCompositor:
         self._compositors = compositors
         self._rng = random.Random(seed)
 
-    def render(self, arrow_class: str) -> Image.Image:
+    def render(self, arrow_class: str, seed: Optional[int] = None) -> Image.Image:
         compositor = self._rng.choice(self._compositors)
         return compositor.render(arrow_class)
 
@@ -464,10 +467,11 @@ class SyntheticGenerator:
             for cls in classes:
                 class_dir = gt_dir / cls
                 class_dir.mkdir(parents=True, exist_ok=True)
-                master = renderer.render(cls)
 
                 for i in range(count_per_class):
                     img_seed = seed + _deterministic_seed(cls, i)
+                    # Fresh render per variant for maximum diversity
+                    master = renderer.render(cls, seed=img_seed)
                     pipeline = TransformPipeline(seed=img_seed)
                     transformed = pipeline.apply(master.copy(), mode=mode)
                     filename = f"synth_{i:04d}.jpg"

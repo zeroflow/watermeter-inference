@@ -6,6 +6,7 @@ and provides compositing utilities to place a pointer at any angle.
 
 import logging
 import math
+from typing import Optional
 
 import cv2
 import numpy as np
@@ -91,7 +92,7 @@ class ArrowCompositor:
         self._template = pointer_template.copy()
         self._source_angle = source_angle_deg
 
-    def render(self, arrow_class: str) -> Image.Image:
+    def render(self, arrow_class: str, seed: Optional[int] = None) -> Image.Image:
         """Render the dial at a specific arrow class position.
 
         Interface matches ArrowRenderer.render() so it can be used as a
