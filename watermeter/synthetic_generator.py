@@ -36,32 +36,47 @@ def _load_font(size: int) -> ImageFont.FreeTypeFont:
 class DigitRenderer:
     WIDTH = 20
     HEIGHT = 32
+    # Render at high resolution then downscale for crisp, format-filling digits
+    _RENDER_SCALE = 8
 
     def __init__(self):
-        self._font = _load_font(38)
+        self._font = _load_font(self.HEIGHT * self._RENDER_SCALE)
 
     def render(self, digit_class: str) -> Image.Image:
         if digit_class not in DIGIT_CLASSES:
             raise ValueError(f"Invalid digit class: {digit_class!r}. Must be one of {DIGIT_CLASSES}")
 
-        img = Image.new("RGB", (self.WIDTH, self.HEIGHT), "white")
-        draw = ImageDraw.Draw(img)
-
+        # Render large, then crop tight, then resize to fill target
+        big_size = self.HEIGHT * self._RENDER_SCALE
+        big = Image.new("RGB", (big_size, big_size), "white")
+        draw = ImageDraw.Draw(big)
         bbox = draw.textbbox((0, 0), digit_class, font=self._font)
-        text_w = bbox[2] - bbox[0]
-        text_h = bbox[3] - bbox[1]
-        x = (self.WIDTH - text_w) / 2 - bbox[0]
-        y = (self.HEIGHT - text_h) / 2 - bbox[1]
-
+        x = (big_size - (bbox[2] - bbox[0])) / 2 - bbox[0]
+        y = (big_size - (bbox[3] - bbox[1])) / 2 - bbox[1]
         draw.text((x, y), digit_class, fill="black", font=self._font)
-        return img
+
+        # Crop to tight bounding box of the digit with small margin
+        arr = np.array(big)
+        dark = arr.mean(axis=2) < 200
+        if dark.any():
+            rows = np.where(dark.any(axis=1))[0]
+            cols = np.where(dark.any(axis=0))[0]
+            margin = max(2, int(0.05 * (rows[-1] - rows[0])))
+            top = max(0, rows[0] - margin)
+            bot = min(big_size, rows[-1] + margin)
+            left = max(0, cols[0] - margin)
+            right = min(big_size, cols[-1] + margin)
+            big = big.crop((left, top, right, bot))
+
+        # Resize to fill the target canvas
+        return big.resize((self.WIDTH, self.HEIGHT), Image.Resampling.LANCZOS)
 
 
 class ArrowRenderer:
-    SIZE = 100
+    SIZE = 80
 
     def __init__(self):
-        self._num_font = _load_font(11)
+        self._num_font = _load_font(max(8, int(self.SIZE * 0.12)))
 
     def render(self, arrow_class: str) -> Image.Image:
         if arrow_class not in ARROW_CLASSES:
@@ -69,85 +84,64 @@ class ArrowRenderer:
 
         value = float(arrow_class)
         angle_deg = (value / 10.0) * 360.0
+        S = self.SIZE
 
-        img = Image.new("RGB", (self.SIZE, self.SIZE), (220, 218, 215))
+        img = Image.new("RGB", (S, S), (220, 218, 215))
         draw = ImageDraw.Draw(img)
-        cx, cy = self.SIZE / 2, self.SIZE / 2
-        radius = self.SIZE / 2 - 4
+        cx, cy = S / 2, S / 2
+        radius = S / 2 - S * 0.05  # tick outer edge
 
-        # Major tick marks only (10 ticks for 0-9) — thick like real dial
+        # Major tick marks only (10 ticks for 0-9)
+        tick_len = S * 0.10
+        tick_w = max(2, int(S * 0.035))
         for tick in range(10):
-            tick_angle = math.radians((tick / 10.0) * 360.0 - 90)
-            outer_r = radius
-            inner_r = radius - 10
-            x1 = cx + inner_r * math.cos(tick_angle)
-            y1 = cy + inner_r * math.sin(tick_angle)
-            x2 = cx + outer_r * math.cos(tick_angle)
-            y2 = cy + outer_r * math.sin(tick_angle)
-            draw.line([(x1, y1), (x2, y2)], fill="black", width=3)
+            a = math.radians((tick / 10.0) * 360.0 - 90)
+            x1 = cx + (radius - tick_len) * math.cos(a)
+            y1 = cy + (radius - tick_len) * math.sin(a)
+            x2 = cx + radius * math.cos(a)
+            y2 = cy + radius * math.sin(a)
+            draw.line([(x1, y1), (x2, y2)], fill="black", width=tick_w)
 
-        # Dial numbers 0-9 rendered INSIDE the tick marks
-        num_radius = radius - 20  # inside the ticks
+        # Dial numbers 0-9 inside the tick marks
+        num_r = radius - tick_len - S * 0.09
         for digit in range(10):
-            num_angle = math.radians((digit / 10.0) * 360.0 - 90)
-            nx = cx + num_radius * math.cos(num_angle)
-            ny = cy + num_radius * math.sin(num_angle)
+            a = math.radians((digit / 10.0) * 360.0 - 90)
+            nx = cx + num_r * math.cos(a)
+            ny = cy + num_r * math.sin(a)
             text = str(digit)
             bbox = draw.textbbox((0, 0), text, font=self._num_font)
-            tw = bbox[2] - bbox[0]
-            th = bbox[3] - bbox[1]
+            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
             draw.text(
                 (nx - tw / 2 - bbox[0], ny - th / 2 - bbox[1]),
-                text,
-                fill="black",
-                font=self._num_font,
+                text, fill="black", font=self._num_font,
             )
 
-        # Red pointer — fat wedge: rectangular base at center, tapers to point
-        pointer_angle = math.radians(angle_deg - 90)
-        pointer_len = radius - 14
-        tip_x = cx + pointer_len * math.cos(pointer_angle)
-        tip_y = cy + pointer_len * math.sin(pointer_angle)
+        # Red pointer: rectangular base centered on dial + triangle to tip
+        # Proportions from real photo (relative to S):
+        #   base: 25% wide, 16.25% along pointer axis (centered on cx,cy)
+        #   triangle: 41.25% from base front edge to tip
+        fwd = math.radians(angle_deg - 90)
+        perp = fwd + math.pi / 2
 
-        perp_angle = pointer_angle + math.pi / 2
+        base_hw = S * 0.125     # half-width of rectangular base
+        base_hl = S * 0.08125   # half-length of base (along pointer)
+        tri_len = S * 0.4125    # triangle from base front to tip
 
-        # Rectangular base section (wider) from center to ~40% of length
-        base_half_w = 7
-        mid_frac = 0.4
-        mid_half_w = 6
-        mid_x = cx + pointer_len * mid_frac * math.cos(pointer_angle)
-        mid_y = cy + pointer_len * mid_frac * math.sin(pointer_angle)
+        # Base rectangle corners
+        bf_x = cx + base_hl * math.cos(fwd)  # base front center
+        bf_y = cy + base_hl * math.sin(fwd)
+        bb_x = cx - base_hl * math.cos(fwd)  # base back center
+        bb_y = cy - base_hl * math.sin(fwd)
 
-        # Base corners (at center)
-        bx1 = cx + base_half_w * math.cos(perp_angle)
-        by1 = cy + base_half_w * math.sin(perp_angle)
-        bx2 = cx - base_half_w * math.cos(perp_angle)
-        by2 = cy - base_half_w * math.sin(perp_angle)
+        bl = (bb_x + base_hw * math.cos(perp), bb_y + base_hw * math.sin(perp))
+        br = (bb_x - base_hw * math.cos(perp), bb_y - base_hw * math.sin(perp))
+        fl = (bf_x + base_hw * math.cos(perp), bf_y + base_hw * math.sin(perp))
+        fr = (bf_x - base_hw * math.cos(perp), bf_y - base_hw * math.sin(perp))
 
-        # Mid-section corners (where taper begins)
-        mx1 = mid_x + mid_half_w * math.cos(perp_angle)
-        my1 = mid_y + mid_half_w * math.sin(perp_angle)
-        mx2 = mid_x - mid_half_w * math.cos(perp_angle)
-        my2 = mid_y - mid_half_w * math.sin(perp_angle)
+        # Triangle tip
+        tip = (bf_x + tri_len * math.cos(fwd), bf_y + tri_len * math.sin(fwd))
 
-        # Draw as single polygon: base rect -> taper to tip
-        draw.polygon(
-            [
-                (bx1, by1),
-                (mx1, my1),
-                (tip_x, tip_y),
-                (mx2, my2),
-                (bx2, by2),
-            ],
-            fill=(200, 30, 30),
-        )
-
-        # Center hub circle (dark, like the real dial pivot)
-        hub_r = 6
-        draw.ellipse(
-            [cx - hub_r, cy - hub_r, cx + hub_r, cy + hub_r],
-            fill=(60, 60, 60),
-        )
+        draw.polygon([bl, fl, tip, fr, br], fill=(200, 30, 30))
 
         return img
 
