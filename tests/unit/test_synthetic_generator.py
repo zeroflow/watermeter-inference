@@ -148,20 +148,14 @@ class TestDeleteSynthetic:
 
 
 class TestPhotoBasedGeneration:
-    def test_uses_photo_master_when_annotations_exist(self, tmp_path):
-        import json
-
-        # Create a fake arrow input photo with red region
-        input_dir = tmp_path / "arrows" / "input"
-        input_dir.mkdir(parents=True)
+    def test_uses_photo_master_when_reference_exists(self, tmp_path):
+        # Create a reference/ folder with a class subfolder containing a photo
+        ref_dir = tmp_path / "arrows" / "reference" / "9.0"
+        ref_dir.mkdir(parents=True)
         img = Image.new("RGB", (80, 80), (200, 200, 200))
         arr = np.array(img)
         arr[15:45, 35:45] = [200, 40, 40]
-        Image.fromarray(arr).save(input_dir / "test_arrow.jpg")
-
-        # Create annotation
-        annotations = {"test_arrow.jpg": "9.0"}
-        (input_dir / "annotations.json").write_text(json.dumps(annotations))
+        Image.fromarray(arr).save(ref_dir / "test_arrow.jpg")
 
         gen = SyntheticGenerator(base_dir=str(tmp_path))
         stats = gen.generate(type="arrows", count_per_class=2, seed=42)
@@ -171,7 +165,7 @@ class TestPhotoBasedGeneration:
         gt_dir = tmp_path / "arrows" / "ground_truth"
         assert gt_dir.exists()
 
-    def test_falls_back_to_programmatic_without_annotations(self, tmp_path):
+    def test_falls_back_to_programmatic_without_reference(self, tmp_path):
         gen = SyntheticGenerator(base_dir=str(tmp_path))
         stats = gen.generate(type="arrows", count_per_class=2, seed=42)
         assert stats["arrows"] > 0

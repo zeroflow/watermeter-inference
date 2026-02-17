@@ -290,6 +290,18 @@ class TransformPipeline:
         return result
 
 
+class _MultiCompositor:
+    """Wraps multiple ArrowCompositors, randomly selecting one per render call."""
+
+    def __init__(self, compositors, seed=42):
+        self._compositors = compositors
+        self._rng = random.Random(seed)
+
+    def render(self, arrow_class: str) -> Image.Image:
+        compositor = self._rng.choice(self._compositors)
+        return compositor.render(arrow_class)
+
+
 class SyntheticGenerator:
     """Orchestrates synthetic data generation."""
 
@@ -297,23 +309,32 @@ class SyntheticGenerator:
         self.base_dir = Path(base_dir)
 
     def _get_arrow_renderer(self):
-        """Return photo-based compositor if annotations exist, else programmatic renderer."""
-        input_dir = self.base_dir / "arrows" / "input"
-        annotations_file = input_dir / "annotations.json"
+        """Return photo-based compositor(s) if reference images exist, else programmatic renderer."""
+        ref_dir = self.base_dir / "arrows" / "reference"
 
-        if annotations_file.exists():
-            import json
+        if ref_dir.exists():
             from .photo_master import build_arrow_compositor
 
-            annotations = json.loads(annotations_file.read_text())
-            # Use the first annotated photo
-            for filename, arrow_class in annotations.items():
-                photo_path = input_dir / filename
-                if photo_path.exists():
-                    logger.info(f"Using photo-based arrow master: {filename} ({arrow_class})")
-                    return build_arrow_compositor(str(photo_path), arrow_class)
+            compositors = []
+            for class_dir in sorted(ref_dir.iterdir()):
+                if not class_dir.is_dir():
+                    continue
+                arrow_class = class_dir.name
+                for photo_file in sorted(class_dir.iterdir()):
+                    if photo_file.suffix.lower() in (".jpg", ".jpeg", ".png"):
+                        try:
+                            comp = build_arrow_compositor(str(photo_file), arrow_class)
+                            compositors.append(comp)
+                            logger.info(f"Loaded reference photo: {photo_file.name} ({arrow_class})")
+                        except Exception as e:
+                            logger.warning(f"Failed to load reference {photo_file}: {e}")
+                        break  # one photo per class is enough
 
-        logger.info("No arrow photo annotations found, using programmatic renderer")
+            if compositors:
+                logger.info(f"Using {len(compositors)} photo-based arrow compositor(s)")
+                return _MultiCompositor(compositors)
+
+        logger.info("No arrow reference images found, using programmatic renderer")
         return ArrowRenderer()
 
     def generate(
