@@ -169,3 +169,26 @@ class TestPhotoBasedGeneration:
         gen = SyntheticGenerator(base_dir=str(tmp_path))
         stats = gen.generate(type="arrows", count_per_class=2, seed=42)
         assert stats["arrows"] > 0
+
+
+class TestPhotoBasedDigitGeneration:
+    def test_uses_compositor_when_backgrounds_available(self, tmp_path):
+        """If digits/reference/background/ has images, use DigitCompositor."""
+        from watermeter.synthetic_generator import SyntheticGenerator as SG
+        from PIL import Image
+
+        # Create background directory with a fake background
+        bg_dir = tmp_path / "digits" / "reference" / "background"
+        bg_dir.mkdir(parents=True)
+        img = Image.new("RGB", (28, 40), (155, 175, 160))
+        img.save(bg_dir / "bg_test.jpg")
+
+        gen = SG(base_dir=str(tmp_path))
+        stats = gen.generate(type="digits", count_per_class=2, seed=42)
+        assert stats["digits"] > 0
+
+    def test_falls_back_to_programmatic_without_backgrounds(self, tmp_path):
+        """Without background templates, falls back to DigitRenderer."""
+        gen = SyntheticGenerator(base_dir=str(tmp_path))
+        stats = gen.generate(type="digits", count_per_class=2, seed=42)
+        assert stats["digits"] > 0

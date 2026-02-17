@@ -375,6 +375,15 @@ class SyntheticGenerator:
     def __init__(self, base_dir: str = "/training"):
         self.base_dir = Path(base_dir)
 
+    def _get_digit_renderer(self):
+        """Return photo-based compositor if background templates exist, else programmatic."""
+        bg_dir = self.base_dir / "digits" / "reference" / "background"
+        if bg_dir.exists() and (any(bg_dir.glob("*.jpg")) or any(bg_dir.glob("*.png"))):
+            logger.info(f"Using photo-based digit compositor from {bg_dir}")
+            return DigitCompositor(str(bg_dir))
+        logger.info("No digit background templates found, using programmatic renderer")
+        return DigitRenderer()
+
     def _get_arrow_renderer(self):
         """Return photo-based compositor(s) if reference images exist, else programmatic renderer."""
         ref_dir = self.base_dir / "arrows" / "reference"
@@ -426,7 +435,7 @@ class SyntheticGenerator:
         current = 0
         for t in types:
             if t == "digits":
-                renderer = DigitRenderer()
+                renderer = self._get_digit_renderer()
                 classes = DIGIT_CLASSES
                 mode = "digit"
             else:
