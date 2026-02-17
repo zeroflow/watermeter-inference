@@ -1551,3 +1551,94 @@ function uploadTrainingData() {
 
     xhr.send(formData);
 }
+
+// --- Synthetic Data Generation ---
+
+let synthPollingInterval = null;
+
+async function startSyntheticGeneration(event) {
+    event.preventDefault();
+
+    const config = {
+        type: document.getElementById('synth-type').value,
+        count_per_class: parseInt(document.getElementById('synth-count').value),
+        seed: parseInt(document.getElementById('synth-seed').value),
+    };
+
+    try {
+        const response = await fetch('/api/synthetic/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config),
+        });
+        const data = await response.json();
+        if (data.success) {
+            showMessage('Synthetic generation started', 'success');
+            document.getElementById('synth-progress-section').classList.add('visible');
+            document.getElementById('synth-generate-btn').disabled = true;
+            synthPollingInterval = setInterval(pollSyntheticStatus, 1000);
+        } else {
+            showMessage(data.message || 'Generation failed', 'error');
+        }
+    } catch (error) {
+        console.error('Error starting synthetic generation:', error);
+        showMessage('Error starting generation', 'error');
+    }
+}
+
+async function pollSyntheticStatus() {
+    try {
+        const response = await fetch('/api/synthetic/status');
+        const status = await response.json();
+
+        const progressBar = document.getElementById('synth-progress-bar');
+        const progressText = document.getElementById('synth-progress-text');
+        const progressMessage = document.getElementById('synth-progress-message');
+
+        if (status.running) {
+            const pct = status.total > 0 ? Math.round((status.progress / status.total) * 100) : 0;
+            progressBar.style.width = pct + '%';
+            progressText.textContent = pct + '%';
+            progressMessage.textContent = status.message || 'Generating...';
+        } else {
+            if (synthPollingInterval) {
+                clearInterval(synthPollingInterval);
+                synthPollingInterval = null;
+            }
+            document.getElementById('synth-generate-btn').disabled = false;
+            if (status.message && status.message.startsWith('Complete')) {
+                progressBar.style.width = '100%';
+                progressText.textContent = '100%';
+                progressMessage.textContent = 'Complete!';
+                showMessage('Synthetic data generation complete!', 'success');
+                loadTrainingStats();
+            } else if (status.message && status.message.startsWith('Error')) {
+                progressMessage.textContent = status.message;
+                showMessage(status.message, 'error');
+            }
+        }
+    } catch (error) {
+        console.error('Error polling synthetic status:', error);
+    }
+}
+
+async function deleteSyntheticData() {
+    const type = document.getElementById('synth-type').value;
+    if (!confirm('Delete all synthetic ' + type + ' images? This cannot be undone.')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/synthetic/' + type, { method: 'DELETE' });
+        const data = await response.json();
+        if (data.success) {
+            showMessage('Deleted ' + data.deleted + ' synthetic images', 'success');
+            loadTrainingStats();
+        } else {
+            showMessage(data.detail || 'Error deleting', 'error');
+        }
+    } catch (error) {
+        console.error('Error deleting synthetic data:', error);
+        showMessage('Error deleting synthetic data', 'error');
+    }
+}

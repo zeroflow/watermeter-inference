@@ -448,6 +448,19 @@
             gap: 12px;
         }
 
+        .btn-danger {
+            background: var(--red);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-danger:hover {
+            opacity: 0.9;
+        }
+
         /* Training Progress */
         .progress-section {
             display: none;
@@ -1237,6 +1250,50 @@
                     <div class="stat">
                         <span class="stat-label">Unlabeled:</span>
                         <span class="stat-value" id="total-unlabeled">-</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Synthetic Data Generator -->
+            <section class="section section-compact" id="synthetic-section">
+                <h2>Synthetic Data Generator</h2>
+                <p style="font-size: 13px; color: var(--text-light); margin-bottom: 16px;">
+                    Generate license-free synthetic training images with realistic transforms.
+                </p>
+                <form id="synthetic-form" onsubmit="startSyntheticGeneration(event)">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="synth-type">Type</label>
+                            <select id="synth-type">
+                                <option value="digits">Digits</option>
+                                <option value="arrows">Arrows</option>
+                                <option value="both" selected>Both</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="synth-count">Images per Class</label>
+                            <input type="number" id="synth-count" value="500" min="1" max="10000" step="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="synth-seed">Seed</label>
+                            <input type="number" id="synth-seed" value="42" min="0" step="1">
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary" id="synth-generate-btn">Generate</button>
+                        <button type="button" class="btn btn-danger" id="synth-delete-btn"
+                                onclick="deleteSyntheticData()">Delete Synthetic Data</button>
+                    </div>
+                </form>
+                <div id="synth-progress-section" class="progress-section">
+                    <div class="progress-item">
+                        <div class="progress-label">
+                            <span class="name" id="synth-progress-message">Generating...</span>
+                            <span class="value" id="synth-progress-text">0%</span>
+                        </div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar-fill" id="synth-progress-bar" style="width: 0%"></div>
+                        </div>
                     </div>
                 </div>
             </section>
