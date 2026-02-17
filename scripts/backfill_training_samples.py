@@ -61,10 +61,12 @@ def backfill():
                     log_text = log_path.read_text()
                     match = SAMPLE_RE.search(log_text)
                     if match:
-                        metadata["training_samples"] = int(match.group(1))
-                        metadata["val_samples"] = int(match.group(2))
+                        train_count = int(match.group(1))
+                        val_count = int(match.group(2))
+                        metadata["training_samples"] = train_count + val_count
+                        metadata["val_samples"] = val_count
                         changed = True
-                        print(f"  SAMPLES {model_dir.name}: {metadata['training_samples']} train, {metadata['val_samples']} val")
+                        print(f"  SAMPLES {model_dir.name}: {metadata['training_samples']} total ({train_count} train + {val_count} val)")
 
             # Backfill architecture_display (for all models including failed)
             if not metadata.get("architecture_display") and metadata.get("architecture"):

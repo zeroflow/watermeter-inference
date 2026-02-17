@@ -764,7 +764,7 @@ class TrainingManager:
                 "best_val_loss": best_val_loss,
                 "best_epoch": best_epoch + 1,
                 "training_time": total_time,
-                "training_samples": train_sample_count,
+                "training_samples": train_sample_count + val_sample_count,
                 "val_samples": val_sample_count,
                 "num_params": num_params,
                 "created_at": datetime.now().isoformat(),
