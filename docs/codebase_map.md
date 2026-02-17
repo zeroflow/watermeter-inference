@@ -1,6 +1,6 @@
 # Codebase Map
 
-> Auto-generated reference. Line numbers as of 2026-02-15.
+> Auto-generated reference. Line numbers as of 2026-02-17.
 
 ## Python Package: `watermeter/`
 
@@ -11,7 +11,7 @@
 - `lifespan(app)` L42-85 -- startup/shutdown: service, inference, MQTT, cyclic
 - `tags_metadata` L89-126, `app = FastAPI(...)` L129
 - `main()` L162-179 -- uvicorn entry
-- Routers included L131-158: pages, service, config, roi, label, training, models
+- Routers included L131-158: pages, service, config, roi, label, training, models, synthetic
 
 ### `routes/pages.py` (99 lines) -- HTML page routes
 
@@ -64,6 +64,34 @@
 - `_mislabel_scans` L418, `_make_thumbnail_base64(path)` L421
 - `scan_mislabeled(model_type, gt_base, ...)` L434, `confirm_mislabeled(model_type, actions)` L517
 - `POST /api/training-data/mislabel/scan` L587, `POST /api/training-data/mislabel/confirm` L637
+
+### `routes/synthetic.py` (153 lines) -- Synthetic data generation API
+
+- Pydantic: `SyntheticConfig` L30 (field_validator for type, count_per_class)
+- Module state: `_generation_lock` L19, `_generation_status` L20
+- Helper: `_run_generation(config, job_id)` L50 -- background thread target
+- `POST /api/synthetic/generate` L87, `GET /api/synthetic/status` L127, `DELETE /api/synthetic/{type}` L137
+
+### `synthetic_generator.py` (324 lines) -- Synthetic training data generator
+
+- Constants: `DIGIT_CLASSES` L18, `ARROW_CLASSES` L19
+- Helper: `_load_font(size)` L22
+
+**class `DigitRenderer`** L29:
+- `WIDTH = 20` L30, `HEIGHT = 32` L31
+- `__init__()` L33, `render(digit_class)` L36 -- renders 20x32px digit image
+
+**class `ArrowRenderer`** L53:
+- `SIZE = 100` L54
+- `render(arrow_class)` L56 -- renders 100x100px dial image with ticks and red pointer
+
+**class `TransformPipeline`** L115:
+- `__init__(seed)` L118, `apply(img, mode)` L122 -- applies geometric (offset, perspective, fisheye), color (brightness, contrast, cast, shadow, vignette), and noise (gaussian, blur, JPEG artifacts) transforms
+
+**class `SyntheticGenerator`** L247:
+- `__init__(base_dir)` L250
+- `generate(type, count_per_class, seed, progress_callback)` L253 -- orchestrates rendering + transforms, writes to ground_truth/
+- `delete_synthetic(type)` L307 -- removes all synth_* files from ground_truth
 
 ### `watermeter_service.py` (1939 lines) -- Main service orchestration
 
@@ -286,3 +314,26 @@ logging:        # Logging (level, format, file)
 ## Root-Level Scripts (standalone, not in package)
 
 `train_digits.py`, `train_arrows.py`, `benchmark_digits.py`, `benchmark_arrows.py`
+
+---
+
+## Tests: Synthetic Generator
+
+### `tests/unit/test_synthetic_digit_renderer.py` (60 lines)
+- `TestDigitRenderer`: render returns PIL image, correct size (20x32), RGB mode, all 10 classes, white background, dark pixels, different digits differ, invalid class raises
+
+### `tests/unit/test_synthetic_arrow_renderer.py` (80 lines)
+- `TestArrowRenderer`: render returns PIL image, square (100x100), RGB mode, all 100 classes, red pixels (pointer), dark pixels (ticks), different classes differ, opposite pointers, invalid class raises
+
+### `tests/unit/test_synthetic_transforms.py` (114 lines)
+- `TestTransformPipeline`: returns PIL image, preserves size, preserves RGB, changes image, same seed = same result, different seed = different result, arrow mode fisheye, digit mode no fisheye, pixel values in range
+
+### `tests/unit/test_synthetic_generator.py` (146 lines)
+- `TestSyntheticGenerator`: generate digits, generate arrows (all 100 classes), generate both, valid JPEG output, reproducible with seed, progress callback, synth_ prefix, does not overwrite existing
+- `TestDeleteSynthetic`: removes synth files, preserves real files, returns correct count
+
+### `tests/unit/test_synthetic_routes.py` (164 lines)
+- `TestSyntheticRoutes`: generate endpoint exists, returns job_id, invalid type 422, status endpoint exists, status returns fields, delete endpoint exists, delete returns count, invalid type 400, conflict when running 409, conflict when training 409, delete conflict when running 409
+
+### `tests/integration/test_synthetic.py` (105 lines)
+- `test_synthetic_status_idle`, `test_synthetic_generation_digits` (generate + poll + cleanup), `test_synthetic_cannot_run_twice` (409 concurrency guard), `test_synthetic_delete_nonexistent`, `test_synthetic_invalid_type_on_delete`
