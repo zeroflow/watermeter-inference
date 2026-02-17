@@ -252,6 +252,20 @@ class WatermeterService:
         log_level = getattr(logging, self.config["logging"]["level"])
         logging.getLogger().setLevel(log_level)
 
+        # Configure file logging if specified in config
+        log_file = self.config["logging"].get("file")
+        if log_file:
+            log_format = self.config["logging"].get(
+                "format", "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+            )
+            os.makedirs(os.path.dirname(log_file), exist_ok=True)
+            import logging.handlers
+            file_handler = logging.handlers.RotatingFileHandler(
+                log_file, maxBytes=10 * 1024 * 1024, backupCount=5
+            )
+            file_handler.setFormatter(logging.Formatter(log_format))
+            logging.getLogger().addHandler(file_handler)
+
         # State management
         self.previous_value: Optional[float] = None
         self.last_update_time: Optional[datetime] = None
