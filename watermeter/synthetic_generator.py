@@ -296,6 +296,26 @@ class SyntheticGenerator:
     def __init__(self, base_dir: str = "/training"):
         self.base_dir = Path(base_dir)
 
+    def _get_arrow_renderer(self):
+        """Return photo-based compositor if annotations exist, else programmatic renderer."""
+        input_dir = self.base_dir / "arrows" / "input"
+        annotations_file = input_dir / "annotations.json"
+
+        if annotations_file.exists():
+            import json
+            from .photo_master import build_arrow_compositor
+
+            annotations = json.loads(annotations_file.read_text())
+            # Use the first annotated photo
+            for filename, arrow_class in annotations.items():
+                photo_path = input_dir / filename
+                if photo_path.exists():
+                    logger.info(f"Using photo-based arrow master: {filename} ({arrow_class})")
+                    return build_arrow_compositor(str(photo_path), arrow_class)
+
+        logger.info("No arrow photo annotations found, using programmatic renderer")
+        return ArrowRenderer()
+
     def generate(
         self,
         type: str,
@@ -322,7 +342,7 @@ class SyntheticGenerator:
                 classes = DIGIT_CLASSES
                 mode = "digit"
             else:
-                renderer = ArrowRenderer()
+                renderer = self._get_arrow_renderer()
                 classes = ARROW_CLASSES
                 mode = "arrow"
 
