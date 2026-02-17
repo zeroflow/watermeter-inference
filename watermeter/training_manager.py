@@ -304,6 +304,7 @@ class TrainingManager:
             job.update_progress(total_configs=total_configs)
 
             results = []
+            last_error = ""
 
             # Train for each seed
             for config_idx, seed in enumerate(seeds, 1):
@@ -318,26 +319,33 @@ class TrainingManager:
                 job.add_log(f"Starting training for seed {seed}")
 
                 # Run training (import and call train function)
-                result = self._execute_training(
-                    job=job,
-                    model_type=model_type,
-                    architecture=architecture,
-                    architecture_display=architecture_display,
-                    resolution=resolution,
-                    seed=seed,
-                    epochs=epochs,
-                    batch_size=batch_size,
-                    learning_rate=learning_rate,
-                    step_size=step_size,
-                    training_mode=training_mode,
-                )
+                try:
+                    result = self._execute_training(
+                        job=job,
+                        model_type=model_type,
+                        architecture=architecture,
+                        architecture_display=architecture_display,
+                        resolution=resolution,
+                        seed=seed,
+                        epochs=epochs,
+                        batch_size=batch_size,
+                        learning_rate=learning_rate,
+                        step_size=step_size,
+                        training_mode=training_mode,
+                    )
+                except Exception as e:
+                    result = None
+                    last_error = str(e)
+                    job.add_log(f"Training failed for seed {seed}: {e}")
+                    logger.error(f"Training failed for seed {seed}: {e}")
+                    logger.error(traceback.format_exc())
 
                 if result:
                     metric_name = "within-half" if config.get("training_mode") == "continuous" else "accuracy"
                     results.append(result)
                     job.add_log(f"Completed training for seed {seed}: {result['best_val_acc']:.2f}% {metric_name}")
-                else:
-                    job.add_log(f"Training failed for seed {seed}")
+                elif not last_error:
+                    job.add_log(f"Training failed for seed {seed} (no error details)")
 
             # Check if any training succeeded
             if results:
@@ -346,7 +354,7 @@ class TrainingManager:
                 job.add_log(f"Training completed successfully: {len(results)}/{total_configs} models trained")
             else:
                 job.status = JobStatus.FAILED
-                job.error = "All training configurations failed"
+                job.error = f"All training configurations failed: {last_error}" if last_error else "All training configurations failed"
                 job.add_log(f"Training failed: 0/{total_configs} models trained successfully")
 
             job.completed_at = datetime.now()
@@ -871,7 +879,7 @@ class TrainingManager:
                 except Exception as cleanup_err:
                     job.add_log(f"Warning: Could not clean up partial directory: {cleanup_err}")
 
-            return None
+            raise
 
     def _persist_training_logs(self, job: TrainingJob):
         """Save training logs to disk for later viewing."""
