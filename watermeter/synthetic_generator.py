@@ -4,6 +4,7 @@ import logging
 import math
 import random
 from pathlib import Path
+from typing import Callable, Optional
 
 import cv2
 import numpy as np
@@ -241,3 +242,64 @@ class TransformPipeline:
         if result.size != original_size:
             result = result.resize(original_size, Image.BILINEAR)
         return result
+
+
+class SyntheticGenerator:
+    """Orchestrates synthetic data generation."""
+
+    def __init__(self, base_dir: str = "/training"):
+        self.base_dir = Path(base_dir)
+
+    def generate(
+        self,
+        type: str,
+        count_per_class: int = 500,
+        seed: int = 42,
+        progress_callback: Optional[Callable[[int, int, str], None]] = None,
+    ) -> dict:
+        stats = {"digits": 0, "arrows": 0}
+        types = []
+        if type in ("digits", "both"):
+            types.append("digits")
+        if type in ("arrows", "both"):
+            types.append("arrows")
+
+        total_images = 0
+        for t in types:
+            classes = DIGIT_CLASSES if t == "digits" else ARROW_CLASSES
+            total_images += len(classes) * count_per_class
+
+        current = 0
+        for t in types:
+            if t == "digits":
+                renderer = DigitRenderer()
+                classes = DIGIT_CLASSES
+                mode = "digit"
+            else:
+                renderer = ArrowRenderer()
+                classes = ARROW_CLASSES
+                mode = "arrow"
+
+            gt_dir = self.base_dir / t / "ground_truth"
+
+            for cls in classes:
+                class_dir = gt_dir / cls
+                class_dir.mkdir(parents=True, exist_ok=True)
+                master = renderer.render(cls)
+
+                for i in range(count_per_class):
+                    img_seed = seed + hash((cls, i)) % (2**31)
+                    pipeline = TransformPipeline(seed=img_seed)
+                    transformed = pipeline.apply(master.copy(), mode=mode)
+                    filename = f"synth_{i:04d}.jpg"
+                    transformed.save(str(class_dir / filename), "JPEG", quality=90)
+                    stats[t] += 1
+                    current += 1
+
+                    if progress_callback and current % 10 == 0:
+                        progress_callback(current, total_images, f"Generating {t} class {cls}")
+
+        if progress_callback:
+            progress_callback(total_images, total_images, "Generation complete")
+
+        return stats
