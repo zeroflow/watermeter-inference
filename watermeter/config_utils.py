@@ -6,6 +6,8 @@ when loading and saving configuration files.
 """
 
 import json
+import os
+import re
 from io import StringIO
 from pathlib import Path
 from typing import Any, Dict, Union
@@ -41,6 +43,25 @@ def load_config(path: Union[str, Path]) -> CommentedMap:
     path = Path(path)
     with open(path, "r", encoding="utf-8") as f:
         return _yaml.load(f)
+
+
+def resolve_env_vars(value: Any) -> Any:
+    """Replace ${VAR_NAME} patterns with environment variable values.
+
+    Unset variables keep their ${VAR_NAME} syntax intact.
+    Works recursively on dicts and lists.
+    """
+    if isinstance(value, str):
+        return re.sub(
+            r"\$\{(\w+)\}",
+            lambda m: os.environ.get(m.group(1), m.group(0)),
+            value,
+        )
+    if isinstance(value, dict):
+        return {k: resolve_env_vars(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [resolve_env_vars(v) for v in value]
+    return value
 
 
 def save_config(config: CommentedMap, path: Union[str, Path]) -> None:
