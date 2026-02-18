@@ -29,7 +29,6 @@ detection:
     count: 3
     rois: []
   markers: []
-  rotation: 0.0
 
 # Trigger Mode
 trigger:
