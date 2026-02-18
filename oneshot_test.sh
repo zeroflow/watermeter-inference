@@ -57,8 +57,8 @@ if [[ -e "$DRI_DEVICE" ]]; then
 fi
 
 # --- Build the stub config pointing at the sidecar ---
-# Copy repo config (clean, no ROI coordinates) as base
-cp "$SCRIPT_DIR/config.yaml" "$STUB_DIR/config.yaml"
+# Copy debug config (has ROI coordinates) as base
+cp "$SCRIPT_DIR/config_debug/config.yaml" "$STUB_DIR/config.yaml"
 
 # Point image source at the stub server
 sed -i "s|^\(\s*src:\).*|  src: \"http://$STUB_CONTAINER:80/meter.jpg\"|" "$STUB_DIR/config.yaml"
@@ -71,6 +71,9 @@ sed -i '/^homeassistant:/,/^[a-z]/ s|^\(\s*enabled:\).*|  enabled: false|' "$STU
 
 # Disable low-confidence saving (no training volumes mounted)
 sed -i '/^low_confidence:/,/^[a-z]/ s|^\(\s*save_enabled:\).*|  save_enabled: false|' "$STUB_DIR/config.yaml"
+
+# Clear markers so alignment step is skipped (no marker template files in container)
+sed -i 's/^  markers:.*/  markers: []/' "$STUB_DIR/config.yaml"
 
 # --- Set up Docker network + nginx sidecar ---
 docker network rm "$NETWORK_NAME" 2>/dev/null || true
