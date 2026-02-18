@@ -1,0 +1,159 @@
+# One-shot integration test fixture config.
+# Self-contained — no sed patches needed except the stub container name in images.src.
+# ROI coordinates match tests/fixtures/meter_snapshot.jpg.
+
+# AI-on-the-edge Device (unused in one-shot mode, kept for schema completeness)
+aiote:
+  host: "192.168.x.x"
+  image_path: "/img_tmp"
+  timeout: 30
+  fetch_delay: 0.1
+
+# Image source — sed-patched at test time to replace "watermeter-stub" with the actual stub container name
+images:
+  process_separate: false
+  src: "http://watermeter-stub:80/meter.jpg"
+  digits:
+    - "main_dig1"
+  arrows:
+    - "main_ana1"
+    - "main_ana2"
+    - "main_ana3"
+    - "main_ana4"
+
+detection:
+  analogs:
+    count: 4
+    rois:
+      - x: 0.625
+        y: 0.485
+        width: 0.125
+        height: 0.18
+      - x: 0.545
+        y: 0.685
+        width: 0.125
+        height: 0.17
+      - x: 0.41
+        y: 0.765
+        width: 0.13
+        height: 0.165
+      - x: 0.235
+        y: 0.685
+        width: 0.125
+        height: 0.16
+  digits:
+    count: 3
+    rois:
+      - x: 0.425
+        y: 0.305
+        width: 0.045
+        height: 0.09
+      - x: 0.495
+        y: 0.305
+        width: 0.045
+        height: 0.085
+      - x: 0.565
+        y: 0.305
+        width: 0.045
+        height: 0.085
+  markers: []
+  rotation: 0.0
+
+# Trigger Mode — cyclic so no MQTT broker is needed
+trigger:
+  mode: "cyclic"
+  cyclic_interval: 300
+
+# MQTT Settings (unused — trigger is cyclic, homeassistant disabled)
+mqtt:
+  broker: "192.168.x.x"
+  port: 1883
+  client_id: "watermeter-oneshot-test"
+  keepalive: 60
+  trigger_topic: "watermeter/status"
+  trigger_payload: "Flow finished"
+  reset_topic: "watermeter/reset"
+  username: ''
+  password: ''
+
+# Home Assistant Integration — disabled for testing
+homeassistant:
+  enabled: false
+  discovery_prefix: "homeassistant"
+  publish_topic: "homeassistant/sensor/watermeter/state"
+  device:
+    name: "DIY AI Water Meter"
+    manufacturer: "with Claude Code"
+    model: "OpenVINO Inference"
+  device_name: DIY AI Water Meter
+  sensor_type: sensor
+  unit: m3
+  update_interval: 60
+
+# Inference Settings — model paths patched by docker-entrypoint.sh at container start
+inference:
+  confidence_threshold: 0.8
+  device: "AUTO"
+  digits_model: "/app/models/digits/model_digits_resnext50_32x4d_r128/model_digits_resnext50_32x4d_r128.xml"
+  digits_classes: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'NAN']
+  digits_resolution: 128
+  arrows_model: "/app/models/arrows/model_arrows_efficientnetv2_rw_s_c10_r128_s8820/model_arrows_efficientnetv2_rw_s_c10_r128_s8820.xml"
+  arrows_classes: ['0.0', '1.0', '2.0', '3.0', '4.0', '5.0', '6.0', '7.0', '8.0', '9.0']
+  arrows_resolution: 128
+
+# Plausibility Checks
+plausibility:
+  enable_reverse_detection: true
+  enable_rate_limit: true
+  max_rate_per_hour: 1.5
+  max_rate_per_reading: 0.15
+  rate_history_size: 25
+  enable_consistency_check: false
+  enable_leak_detection: true
+  sustained_rate_threshold: 0.05
+  sustained_rate_readings: 3
+
+# Value Correction
+correction:
+  enabled: false
+  confidence_threshold: 0.7
+  min_signal_agreement: 2
+  min_alternative_confidence: 0.05
+  rate_tolerance_factor: 3.0
+  max_corrections_per_reading: 2
+  top_k: 3
+  cross_arrow_confidence_gate: 0.8
+
+# User Confirmation
+confirmation:
+  enabled: false
+  request_topic: "watermeter/confirmation_request"
+  response_topic: "watermeter/confirmation_response"
+  timeout_minutes: 5
+  min_warnings: 1
+  min_low_confidence_positions: 2
+  max_rate_jump_factor: 3.0
+
+# Low Confidence Handling — saving disabled (no training volumes in one-shot test)
+low_confidence:
+  warn_enabled: true
+  save_enabled: false
+  save_path: "/training"
+  save_rate_limit: 3600
+
+# Persistence — disabled (no state volume in one-shot test)
+persistence:
+  enabled: false
+  state_file: "/data/state.json"
+
+# Web Dashboard
+dashboard:
+  host: "0.0.0.0"
+  port: 8001
+  auto_refresh_interval: 5
+
+# Logging
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: null
