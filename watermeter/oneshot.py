@@ -20,13 +20,13 @@ import logging
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, Tuple
 
 import yaml
 
 from .image_pipeline import ImagePipeline
 from .inference import get_inference_service
-from .position_utils import get_position_ids
+from .position_utils import calculate_total as _calculate_total
 
 logger = logging.getLogger(__name__)
 
@@ -120,56 +120,6 @@ async def run_one_shot(config_path: str) -> int:
 
     print(f"Meter reading: {total:.4f} m³  (digits={raw_values['digits']}, arrows={raw_values['arrows']})")
     return 0
-
-
-def _calculate_total(config: dict, predictions: Dict[str, Dict]) -> Tuple[float, Dict]:
-    """
-    Calculate total meter reading from predictions.
-
-    Replicates the logic from WatermeterService.calculate_total(), operating
-    directly on a config dict and predictions dict without constructing a service.
-
-    Returns:
-        (total_value, {"digits": list[int], "arrows": list[float]})
-    """
-    digit_ids, arrow_ids = get_position_ids(config)
-
-    digits = []
-    arrows = []
-
-    for image_id in digit_ids:
-        if image_id in predictions:
-            pred = predictions[image_id]
-            if pred["class"] != "NAN" and pred["class"] != "ERROR":
-                digits.append(int(pred["class"]))
-            else:
-                logger.warning(f"{image_id} has invalid class: {pred['class']}")
-                digits.append(0)
-
-    for image_id in arrow_ids:
-        if image_id in predictions:
-            pred = predictions[image_id]
-            if pred["class"] != "ERROR":
-                arrows.append(float(pred["class"]))
-            else:
-                logger.warning(f"{image_id} has error")
-                arrows.append(0.0)
-
-    total = 0.0
-
-    # Digits contribution: first digit has highest place value
-    for i, digit in enumerate(digits):
-        multiplier = 10 ** (len(digits) - 1 - i)
-        total += digit * multiplier
-
-    # Arrows contribution: 0.1, 0.01, 0.001, ...
-    for i, arrow in enumerate(arrows):
-        multiplier = 10 ** (-(i + 1))
-        total += int(arrow) * multiplier
-
-    raw_values = {"digits": digits, "arrows": arrows}
-    logger.info(f"Calculated total: {total:.4f} m³")
-    return total, raw_values
 
 
 def main(config_path: str) -> int:
