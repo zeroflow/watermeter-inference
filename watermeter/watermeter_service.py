@@ -31,6 +31,7 @@ from .leak_detector import LeakDetector
 from .plausibility import PlausibilityChecker
 from .meter_state import MeterState
 from .confirmation import ConfirmationManager
+from .mqtt_publisher import MqttPublisher
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
