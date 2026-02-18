@@ -1,33 +1,17 @@
 """Unit tests for BL-04: Value correction engine.
 
-Tests predict_detailed on Classifier, helper methods on WatermeterService,
+Tests predict_detailed on Classifier, helper methods on CorrectionEngine,
 consistency improvement checks, signal scoring, and the correction engine.
-
-Note: watermeter.watermeter_service is mocked at module level in the unit test
-conftest.  We temporarily remove the mock to import the real class.
 """
 
-import sys
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
 
-from watermeter.rate_tracker import RateTracker  # noqa: E402 (import after sys.modules hack)
-
-# ---------------------------------------------------------------------------
-# Load the REAL WatermeterService class (bypassing the conftest mock).
-# ---------------------------------------------------------------------------
-_ws_mock_backup = {}
-for _name in ['watermeter_service', 'watermeter.watermeter_service']:
-    if _name in sys.modules:
-        _ws_mock_backup[_name] = sys.modules.pop(_name)
-
-from watermeter.watermeter_service import WatermeterService  # noqa: E402
-
-for _name, _mock in _ws_mock_backup.items():
-    sys.modules[_name] = _mock
+from watermeter.correction import CorrectionEngine
+from watermeter.rate_tracker import RateTracker
+from watermeter.meter_state import MeterState
 
 
 # ---------------------------------------------------------------------------
@@ -63,10 +47,9 @@ def _predict_detailed(classes, logits, top_k=3):
 # Helpers
 # ---------------------------------------------------------------------------
 
-def make_service(config=None):
-    """Create a minimal WatermeterService without calling __init__."""
-    svc = object.__new__(WatermeterService)
-    svc.config = config or {
+def make_engine(config=None):
+    """Create a minimal CorrectionEngine for testing."""
+    config = config or {
         'images': {'process_separate': False},
         'detection': {
             'digits': {'count': 3},
@@ -85,11 +68,9 @@ def make_service(config=None):
             'rate_history_size': 25,
         },
     }
-    svc.previous_value = None
-    svc.last_update_time = None
-    svc._rate_tracker = RateTracker(max_size=25)
-    svc.leak_warning = False
-    return svc
+    rate_tracker = RateTracker(max_size=25)
+    state = MeterState()
+    return CorrectionEngine(config=config, rate_tracker=rate_tracker, meter_state=state)
 
 
 # ---------------------------------------------------------------------------
@@ -151,40 +132,40 @@ class TestPredictDetailed:
 # ---------------------------------------------------------------------------
 
 class TestHelperMethods:
-    """Tests for WatermeterService helper methods used by the correction engine."""
+    """Tests for CorrectionEngine helper methods."""
 
     def test_estimate_expected_range_no_history(self):
         """No rate_history -> returns None."""
-        svc = make_service()
-        svc.previous_value = 100.0
+        engine = make_engine()
+        engine._meter_state.previous_value = 100.0
         # Empty rate_history (less than 3)
-        assert svc._estimate_expected_range() is None
+        assert engine._estimate_expected_range() is None
 
     def test_estimate_expected_range_sufficient_history(self):
         """3+ entries with positive rate -> returns (min, max) tuple."""
-        svc = make_service()
-        svc.previous_value = 100.0
+        engine = make_engine()
+        engine._meter_state.previous_value = 100.0
         now = datetime.now()
-        svc.last_update_time = now - timedelta(hours=1)
+        engine._meter_state.last_update_time = now - timedelta(hours=1)
 
         # Build rate_history with 4 entries showing steady consumption
         base = now - timedelta(hours=4)
-        svc._rate_tracker._history = [
+        engine._rate_tracker._history = [
             (97.0, base),
             (98.0, base + timedelta(hours=1)),
             (99.0, base + timedelta(hours=2)),
             (100.0, base + timedelta(hours=3)),
         ]
 
-        result = svc._estimate_expected_range()
+        result = engine._estimate_expected_range()
         assert result is not None
         min_exp, max_exp = result
-        assert min_exp == svc.previous_value
+        assert min_exp == engine._meter_state.previous_value
         assert max_exp > min_exp
 
     def test_recalculate_digit_replacement(self):
         """Replace digit_2 from '3' to '4' in 3-digit setup. Total changes by +10."""
-        svc = make_service()
+        engine = make_engine()
         predictions = {
             'digit_1': {'id': 'digit_1', 'class': '1', 'confidence': 0.95, 'model': 'digits'},
             'digit_2': {'id': 'digit_2', 'class': '3', 'confidence': 0.40, 'model': 'digits'},
@@ -196,14 +177,14 @@ class TestHelperMethods:
         }
         raw_values = {'digits': [1, 3, 5], 'arrows': [2.0, 7.0, 4.0, 1.0]}
 
-        original = svc._recalculate_with_replacement(predictions, 'digit_2', '3', raw_values)
-        replaced = svc._recalculate_with_replacement(predictions, 'digit_2', '4', raw_values)
+        original = engine._recalculate_with_replacement(predictions, 'digit_2', '3', raw_values)
+        replaced = engine._recalculate_with_replacement(predictions, 'digit_2', '4', raw_values)
 
         assert abs(replaced - original - 10.0) < 1e-9
 
     def test_recalculate_arrow_replacement(self):
         """Replace analog_1 from '3.0' to '7.0'. Total changes by +0.4."""
-        svc = make_service()
+        engine = make_engine()
         predictions = {
             'digit_1': {'id': 'digit_1', 'class': '1', 'confidence': 0.95, 'model': 'digits'},
             'digit_2': {'id': 'digit_2', 'class': '3', 'confidence': 0.90, 'model': 'digits'},
@@ -215,16 +196,16 @@ class TestHelperMethods:
         }
         raw_values = {'digits': [1, 3, 5], 'arrows': [3.0, 7.0, 4.0, 1.0]}
 
-        original = svc._recalculate_with_replacement(predictions, 'analog_1', '3.0', raw_values)
-        replaced = svc._recalculate_with_replacement(predictions, 'analog_1', '7.0', raw_values)
+        original = engine._recalculate_with_replacement(predictions, 'analog_1', '3.0', raw_values)
+        replaced = engine._recalculate_with_replacement(predictions, 'analog_1', '7.0', raw_values)
 
         # floor(3.0)*0.1 = 0.3, floor(7.0)*0.1 = 0.7 -> delta = 0.4
         assert abs(replaced - original - 0.4) < 1e-9
 
     def test_get_ordered_position_ids(self):
         """Returns correct order for 3 digits + 4 arrows."""
-        svc = make_service()
-        ids = svc._get_ordered_position_ids()
+        engine = make_engine()
+        ids = engine._get_ordered_position_ids()
         assert ids == ['digit_1', 'digit_2', 'digit_3',
                        'analog_1', 'analog_2', 'analog_3', 'analog_4']
 
@@ -247,7 +228,7 @@ class TestConsistencyImprovement:
         has_half=False == upper=False -> no violation.
         So replacing analog_2 fixes the violation.
         """
-        svc = make_service()
+        engine = make_engine()
         predictions = {
             'digit_1': {'id': 'digit_1', 'class': '1', 'confidence': 0.95, 'model': 'digits'},
             'digit_2': {'id': 'digit_2', 'class': '3', 'confidence': 0.90, 'model': 'digits'},
@@ -258,7 +239,7 @@ class TestConsistencyImprovement:
             'analog_4': {'id': 'analog_4', 'class': '1.0', 'confidence': 0.80, 'model': 'arrows'},
         }
 
-        result = svc._check_consistency_improvement(predictions, 'analog_2', '2.0')
+        result = engine._check_consistency_improvement(predictions, 'analog_2', '2.0')
         assert result is True
 
     def test_no_consistency_improvement(self):
@@ -270,7 +251,7 @@ class TestConsistencyImprovement:
         Replacing analog_2 with '4.0' still no violation, but there was no
         violation to fix, so improvement = False.
         """
-        svc = make_service()
+        engine = make_engine()
         predictions = {
             'digit_1': {'id': 'digit_1', 'class': '1', 'confidence': 0.95, 'model': 'digits'},
             'digit_2': {'id': 'digit_2', 'class': '3', 'confidence': 0.90, 'model': 'digits'},
@@ -281,7 +262,7 @@ class TestConsistencyImprovement:
             'analog_4': {'id': 'analog_4', 'class': '1.0', 'confidence': 0.80, 'model': 'arrows'},
         }
 
-        result = svc._check_consistency_improvement(predictions, 'analog_2', '4.0')
+        result = engine._check_consistency_improvement(predictions, 'analog_2', '4.0')
         assert result is False
 
 
@@ -296,16 +277,16 @@ class TestSignalScoring:
     isolate individual signals.
     """
 
-    def _make_signal_service(self, min_signal_agreement=1):
-        """Service with min_signal_agreement=1 so a single signal triggers correction."""
-        svc = make_service()
-        svc.config['correction']['min_signal_agreement'] = min_signal_agreement
-        return svc
+    def _make_signal_engine(self, min_signal_agreement=1):
+        """Engine with min_signal_agreement=1 so a single signal triggers correction."""
+        engine = make_engine()
+        engine.config['correction']['min_signal_agreement'] = min_signal_agreement
+        return engine
 
     def test_signal_previous_value_backward(self):
         """raw_total < previous_value, alt fixes it -> gets signal -> correction."""
-        svc = self._make_signal_service(min_signal_agreement=1)
-        svc.previous_value = 145.0
+        engine = self._make_signal_engine(min_signal_agreement=1)
+        engine._meter_state.previous_value = 145.0
 
         # raw reading: digit_1=1, digit_2=3, digit_3=5 -> 135.xxxx (< 145)
         # alt for digit_2: '4' -> 145.xxxx (>= 145) -> signal fires
@@ -333,14 +314,14 @@ class TestSignalScoring:
         raw_values = {'digits': [1, 3, 5], 'arrows': [2.0, 7.0, 4.0, 1.0]}
         raw_total = 135.2741  # < 145
 
-        corrections = svc.correct_predictions(predictions, raw_total, raw_values)
+        corrections = engine.correct_predictions(predictions, raw_total, raw_values)
         assert len(corrections) >= 1
         assert predictions['digit_2']['class'] == '4'
 
     def test_signal_previous_value_forward(self):
         """raw_total >= previous_value -> no backward signal -> no correction (with 1 signal min)."""
-        svc = self._make_signal_service(min_signal_agreement=1)
-        svc.previous_value = 130.0  # raw_total >= previous_value
+        engine = self._make_signal_engine(min_signal_agreement=1)
+        engine._meter_state.previous_value = 130.0  # raw_total >= previous_value
 
         predictions = {
             'digit_1': {'id': 'digit_1', 'class': '1', 'confidence': 0.95, 'model': 'digits',
@@ -366,21 +347,21 @@ class TestSignalScoring:
         raw_values = {'digits': [1, 3, 5], 'arrows': [2.0, 2.0, 4.0, 1.0]}
         raw_total = 135.2241  # >= 130 -> no backward violation
 
-        corrections = svc.correct_predictions(predictions, raw_total, raw_values)
+        corrections = engine.correct_predictions(predictions, raw_total, raw_values)
         # No backward violation, no expected_range, no consistency violation -> no signal
         assert len(corrections) == 0
         assert predictions['digit_2']['class'] == '3'  # unchanged
 
     def test_signal_expected_rate_in_range(self):
         """Alt brings total into expected range when original is outside -> signal fires."""
-        svc = self._make_signal_service(min_signal_agreement=1)
-        svc.previous_value = 135.0
+        engine = self._make_signal_engine(min_signal_agreement=1)
+        engine._meter_state.previous_value = 135.0
         now = datetime.now()
-        svc.last_update_time = now - timedelta(hours=1)
+        engine._meter_state.last_update_time = now - timedelta(hours=1)
 
         # Rate history: ~1 m3/h over 4 hours
         base = now - timedelta(hours=4)
-        svc._rate_tracker._history = [
+        engine._rate_tracker._history = [
             (131.0, base),
             (132.0, base + timedelta(hours=1)),
             (133.0, base + timedelta(hours=2)),
@@ -418,7 +399,7 @@ class TestSignalScoring:
         raw_values = {'digits': [1, 2, 5], 'arrows': [2.0, 2.0, 4.0, 1.0]}
         raw_total = 125.2241  # outside expected range [135, 139]
 
-        corrections = svc.correct_predictions(predictions, raw_total, raw_values)
+        corrections = engine.correct_predictions(predictions, raw_total, raw_values)
         # Both signal 1 (backward) and signal 2 (rate range) should fire for alt '3'
         # but we only need at least one correction
         assert len(corrections) >= 1
@@ -431,7 +412,7 @@ class TestSignalScoring:
         Violation: False != True.
         Alt for analog_2: '2.0' (upper=False) -> fixes it.
         """
-        svc = self._make_signal_service(min_signal_agreement=1)
+        engine = self._make_signal_engine(min_signal_agreement=1)
 
         predictions = {
             'digit_1': {'id': 'digit_1', 'class': '1', 'confidence': 0.95, 'model': 'digits',
@@ -457,7 +438,7 @@ class TestSignalScoring:
         raw_values = {'digits': [1, 3, 5], 'arrows': [3.0, 7.0, 4.0, 1.0]}
         raw_total = 135.3741
 
-        corrections = svc.correct_predictions(predictions, raw_total, raw_values)
+        corrections = engine.correct_predictions(predictions, raw_total, raw_values)
         assert len(corrections) >= 1
         assert predictions['analog_2']['class'] == '2.0'
 
@@ -495,19 +476,19 @@ class TestCorrectionEngine:
 
     def test_no_correction_when_disabled(self):
         """correction.enabled = False -> returns empty list."""
-        svc = make_service()
-        svc.config['correction']['enabled'] = False
+        engine = make_engine()
+        engine.config['correction']['enabled'] = False
 
         predictions = self._make_predictions()
         raw_values = {'digits': [1, 3, 5], 'arrows': [2.0, 2.0, 4.0, 1.0]}
         raw_total = 135.2241
 
-        corrections = svc.correct_predictions(predictions, raw_total, raw_values)
+        corrections = engine.correct_predictions(predictions, raw_total, raw_values)
         assert corrections == []
 
     def test_no_correction_all_confident(self):
         """All positions above threshold -> returns empty list."""
-        svc = make_service()
+        engine = make_engine()
         predictions = self._make_predictions()
         # Set all confidences above threshold (0.7)
         for pred in predictions.values():
@@ -516,19 +497,19 @@ class TestCorrectionEngine:
         raw_values = {'digits': [1, 3, 5], 'arrows': [2.0, 2.0, 4.0, 1.0]}
         raw_total = 135.2241
 
-        corrections = svc.correct_predictions(predictions, raw_total, raw_values)
+        corrections = engine.correct_predictions(predictions, raw_total, raw_values)
         assert corrections == []
 
     def test_correction_applied_two_signals(self):
         """Low conf + 2 signals (backward + rate) -> correction applied."""
-        svc = make_service()
-        svc.previous_value = 145.0
+        engine = make_engine()
+        engine._meter_state.previous_value = 145.0
         now = datetime.now()
-        svc.last_update_time = now - timedelta(hours=1)
+        engine._meter_state.last_update_time = now - timedelta(hours=1)
 
         # Rate history: ~1.33 m3/h
         base = now - timedelta(hours=4)
-        svc._rate_tracker._history = [
+        engine._rate_tracker._history = [
             (141.0, base),
             (142.33, base + timedelta(hours=1)),
             (143.66, base + timedelta(hours=2)),
@@ -541,7 +522,7 @@ class TestCorrectionEngine:
         raw_values = {'digits': [1, 3, 5], 'arrows': [2.0, 2.0, 4.0, 1.0]}
         raw_total = 135.2241
 
-        corrections = svc.correct_predictions(predictions, raw_total, raw_values)
+        corrections = engine.correct_predictions(predictions, raw_total, raw_values)
         assert len(corrections) >= 1
         assert predictions['digit_2']['class'] == '4'
         assert predictions['digit_2']['corrected_from'] == '3'
@@ -549,9 +530,9 @@ class TestCorrectionEngine:
 
     def test_no_correction_single_signal(self):
         """Only 1 signal (below min=2) -> no correction."""
-        svc = make_service()
-        svc.config['correction']['min_signal_agreement'] = 2
-        svc.previous_value = 145.0
+        engine = make_engine()
+        engine.config['correction']['min_signal_agreement'] = 2
+        engine._meter_state.previous_value = 145.0
         # No rate_history -> no signal 2. No consistency violation -> no signal 3.
         # Only signal 1 (backward) fires.
 
@@ -579,15 +560,15 @@ class TestCorrectionEngine:
         raw_values = {'digits': [1, 3, 5], 'arrows': [2.0, 2.0, 4.0, 1.0]}
         raw_total = 135.2241  # < 145
 
-        corrections = svc.correct_predictions(predictions, raw_total, raw_values)
+        corrections = engine.correct_predictions(predictions, raw_total, raw_values)
         assert len(corrections) == 0
         assert predictions['digit_2']['class'] == '3'  # unchanged
 
     def test_correction_never_to_nan(self):
         """NAN alternative is filtered out even if signals agree."""
-        svc = make_service()
-        svc.config['correction']['min_signal_agreement'] = 1
-        svc.previous_value = 145.0
+        engine = make_engine()
+        engine.config['correction']['min_signal_agreement'] = 1
+        engine._meter_state.previous_value = 145.0
 
         predictions = {
             'digit_1': {'id': 'digit_1', 'class': '1', 'confidence': 0.95, 'model': 'digits',
@@ -612,16 +593,16 @@ class TestCorrectionEngine:
         raw_values = {'digits': [1, 3, 5], 'arrows': [2.0, 2.0, 4.0, 1.0]}
         raw_total = 135.2241
 
-        corrections = svc.correct_predictions(predictions, raw_total, raw_values)
+        corrections = engine.correct_predictions(predictions, raw_total, raw_values)
         assert len(corrections) == 0
         assert predictions['digit_2']['class'] == '3'  # NAN filtered, no valid alt
 
     def test_max_corrections_limit(self):
         """max_corrections=1, 2 low-conf positions -> only 1 corrected."""
-        svc = make_service()
-        svc.config['correction']['max_corrections_per_reading'] = 1
-        svc.config['correction']['min_signal_agreement'] = 1
-        svc.previous_value = 145.0  # raw_total < previous_value
+        engine = make_engine()
+        engine.config['correction']['max_corrections_per_reading'] = 1
+        engine.config['correction']['min_signal_agreement'] = 1
+        engine._meter_state.previous_value = 145.0  # raw_total < previous_value
 
         # raw reading: digits [1, 3, 3] -> 133 + arrows -> 133.2241 (< 145)
         # digit_2 alt '4' -> 143.2241 (still < 145, but closer)
@@ -678,14 +659,14 @@ class TestCorrectionEngine:
         raw_values = {'digits': [1, 3, 5], 'arrows': [3.0, 7.0, 6.0, 1.0]}
         raw_total = 135.3761
 
-        corrections = svc.correct_predictions(predictions, raw_total, raw_values)
+        corrections = engine.correct_predictions(predictions, raw_total, raw_values)
         assert len(corrections) == 1  # max_corrections=1
 
     def test_correction_warning_format(self):
         """Verify warning string format contains position, old/new class, confidences, signals."""
-        svc = make_service()
-        svc.config['correction']['min_signal_agreement'] = 1
-        svc.previous_value = 145.0
+        engine = make_engine()
+        engine.config['correction']['min_signal_agreement'] = 1
+        engine._meter_state.previous_value = 145.0
 
         predictions = {
             'digit_1': {'id': 'digit_1', 'class': '1', 'confidence': 0.95, 'model': 'digits',
@@ -711,7 +692,7 @@ class TestCorrectionEngine:
         raw_values = {'digits': [1, 3, 5], 'arrows': [2.0, 2.0, 4.0, 1.0]}
         raw_total = 135.2241
 
-        corrections = svc.correct_predictions(predictions, raw_total, raw_values)
+        corrections = engine.correct_predictions(predictions, raw_total, raw_values)
         assert len(corrections) == 1
 
         msg = corrections[0]

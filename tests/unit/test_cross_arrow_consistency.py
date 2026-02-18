@@ -2,35 +2,20 @@
 
 Tests the _check_cross_arrow_consistency() method directly, and its integration
 into the correct_predictions() correction engine (Signal 4).
-
-Note: watermeter.watermeter_service is mocked at module level in the unit test
-conftest.  We temporarily remove the mock to import the real class.
 """
 
-import sys
-
-# ---------------------------------------------------------------------------
-# Load the REAL WatermeterService class (bypassing the conftest mock).
-# ---------------------------------------------------------------------------
-_ws_mock_backup = {}
-for _name in ['watermeter_service', 'watermeter.watermeter_service']:
-    if _name in sys.modules:
-        _ws_mock_backup[_name] = sys.modules.pop(_name)
-
-from watermeter.watermeter_service import WatermeterService  # noqa: E402
-
-for _name, _mock in _ws_mock_backup.items():
-    sys.modules[_name] = _mock
+from watermeter.correction import CorrectionEngine
+from watermeter.rate_tracker import RateTracker
+from watermeter.meter_state import MeterState
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def make_service(config=None):
-    """Create a minimal WatermeterService without calling __init__."""
-    svc = object.__new__(WatermeterService)
-    svc.config = config or {
+def make_engine(config=None):
+    """Create a minimal CorrectionEngine for testing."""
+    config = config or {
         'images': {'process_separate': False},
         'detection': {
             'digits': {'count': 3},
@@ -50,11 +35,9 @@ def make_service(config=None):
             'rate_history_size': 25,
         },
     }
-    svc.previous_value = None
-    svc.last_update_time = None
-    svc.rate_history = []
-    svc.leak_warning = False
-    return svc
+    rate_tracker = RateTracker(max_size=25)
+    state = MeterState()
+    return CorrectionEngine(config=config, rate_tracker=rate_tracker, meter_state=state)
 
 
 # ---------------------------------------------------------------------------
@@ -70,7 +53,7 @@ class TestCheckCrossArrowConsistency:
         analog_2 currently reads 7.0 (upper half -- wrong).
         Replacing with 2.0 (lower half) should return True.
         """
-        svc = make_service()
+        engine = make_engine()
         predictions = {
             'digit_1': {'id': 'digit_1', 'class': '1', 'confidence': 0.95, 'model': 'digits'},
             'digit_2': {'id': 'digit_2', 'class': '3', 'confidence': 0.90, 'model': 'digits'},
@@ -81,7 +64,7 @@ class TestCheckCrossArrowConsistency:
             'analog_4': {'id': 'analog_4', 'class': '1.0', 'confidence': 0.80, 'model': 'arrows'},
         }
 
-        result = svc._check_cross_arrow_consistency(predictions, 'analog_2', '2.0')
+        result = engine._check_cross_arrow_consistency(predictions, 'analog_2', '2.0')
         assert result is True
 
     def test_cross_arrow_no_improvement_when_consistent(self):
@@ -89,7 +72,7 @@ class TestCheckCrossArrowConsistency:
 
         Replacing with 7.0 (upper half) would make it worse -> False.
         """
-        svc = make_service()
+        engine = make_engine()
         predictions = {
             'digit_1': {'id': 'digit_1', 'class': '1', 'confidence': 0.95, 'model': 'digits'},
             'digit_2': {'id': 'digit_2', 'class': '3', 'confidence': 0.90, 'model': 'digits'},
@@ -100,7 +83,7 @@ class TestCheckCrossArrowConsistency:
             'analog_4': {'id': 'analog_4', 'class': '1.0', 'confidence': 0.80, 'model': 'arrows'},
         }
 
-        result = svc._check_cross_arrow_consistency(predictions, 'analog_2', '7.0')
+        result = engine._check_cross_arrow_consistency(predictions, 'analog_2', '7.0')
         assert result is False
 
     def test_cross_arrow_skipped_low_confidence(self):
@@ -108,7 +91,7 @@ class TestCheckCrossArrowConsistency:
 
         Even though analog_2 is in the wrong half, signal should not fire.
         """
-        svc = make_service()
+        engine = make_engine()
         predictions = {
             'digit_1': {'id': 'digit_1', 'class': '1', 'confidence': 0.95, 'model': 'digits'},
             'digit_2': {'id': 'digit_2', 'class': '3', 'confidence': 0.90, 'model': 'digits'},
@@ -119,7 +102,7 @@ class TestCheckCrossArrowConsistency:
             'analog_4': {'id': 'analog_4', 'class': '1.0', 'confidence': 0.80, 'model': 'arrows'},
         }
 
-        result = svc._check_cross_arrow_consistency(predictions, 'analog_2', '2.0')
+        result = engine._check_cross_arrow_consistency(predictions, 'analog_2', '2.0')
         assert result is False
 
     def test_cross_arrow_skipped_for_digit(self):
@@ -127,7 +110,7 @@ class TestCheckCrossArrowConsistency:
 
         Cross-arrow consistency only applies to arrow-arrow pairs.
         """
-        svc = make_service()
+        engine = make_engine()
         predictions = {
             'digit_1': {'id': 'digit_1', 'class': '1', 'confidence': 0.95, 'model': 'digits'},
             'digit_2': {'id': 'digit_2', 'class': '3', 'confidence': 0.90, 'model': 'digits'},
@@ -139,7 +122,7 @@ class TestCheckCrossArrowConsistency:
         }
 
         # analog_1's predecessor is digit_3 (a digit, not an arrow)
-        result = svc._check_cross_arrow_consistency(predictions, 'analog_1', '2.0')
+        result = engine._check_cross_arrow_consistency(predictions, 'analog_1', '2.0')
         assert result is False
 
     def test_cross_arrow_continuous_upper_half(self):
@@ -148,7 +131,7 @@ class TestCheckCrossArrowConsistency:
         analog_2 currently reads 2.0 (lower half -- wrong).
         Replacing with 7.0 (upper half) should return True.
         """
-        svc = make_service()
+        engine = make_engine()
         predictions = {
             'digit_1': {'id': 'digit_1', 'class': '1', 'confidence': 0.95, 'model': 'digits'},
             'digit_2': {'id': 'digit_2', 'class': '3', 'confidence': 0.90, 'model': 'digits'},
@@ -159,7 +142,7 @@ class TestCheckCrossArrowConsistency:
             'analog_4': {'id': 'analog_4', 'class': '1.0', 'confidence': 0.80, 'model': 'arrows'},
         }
 
-        result = svc._check_cross_arrow_consistency(predictions, 'analog_2', '7.0')
+        result = engine._check_cross_arrow_consistency(predictions, 'analog_2', '7.0')
         assert result is True
 
     def test_cross_arrow_continuous_lower_half(self):
@@ -168,7 +151,7 @@ class TestCheckCrossArrowConsistency:
         analog_2 currently reads 7.0 (upper half -- wrong).
         Replacing with 2.0 (lower half) should return True.
         """
-        svc = make_service()
+        engine = make_engine()
         predictions = {
             'digit_1': {'id': 'digit_1', 'class': '1', 'confidence': 0.95, 'model': 'digits'},
             'digit_2': {'id': 'digit_2', 'class': '3', 'confidence': 0.90, 'model': 'digits'},
@@ -179,7 +162,7 @@ class TestCheckCrossArrowConsistency:
             'analog_4': {'id': 'analog_4', 'class': '1.0', 'confidence': 0.80, 'model': 'arrows'},
         }
 
-        result = svc._check_cross_arrow_consistency(predictions, 'analog_2', '2.0')
+        result = engine._check_cross_arrow_consistency(predictions, 'analog_2', '2.0')
         assert result is True
 
     def test_cross_arrow_continuous_boundary_exact_half(self):
@@ -188,7 +171,7 @@ class TestCheckCrossArrowConsistency:
         analog_2 currently reads 2.0 (lower half -- wrong).
         Replacing with 7.0 (upper half) should return True.
         """
-        svc = make_service()
+        engine = make_engine()
         predictions = {
             'digit_1': {'id': 'digit_1', 'class': '1', 'confidence': 0.95, 'model': 'digits'},
             'digit_2': {'id': 'digit_2', 'class': '3', 'confidence': 0.90, 'model': 'digits'},
@@ -199,7 +182,7 @@ class TestCheckCrossArrowConsistency:
             'analog_4': {'id': 'analog_4', 'class': '1.0', 'confidence': 0.80, 'model': 'arrows'},
         }
 
-        result = svc._check_cross_arrow_consistency(predictions, 'analog_2', '7.0')
+        result = engine._check_cross_arrow_consistency(predictions, 'analog_2', '7.0')
         assert result is True
 
     def test_cross_arrow_integer_still_lower_half(self):
@@ -209,7 +192,7 @@ class TestCheckCrossArrowConsistency:
         explicitly documents that integer values (frac=0.0) map to lower half
         because the needle is solidly at the integer, meaning the next dial is near 0.
         """
-        svc = make_service()
+        engine = make_engine()
         predictions = {
             'digit_1': {'id': 'digit_1', 'class': '1', 'confidence': 0.95, 'model': 'digits'},
             'digit_2': {'id': 'digit_2', 'class': '3', 'confidence': 0.90, 'model': 'digits'},
@@ -220,12 +203,12 @@ class TestCheckCrossArrowConsistency:
             'analog_4': {'id': 'analog_4', 'class': '1.0', 'confidence': 0.80, 'model': 'arrows'},
         }
 
-        result = svc._check_cross_arrow_consistency(predictions, 'analog_2', '2.0')
+        result = engine._check_cross_arrow_consistency(predictions, 'analog_2', '2.0')
         assert result is True
 
     def test_cross_arrow_skipped_first_position(self):
         """First position (digit_1) has no predecessor -> False."""
-        svc = make_service()
+        engine = make_engine()
         predictions = {
             'digit_1': {'id': 'digit_1', 'class': '1', 'confidence': 0.95, 'model': 'digits'},
             'digit_2': {'id': 'digit_2', 'class': '3', 'confidence': 0.90, 'model': 'digits'},
@@ -236,7 +219,7 @@ class TestCheckCrossArrowConsistency:
             'analog_4': {'id': 'analog_4', 'class': '1.0', 'confidence': 0.80, 'model': 'arrows'},
         }
 
-        result = svc._check_cross_arrow_consistency(predictions, 'digit_1', '2')
+        result = engine._check_cross_arrow_consistency(predictions, 'digit_1', '2')
         assert result is False
 
 
@@ -256,7 +239,7 @@ class TestCrossArrowIntegration:
         Signal 4 (and possibly Signal 3) fire -> correction applied.
         Expect analog_2 corrected to 2.0.
         """
-        svc = make_service()
+        engine = make_engine()
 
         predictions = {
             'digit_1': {'id': 'digit_1', 'class': '1', 'confidence': 0.95, 'model': 'digits',
@@ -282,7 +265,7 @@ class TestCrossArrowIntegration:
         raw_values = {'digits': [1, 3, 5], 'arrows': [3.0, 7.0, 4.0, 1.0]}
         raw_total = 135.3741
 
-        corrections = svc.correct_predictions(predictions, raw_total, raw_values)
+        corrections = engine.correct_predictions(predictions, raw_total, raw_values)
         assert len(corrections) >= 1
         assert predictions['analog_2']['class'] == '2.0'
 
@@ -295,9 +278,9 @@ class TestCrossArrowIntegration:
         No previous_value, no rate_history -> Signals 1 and 2 don't fire.
         Result: no correction applied.
         """
-        svc = make_service()
-        svc.config['correction']['cross_arrow_confidence_gate'] = 0.95
-        svc.config['correction']['min_signal_agreement'] = 2
+        engine = make_engine()
+        engine.config['correction']['cross_arrow_confidence_gate'] = 0.95
+        engine.config['correction']['min_signal_agreement'] = 2
 
         predictions = {
             'digit_1': {'id': 'digit_1', 'class': '1', 'confidence': 0.95, 'model': 'digits',
@@ -323,7 +306,7 @@ class TestCrossArrowIntegration:
         raw_values = {'digits': [1, 3, 5], 'arrows': [3.0, 7.0, 4.0, 1.0]}
         raw_total = 135.3741
 
-        corrections = svc.correct_predictions(predictions, raw_total, raw_values)
+        corrections = engine.correct_predictions(predictions, raw_total, raw_values)
         # Signal 3 alone gives score=1, below min_signal_agreement=2.
         # Signal 4 blocked by gate (0.90 < 0.95). No other signals fire.
         assert len(corrections) == 0
@@ -339,9 +322,9 @@ class TestCrossArrowIntegration:
 
         Gate set to 0.3 so corrected analog_2 (confidence 0.35) passes the gate.
         """
-        svc = make_service()
-        svc.config['correction']['cross_arrow_confidence_gate'] = 0.3
-        svc.config['correction']['max_corrections_per_reading'] = 3
+        engine = make_engine()
+        engine.config['correction']['cross_arrow_confidence_gate'] = 0.3
+        engine.config['correction']['max_corrections_per_reading'] = 3
 
         predictions = {
             'digit_1': {'id': 'digit_1', 'class': '1', 'confidence': 0.95, 'model': 'digits',
@@ -370,7 +353,7 @@ class TestCrossArrowIntegration:
         raw_values = {'digits': [1, 3, 5], 'arrows': [3.0, 7.0, 8.0, 1.0]}
         raw_total = 135.3781
 
-        corrections = svc.correct_predictions(predictions, raw_total, raw_values)
+        corrections = engine.correct_predictions(predictions, raw_total, raw_values)
 
         # analog_2 should be corrected to 2.0
         assert predictions['analog_2']['class'] == '2.0'

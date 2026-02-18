@@ -69,6 +69,7 @@ class TestReloadConfig:
         service._plausibility_checker = MagicMock()
         service._confirmation_manager = MagicMock()
         service._mqtt = MagicMock()
+        service._correction = MagicMock()
         # Bind the real method
         service.reload_config = WatermeterService.reload_config.__get__(service)
         return service
