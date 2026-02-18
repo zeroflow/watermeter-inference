@@ -940,8 +940,8 @@
                         <button class="btn btn-small btn-secondary" onclick="changeMarkers()">Change</button>
                     </div>
                     <div class="completed-step-data completed-step-images">
-                        <img src="/api/roi/marker-image/1?t=${t}" alt="M1">
-                        <img src="/api/roi/marker-image/2?t=${t}" alt="M2">
+                        <img src="/api/roi/marker-image/1?t=${t}" alt="M1" onerror="this.style.display='none'">
+                        <img src="/api/roi/marker-image/2?t=${t}" alt="M2" onerror="this.style.display='none'">
                     </div>
                 </div>`;
             }
@@ -958,7 +958,7 @@
                     const d = overlays.digits[i];
                     digitsHtml += `
                     <div class="completed-digit">
-                        <img src="/api/roi/digit-image/${i + 1}?t=${t}" alt="D${i + 1}">
+                        <img src="/api/roi/digit-image/${i + 1}?t=${t}" alt="D${i + 1}" onerror="this.style.display='none'">
                         <span class="completed-digit-value">${d.prediction || '?'}</span>
                     </div>`;
                 }
@@ -986,7 +986,7 @@
                     const a = overlays.analogs[i];
                     analogsHtml += `
                     <div class="completed-analog">
-                        <img src="/api/roi/analog-image/${i + 1}?t=${t}" alt="A${i + 1}">
+                        <img src="/api/roi/analog-image/${i + 1}?t=${t}" alt="A${i + 1}" onerror="this.style.display='none'">
                         <span class="completed-analog-value">${a.prediction || '?'}</span>
                     </div>`;
                 }

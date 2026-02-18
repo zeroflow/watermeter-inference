@@ -24,10 +24,8 @@ templates = Jinja2Templates(directory=str(_pkg_dir / "templates"))
 )
 async def dashboard(request: Request):
     """Render the main dashboard page."""
-    # First-run detection: no digit ROIs configured -> redirect to setup wizard
-    service = watermeter_service.get_service()
-    rois = service.config.get("detection", {}).get("digits", {}).get("rois", [])
-    if len(rois) == 0:
+    # First-run detection: no reference image -> redirect to setup wizard
+    if not Path("/data/reference_raw.jpg").exists():
         return RedirectResponse("/roi-config?setup=1", status_code=303)
 
     inference_svc = get_inference_service()
