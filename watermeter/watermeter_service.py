@@ -144,7 +144,6 @@ class WatermeterService:
                 self.process_reading(), self._mqtt.loop
             ) if self._mqtt.loop else None,
             on_reset=self.reset_previous_value,
-            logger=logger,
         )
 
         # Correction engine (BL-04)
