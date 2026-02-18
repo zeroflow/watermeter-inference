@@ -57,8 +57,8 @@ if [[ -e "$DRI_DEVICE" ]]; then
 fi
 
 # --- Create stub config pointing at sidecar ---
-# Copy debug config as base, override image source and disable MQTT/HA
-cp config_debug/config.yaml "$STUB_DIR/config.yaml"
+# Copy repo config (clean, no ROI coordinates) as base
+cp config.yaml "$STUB_DIR/config.yaml"
 
 # Point image source at the stub server
 sed -i 's|^\(\s*src:\).*|  src: "http://watermeter-stub:80/meter.jpg"|' "$STUB_DIR/config.yaml"
