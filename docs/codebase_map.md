@@ -1,6 +1,6 @@
 # Codebase Map
 
-> Auto-generated reference. Line numbers as of 2026-02-18.
+> Auto-generated reference. Line numbers as of 2026-02-18. Updated with one-shot CLI mode files.
 
 ## Python Package: `watermeter/`
 
@@ -244,7 +244,7 @@
 | 415 | func | `process_whole_image(img_bytes)` | Delegates to ImagePipeline |
 | 420 | func | `invalidate_marker_cache()` | Delegates to ImagePipeline |
 | 424 | func | `run_inference(images)` | Run OpenVINO inference on image set |
-| 495 | func | `calculate_total(predictions)` | Compute total meter reading from predictions |
+| 495 | func | `calculate_total(predictions)` | Compute total meter reading from predictions; delegates to `position_utils.calculate_total` |
 | 548 | func | `check_consistency(predictions)` | Delegates to PlausibilityChecker |
 | 552 | func | `validate_plausibility(total, ...)` | Delegates to PlausibilityChecker |
 | 560 | func | `_check_sustained_consumption()` | Delegates to LeakDetector |
@@ -562,17 +562,29 @@
 
 ---
 
-### `watermeter/position_utils.py` (40 lines) -- Position ID utilities
+### `watermeter/position_utils.py` (98 lines) -- Position ID utilities and total calculation
 
 | Line | Type | Name | Description |
 |------|------|------|-------------|
-| 11 | func | `get_position_ids(config)` | Compute digit and arrow position IDs from config |
+| 14 | func | `get_position_ids(config)` | Compute digit and arrow position IDs from config |
+| 46 | func | `calculate_total(config, predictions)` | Calculate total meter reading from predictions; shared by WatermeterService and one-shot CLI; returns (total_value, {"digits": list, "arrows": list}) |
 
 ---
 
-### `watermeter/__main__.py` (3 lines) -- Entry point
+### `watermeter/oneshot.py` (128 lines) -- One-shot CLI meter reading mode
 
-Calls `app.main()`.
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 34 | func | `run_one_shot(config_path)` | Async coroutine: full single-reading pipeline (load config, init inference, fetch image, extract ROIs, run inference, calculate total); returns 0 on success, 1 on any failure |
+| 125 | func | `main(config_path)` | Sync entry point — wraps run_one_shot via asyncio.run() |
+
+---
+
+### `watermeter/__main__.py` (31 lines) -- CLI entry point
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 6 | func | `cli()` | Parses `--one-shot` and `--config` flags; routes to `oneshot.main()` or `app.main()` |
 
 ---
 
@@ -668,6 +680,24 @@ logging:        # Logging (level, format, file)
 ---
 
 ## Root-Level Scripts (standalone, not in package)
+
+### `oneshot_test.sh` (113 lines) -- Integration test for one-shot CLI mode
+
+Runs a full end-to-end one-shot reading in Docker using an nginx sidecar to serve a stubbed meter JPEG. Accepts `--image <tag>` to specify the app image. Creates an ephemeral Docker network and cleans up all containers on exit.
+
+| Section | Description |
+|---------|-------------|
+| L9-21 | Argument parsing (`--image`) and variable setup |
+| L22-29 | Validates `tests/fixtures/meter_snapshot.jpg` exists |
+| L34-41 | `cleanup()` trap — removes containers, network, temp dir |
+| L43-49 | Builds app Docker image via `docker build` |
+| L51-57 | Detects `/dev/dri/renderD128` for GPU acceleration |
+| L59-73 | Writes patched `config.yaml` to temp dir (stub URL, cyclic mode, HA disabled) |
+| L75-83 | Creates Docker network and starts nginx sidecar serving the stub JPEG |
+| L87-98 | Runs `python3 -m watermeter --one-shot --config /config/config.yaml` inside container |
+| L107-113 | Reports PASS/FAIL and exits with container exit code |
+
+---
 
 ### `benchmark_digits.py` (427 lines)
 | Line | Type | Name | Description |
@@ -765,6 +795,9 @@ logging:        # Logging (level, format, file)
 #### `tests/unit/test_arrow_regression.py` (431 lines)
 - `TestRegressionArrowDataset` L131, `TestStratifiedSplitRegression` L178, `TestRegressionPredict` L220, `TestRegressor` L259, `TestDetectTrainingMode` L321, `TestTrainingConfigValidation` L372, `TestValidateModelConfigContinuous` L407
 
+#### `tests/unit/test_cli.py` (14 lines)
+- `test_one_shot_flag_recognized` L6: subprocess test — verifies `--help` output includes `--one-shot` and `--config` flags, exit code 0
+
 #### `tests/unit/test_circular_error.py` (52 lines)
 - `TestCircularError` L5: shortest-path error on circular scale
 
@@ -801,6 +834,15 @@ logging:        # Logging (level, format, file)
 
 #### `tests/unit/test_model_manager.py` (271 lines)
 - `TestModelManagerValidation` L31, `TestModelManagerCRUD` L62, `TestModelManagerActivation` L132, `TestModelManagerHelpers` L229
+
+#### `tests/unit/test_oneshot.py` (465 lines)
+- `TestOneShotSuccess` L128: happy-path tests — returns 0, calls fetch/process/initialize with correct args
+- `TestOneShotConfigFailure` L208: missing or malformed YAML returns 1; inference service not called
+- `TestOneShotModelLoadFailure` L246: models_loaded=False returns 1; image fetch not attempted; initialize exception returns 1
+- `TestOneShotImageFetchFailure` L308: fetch_whole_image() returns None → exit 1; process_whole_image not called
+- `TestOneShotNoRois` L349: empty ROI dict returns 1; inference.predict not called
+- `TestOneShotPipelineConstruction` L392: ImagePipeline receives config dict as sole positional arg
+- `TestOneShotOutput` L421: multiple ROIs succeed; config_path accepted as string
 
 #### `tests/unit/test_mqtt_routes.py` (360 lines) -- NEW
 - `TestMqttGetConfig` L8: returns 200, returns sections, returns raw env tokens, correct broker value, 404 on missing config
