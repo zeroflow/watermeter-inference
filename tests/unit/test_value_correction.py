@@ -14,6 +14,8 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
+from watermeter.rate_tracker import RateTracker  # noqa: E402 (import after sys.modules hack)
+
 # ---------------------------------------------------------------------------
 # Load the REAL WatermeterService class (bypassing the conftest mock).
 # ---------------------------------------------------------------------------
@@ -85,7 +87,7 @@ def make_service(config=None):
     }
     svc.previous_value = None
     svc.last_update_time = None
-    svc.rate_history = []
+    svc._rate_tracker = RateTracker(max_size=25)
     svc.leak_warning = False
     return svc
 
@@ -167,7 +169,7 @@ class TestHelperMethods:
 
         # Build rate_history with 4 entries showing steady consumption
         base = now - timedelta(hours=4)
-        svc.rate_history = [
+        svc._rate_tracker._history = [
             (97.0, base),
             (98.0, base + timedelta(hours=1)),
             (99.0, base + timedelta(hours=2)),
@@ -378,7 +380,7 @@ class TestSignalScoring:
 
         # Rate history: ~1 m3/h over 4 hours
         base = now - timedelta(hours=4)
-        svc.rate_history = [
+        svc._rate_tracker._history = [
             (131.0, base),
             (132.0, base + timedelta(hours=1)),
             (133.0, base + timedelta(hours=2)),
@@ -526,7 +528,7 @@ class TestCorrectionEngine:
 
         # Rate history: ~1.33 m3/h
         base = now - timedelta(hours=4)
-        svc.rate_history = [
+        svc._rate_tracker._history = [
             (141.0, base),
             (142.33, base + timedelta(hours=1)),
             (143.66, base + timedelta(hours=2)),

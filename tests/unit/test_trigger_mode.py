@@ -31,9 +31,11 @@ for _name in ['watermeter_service', 'watermeter.watermeter_service']:
 
 from watermeter.watermeter_service import WatermeterService  # noqa: E402
 from watermeter.scheduling import SchedulingManager  # noqa: E402
+from watermeter.mqtt_publisher import MqttPublisher  # noqa: E402
 
 # Keep a reference to the real module (for patching module-level names like `mqtt`)
 _real_ws_module = sys.modules['watermeter.watermeter_service']
+_real_mqtt_publisher_module = sys.modules['watermeter.mqtt_publisher']
 
 # Restore the mocks so other test files still work
 for _name, _mock in _ws_mock_backup.items():
@@ -234,24 +236,27 @@ class TestCyclicLoop:
 class TestMqttSubscriptionConditional:
     """Tests that MQTT trigger subscription is conditional on trigger mode."""
 
-    def _make_service(self, trigger_mode):
-        service = MagicMock()
-        service.trigger_mode = trigger_mode
-        service.config = {
+    def _make_publisher(self, trigger_mode):
+        """Create a minimal MqttPublisher mock for on_connect testing."""
+        publisher = MagicMock()
+        publisher.trigger_mode = trigger_mode
+        publisher.config = {
             'mqtt': {
                 'trigger_topic': 'watermeter/status',
                 'reset_topic': 'watermeter/reset',
             },
         }
-        service.ha_publish_enabled = False
-        service.publish_discovery = MagicMock()
-        return service
+        # _confirmation_manager.get_config() returns disabled confirmation
+        publisher._confirmation_manager.get_config.return_value = {'enabled': False, 'response_topic': ''}
+        publisher.publish_discovery = MagicMock()
+        publisher.publish_training_stats = MagicMock()
+        return publisher
 
     def test_mqtt_mode_subscribes_to_trigger(self):
-        service = self._make_service('mqtt')
+        publisher = self._make_publisher('mqtt')
         client = MagicMock()
 
-        WatermeterService.on_mqtt_connect(service, client, None, None, 0, None)
+        MqttPublisher.on_connect(publisher, client, None, None, 0, None)
 
         subscribed_topics = [call[0][0] for call in client.subscribe.call_args_list]
         assert 'watermeter/status' in subscribed_topics
@@ -259,10 +264,10 @@ class TestMqttSubscriptionConditional:
         assert 'homeassistant/status' in subscribed_topics
 
     def test_cyclic_mode_skips_trigger_subscription(self):
-        service = self._make_service('cyclic')
+        publisher = self._make_publisher('cyclic')
         client = MagicMock()
 
-        WatermeterService.on_mqtt_connect(service, client, None, None, 0, None)
+        MqttPublisher.on_connect(publisher, client, None, None, 0, None)
 
         subscribed_topics = [call[0][0] for call in client.subscribe.call_args_list]
         assert 'watermeter/status' not in subscribed_topics
@@ -270,20 +275,20 @@ class TestMqttSubscriptionConditional:
         assert 'homeassistant/status' in subscribed_topics
 
     def test_both_mode_subscribes_to_trigger(self):
-        service = self._make_service('both')
+        publisher = self._make_publisher('both')
         client = MagicMock()
 
-        WatermeterService.on_mqtt_connect(service, client, None, None, 0, None)
+        MqttPublisher.on_connect(publisher, client, None, None, 0, None)
 
         subscribed_topics = [call[0][0] for call in client.subscribe.call_args_list]
         assert 'watermeter/status' in subscribed_topics
         assert 'watermeter/reset' in subscribed_topics
 
     def test_failed_connection_does_not_subscribe(self):
-        service = self._make_service('mqtt')
+        publisher = self._make_publisher('mqtt')
         client = MagicMock()
 
-        WatermeterService.on_mqtt_connect(service, client, None, None, 5, None)
+        MqttPublisher.on_connect(publisher, client, None, None, 5, None)
 
         client.subscribe.assert_not_called()
 
@@ -291,7 +296,14 @@ class TestMqttSubscriptionConditional:
 # ===== MQTT v2 API Tests =====
 
 class TestMqttV2Api:
-    """Tests for paho-mqtt v2 API compliance."""
+    """Tests for paho-mqtt v2 API compliance (methods now live in MqttPublisher)."""
+
+    def _make_publisher(self, mqtt_config):
+        """Create a minimal MqttPublisher mock for start() testing."""
+        publisher = MagicMock(spec=MqttPublisher)
+        publisher.config = {"mqtt": mqtt_config}
+        publisher.loop = None
+        return publisher
 
     def test_client_uses_callback_api_v2(self, mock_service):
         """Client should be constructed with CallbackAPIVersion.VERSION2."""
@@ -303,25 +315,23 @@ class TestMqttV2Api:
             VERSION1 = 1
             VERSION2 = 2
 
-        service = mock_service
-        service.config = {
-            "mqtt": {
-                "broker": "localhost",
-                "port": 1883,
-                "client_id": "test",
-                "keepalive": 60,
-                "trigger_topic": "watermeter/status",
-                "trigger_payload": "Flow finished",
-                "reset_topic": "watermeter/reset",
-            }
+        mqtt_config = {
+            "broker": "localhost",
+            "port": 1883,
+            "client_id": "test",
+            "keepalive": 60,
+            "trigger_topic": "watermeter/status",
+            "trigger_payload": "Flow finished",
+            "reset_topic": "watermeter/reset",
         }
+        publisher = self._make_publisher(mqtt_config)
 
         mock_mqtt = MagicMock()
         mock_mqtt.CallbackAPIVersion = CallbackAPIVersion
         mock_instance = MagicMock()
         mock_mqtt.Client.return_value = mock_instance
-        with patch.object(_real_ws_module, "mqtt", mock_mqtt):
-            WatermeterService.start_mqtt(service)
+        with patch.object(_real_mqtt_publisher_module, "mqtt", mock_mqtt):
+            MqttPublisher.start(publisher)
 
             mock_mqtt.Client.assert_called_once_with(
                 callback_api_version=CallbackAPIVersion.VERSION2,
@@ -330,85 +340,78 @@ class TestMqttV2Api:
 
     def test_auth_from_config(self, mock_service):
         """If username/password in config, call username_pw_set()."""
-        service = mock_service
-        service.config = {
-            "mqtt": {
-                "broker": "localhost",
-                "port": 1883,
-                "client_id": "test",
-                "keepalive": 60,
-                "trigger_topic": "watermeter/status",
-                "trigger_payload": "Flow finished",
-                "reset_topic": "watermeter/reset",
-                "username": "myuser",
-                "password": "mypass",
-            }
+        mqtt_config = {
+            "broker": "localhost",
+            "port": 1883,
+            "client_id": "test",
+            "keepalive": 60,
+            "trigger_topic": "watermeter/status",
+            "trigger_payload": "Flow finished",
+            "reset_topic": "watermeter/reset",
+            "username": "myuser",
+            "password": "mypass",
         }
+        publisher = self._make_publisher(mqtt_config)
 
         mock_mqtt = MagicMock()
         mock_instance = MagicMock()
         mock_mqtt.Client.return_value = mock_instance
-        with patch.object(_real_ws_module, "mqtt", mock_mqtt):
-            WatermeterService.start_mqtt(service)
+        with patch.object(_real_mqtt_publisher_module, "mqtt", mock_mqtt):
+            MqttPublisher.start(publisher)
 
             mock_instance.username_pw_set.assert_called_once_with("myuser", "mypass")
 
     def test_auth_from_env_overrides_config(self, mock_service):
         """Env vars MQTT_USERNAME/MQTT_PASSWORD override config values."""
-        service = mock_service
-        service.config = {
-            "mqtt": {
-                "broker": "localhost",
-                "port": 1883,
-                "client_id": "test",
-                "keepalive": 60,
-                "trigger_topic": "watermeter/status",
-                "trigger_payload": "Flow finished",
-                "reset_topic": "watermeter/reset",
-                "username": "config_user",
-                "password": "config_pass",
-            }
+        mqtt_config = {
+            "broker": "localhost",
+            "port": 1883,
+            "client_id": "test",
+            "keepalive": 60,
+            "trigger_topic": "watermeter/status",
+            "trigger_payload": "Flow finished",
+            "reset_topic": "watermeter/reset",
+            "username": "config_user",
+            "password": "config_pass",
         }
+        publisher = self._make_publisher(mqtt_config)
 
         mock_mqtt = MagicMock()
         mock_instance = MagicMock()
         mock_mqtt.Client.return_value = mock_instance
-        with patch.object(_real_ws_module, "mqtt", mock_mqtt), \
+        with patch.object(_real_mqtt_publisher_module, "mqtt", mock_mqtt), \
              patch.dict("os.environ", {"MQTT_USERNAME": "env_user", "MQTT_PASSWORD": "env_pass"}):
-            WatermeterService.start_mqtt(service)
+            MqttPublisher.start(publisher)
 
             mock_instance.username_pw_set.assert_called_once_with("env_user", "env_pass")
 
     def test_no_auth_when_not_configured(self, mock_service):
         """No username_pw_set() call when auth not configured."""
-        service = mock_service
-        service.config = {
-            "mqtt": {
-                "broker": "localhost",
-                "port": 1883,
-                "client_id": "test",
-                "keepalive": 60,
-                "trigger_topic": "watermeter/status",
-                "trigger_payload": "Flow finished",
-                "reset_topic": "watermeter/reset",
-            }
+        mqtt_config = {
+            "broker": "localhost",
+            "port": 1883,
+            "client_id": "test",
+            "keepalive": 60,
+            "trigger_topic": "watermeter/status",
+            "trigger_payload": "Flow finished",
+            "reset_topic": "watermeter/reset",
         }
+        publisher = self._make_publisher(mqtt_config)
 
         mock_mqtt = MagicMock()
         mock_instance = MagicMock()
         mock_mqtt.Client.return_value = mock_instance
-        with patch.object(_real_ws_module, "mqtt", mock_mqtt):
-            WatermeterService.start_mqtt(service)
+        with patch.object(_real_mqtt_publisher_module, "mqtt", mock_mqtt):
+            MqttPublisher.start(publisher)
 
             mock_instance.username_pw_set.assert_not_called()
 
     def test_on_disconnect_exists_with_v2_signature(self, mock_service):
-        """on_mqtt_disconnect should exist and accept v2 signature (5 params + self)."""
-        service = mock_service
-        assert hasattr(WatermeterService, "on_mqtt_disconnect"), "on_mqtt_disconnect method missing"
+        """on_disconnect on MqttPublisher should accept v2 signature (5 params + self)."""
+        assert hasattr(MqttPublisher, "on_disconnect"), "on_disconnect method missing on MqttPublisher"
 
         import inspect
-        sig = inspect.signature(WatermeterService.on_mqtt_disconnect)
+        sig = inspect.signature(MqttPublisher.on_disconnect)
         assert len(sig.parameters) == 6, f"Expected 6 params, got {len(sig.parameters)}: {list(sig.parameters)}"
 
         # Verify parameter names match v2 API

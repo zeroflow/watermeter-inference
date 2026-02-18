@@ -19,7 +19,6 @@ import cv2
 import numpy as np
 import httpx
 import yaml
-import paho.mqtt.client as mqtt
 from .inference import get_inference_service
 from .persistence import StateStore
 from .image_pipeline import ImagePipeline
@@ -37,210 +36,6 @@ from .mqtt_publisher import MqttPublisher
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-
-# ---------------------------------------------------------------------------
-# Home Assistant MQTT Discovery — Entity Registry
-# ---------------------------------------------------------------------------
-# Each dict describes one HA entity that belongs to the "watermeter_ai" device.
-# `publish_discovery()` iterates over this list to emit discovery messages.
-#
-# Keys:
-#   object_id          – used in discovery topic and as the JSON payload key
-#   name               – friendly name shown in HA
-#   component          – "sensor" or "binary_sensor"
-#   icon               – MDI icon string
-#   device_class       – (optional) HA device class
-#   state_class        – (optional) HA state class
-#   unit_of_measurement – (optional)
-#   entity_category    – (optional) "diagnostic" or "config"
-#   state_topic_key    – "main" (default) or "training_stats"
-#   options            – (optional) list of enum options (for enum sensors)
-# ---------------------------------------------------------------------------
-_HA_ENTITIES = [
-    # ── Primary entities (published every reading) ─────────────────────────
-    {
-        "object_id": "water_usage",
-        "name": "Water Usage",
-        "component": "sensor",
-        "icon": "mdi:water",
-        "device_class": "water",
-        "state_class": "total_increasing",
-        "unit_of_measurement": "m\u00b3",
-    },
-    {
-        "object_id": "water_usage_raw",
-        "name": "Water Usage Raw",
-        "component": "sensor",
-        "icon": "mdi:water-outline",
-        "device_class": "water",
-        "state_class": "total",
-        "unit_of_measurement": "m\u00b3",
-    },
-    {
-        "object_id": "leak_warning",
-        "name": "Leak Warning",
-        "component": "binary_sensor",
-        "icon": "mdi:water-alert",
-        "device_class": "moisture",
-    },
-    # ── Diagnostic entities ────────────────────────────────────────────────
-    {
-        "object_id": "min_confidence",
-        "name": "Minimum Confidence",
-        "component": "sensor",
-        "icon": "mdi:percent-circle",
-        "state_class": "measurement",
-        "unit_of_measurement": "%",
-        "entity_category": "diagnostic",
-    },
-    {
-        "object_id": "status",
-        "name": "Status",
-        "component": "sensor",
-        "icon": "mdi:information-outline",
-        "entity_category": "diagnostic",
-        "device_class": "enum",
-        "options": ["idle", "ok", "warning", "error", "no_models", "pending_confirmation", "processing", "timeout", "rejected"],
-    },
-    {
-        "object_id": "consecutive_rejections",
-        "name": "Consecutive Rejections",
-        "component": "sensor",
-        "icon": "mdi:close-octagon-outline",
-        "state_class": "measurement",
-        "entity_category": "diagnostic",
-    },
-    {
-        "object_id": "unlabeled_digits",
-        "name": "Unlabeled Images (Digits)",
-        "component": "sensor",
-        "icon": "mdi:image-edit-outline",
-        "state_class": "measurement",
-        "unit_of_measurement": "images",
-        "entity_category": "diagnostic",
-        "state_topic_key": "training_stats",
-    },
-    {
-        "object_id": "unlabeled_arrows",
-        "name": "Unlabeled Images (Arrows)",
-        "component": "sensor",
-        "icon": "mdi:image-edit-outline",
-        "state_class": "measurement",
-        "unit_of_measurement": "images",
-        "entity_category": "diagnostic",
-        "state_topic_key": "training_stats",
-    },
-    {
-        "object_id": "training_digits",
-        "name": "Training Images (Digits)",
-        "component": "sensor",
-        "icon": "mdi:image-check",
-        "state_class": "total_increasing",
-        "unit_of_measurement": "images",
-        "entity_category": "diagnostic",
-        "state_topic_key": "training_stats",
-    },
-    {
-        "object_id": "training_arrows",
-        "name": "Training Images (Arrows)",
-        "component": "sensor",
-        "icon": "mdi:image-check",
-        "state_class": "total_increasing",
-        "unit_of_measurement": "images",
-        "entity_category": "diagnostic",
-        "state_topic_key": "training_stats",
-    },
-    {
-        "object_id": "last_rejected_value",
-        "name": "Last Rejected Value",
-        "component": "sensor",
-        "icon": "mdi:water-remove",
-        "device_class": "water",
-        "unit_of_measurement": "m\u00b3",
-        "entity_category": "diagnostic",
-    },
-    {
-        "object_id": "last_rejected_reason",
-        "name": "Last Rejected Reason",
-        "component": "sensor",
-        "icon": "mdi:alert-circle-outline",
-        "entity_category": "diagnostic",
-    },
-    {
-        "object_id": "average_rate",
-        "name": "Average Rate",
-        "component": "sensor",
-        "icon": "mdi:speedometer",
-        "state_class": "measurement",
-        "unit_of_measurement": "m\u00b3/h",
-        "entity_category": "diagnostic",
-    },
-    {
-        "object_id": "last_update",
-        "name": "Last Update",
-        "component": "sensor",
-        "icon": "mdi:clock-outline",
-        "device_class": "timestamp",
-        "entity_category": "diagnostic",
-    },
-    {
-        "object_id": "mqtt_connected",
-        "name": "MQTT Connected",
-        "component": "binary_sensor",
-        "device_class": "connectivity",
-        "entity_category": "diagnostic",
-    },
-    {
-        "object_id": "processing",
-        "name": "Processing",
-        "component": "binary_sensor",
-        "device_class": "running",
-        "entity_category": "diagnostic",
-    },
-    {
-        "object_id": "confirmation_pending",
-        "name": "Confirmation Pending",
-        "component": "binary_sensor",
-        "icon": "mdi:human-greeting-proximity",
-        "entity_category": "diagnostic",
-    },
-    # ── Timing entities (values populated in WP2) ─────────────────────────
-    {
-        "object_id": "inference_duration",
-        "name": "Inference Duration",
-        "component": "sensor",
-        "icon": "mdi:timer-outline",
-        "device_class": "duration",
-        "state_class": "measurement",
-        "unit_of_measurement": "ms",
-        "entity_category": "diagnostic",
-    },
-    {
-        "object_id": "processing_duration",
-        "name": "Processing Duration",
-        "component": "sensor",
-        "icon": "mdi:timer",
-        "device_class": "duration",
-        "state_class": "measurement",
-        "unit_of_measurement": "s",
-        "entity_category": "diagnostic",
-    },
-    # ── Config entities ────────────────────────────────────────────────────
-    {
-        "object_id": "active_digits_model",
-        "name": "Active Digits Model",
-        "component": "sensor",
-        "icon": "mdi:brain",
-        "entity_category": "config",
-    },
-    {
-        "object_id": "active_arrows_model",
-        "name": "Active Arrows Model",
-        "component": "sensor",
-        "icon": "mdi:brain",
-        "entity_category": "config",
-    },
-]
 
 
 class WatermeterService:
@@ -320,12 +115,6 @@ class WatermeterService:
         # Async lock for processing
         self.processing_lock = asyncio.Lock()
 
-        # Event loop reference for MQTT callbacks
-        self.loop = None
-
-        # MQTT client
-        self.mqtt_client = None
-
         # Image pipeline (fetching, rotation, alignment, ROI extraction)
         self._image_pipeline = ImagePipeline(self.config)
 
@@ -344,44 +133,122 @@ class WatermeterService:
             state_store=self.state_store,
         )
 
+        # MQTT publisher (owns mqtt_client, loop, HA discovery)
+        self._mqtt = MqttPublisher(
+            config=self.config,
+            meter_state=self._state,
+            rate_tracker=self._rate_tracker,
+            confirmation_manager=self._confirmation_manager,
+            on_trigger=lambda: asyncio.run_coroutine_threadsafe(
+                self.process_reading(), self._mqtt.loop
+            ) if self._mqtt.loop else None,
+            on_reset=self.reset_previous_value,
+            logger=logger,
+        )
+
         # Timing instrumentation (populated by process_reading, published via MQTT)
         self._last_inference_duration_ms: Optional[int] = None
         self._last_processing_duration_s: Optional[float] = None
 
         logger.info(f"WatermeterService initialized (trigger_mode={self.trigger_mode})")
 
-    # ── Rate tracker backward-compatible properties ─────────────────────────
-    # These properties keep existing code (confirmation handlers, tests that
-    # set service.rate_history directly) working during the migration.
-    # Phase 3 will remove these when confirmation is extracted.
+    # ── MQTT delegation properties ──────────────────────────────────────────
+
+    def _ensure_mqtt_stub(self):
+        """Lazily create a minimal namespace for mqtt_client/loop when _mqtt is absent.
+
+        Tests that use object.__new__() bypass __init__ so _mqtt is never set.
+        This stub lets mqtt_client and loop setters/getters work without a full
+        MqttPublisher instance.
+        """
+        if not hasattr(self, '_mqtt'):
+            class _MqttStub:
+                mqtt_client = None
+                loop = None
+            object.__setattr__(self, '_mqtt', _MqttStub())
 
     @property
-    def rate_history(self) -> list:
+    def mqtt_client(self):
+        return self._mqtt.mqtt_client if hasattr(self, '_mqtt') else None
+
+    @mqtt_client.setter
+    def mqtt_client(self, value):
+        self._ensure_mqtt_stub()
+        self._mqtt.mqtt_client = value
+
+    @property
+    def loop(self):
+        return self._mqtt.loop if hasattr(self, '_mqtt') else None
+
+    @loop.setter
+    def loop(self, value):
+        self._ensure_mqtt_stub()
+        self._mqtt.loop = value
+
+    # ── rate_history backward-compat property ───────────────────────────────
+
+    @property
+    def rate_history(self):
+        """Backward-compat view of _rate_tracker._history (mutable list)."""
         if not hasattr(self, '_rate_tracker'):
-            return []
+            from .rate_tracker import RateTracker
+            object.__setattr__(self, '_rate_tracker', RateTracker(max_size=5))
         return self._rate_tracker._history
 
     @rate_history.setter
-    def rate_history(self, value: list) -> None:
-        if not hasattr(self, '_rate_tracker'):
-            # For tests that use object.__new__ and set rate_history directly
-            from .rate_tracker import RateTracker
-            self._rate_tracker = RateTracker(max_size=5)
-        self._rate_tracker._history = value
-
-    @property
-    def rate_history_size(self) -> int:
-        if not hasattr(self, '_rate_tracker'):
-            return 5
-        return self._rate_tracker.max_size
-
-    @rate_history_size.setter
-    def rate_history_size(self, value: int) -> None:
+    def rate_history(self, value):
+        """Allow tests to assign a list directly to rate_history."""
         if not hasattr(self, '_rate_tracker'):
             from .rate_tracker import RateTracker
-            self._rate_tracker = RateTracker(max_size=value)
-        else:
-            self._rate_tracker.max_size = value
+            object.__setattr__(self, '_rate_tracker', RateTracker(max_size=5))
+        self._rate_tracker._history = list(value)
+
+    # ── MQTT message/connect delegation ─────────────────────────────────────
+
+    def on_mqtt_connect(self, client, userdata, connect_flags, reason_code, properties):
+        """Handle MQTT connect: subscribe to topics.
+
+        Delegates to MqttPublisher when available; falls back to inline logic
+        so that tests that bypass __init__ (no _mqtt) still work.
+        """
+        if hasattr(self, '_mqtt') and hasattr(self._mqtt, 'on_connect'):
+            self._mqtt.on_connect(client, userdata, connect_flags, reason_code, properties)
+            return
+
+        # Inline fallback for tests using object.__new__()
+        if reason_code != 0:
+            return
+        mqtt_config = self.config.get("mqtt", {})
+        trigger_mode = getattr(self, 'trigger_mode', 'mqtt')
+        if trigger_mode in ("mqtt", "both"):
+            trigger_topic = mqtt_config.get("trigger_topic")
+            if trigger_topic:
+                client.subscribe(trigger_topic, qos=2)
+        reset_topic = mqtt_config.get("reset_topic")
+        if reset_topic:
+            client.subscribe(reset_topic, qos=2)
+        client.subscribe("homeassistant/status", qos=1)
+        conf_config = self._ensure_confirmation_manager().get_config()
+        if conf_config.get("enabled"):
+            client.subscribe(conf_config["response_topic"], qos=2)
+
+    def on_mqtt_message(self, client, userdata, msg):
+        """Handle an incoming MQTT message.
+
+        Delegates to MqttPublisher when available; falls back to inline logic
+        so that tests that bypass __init__ (no _mqtt) still work.
+        """
+        if hasattr(self, '_mqtt') and hasattr(self._mqtt, 'on_message'):
+            self._mqtt.on_message(client, userdata, msg)
+            return
+
+        # Inline fallback for tests using object.__new__()
+        mqtt_config = self.config.get("mqtt", {})
+        topic = msg.topic
+        payload = msg.payload.decode("utf-8") if isinstance(msg.payload, bytes) else msg.payload
+        conf_config = self._ensure_confirmation_manager().get_config()
+        if conf_config.get("enabled") and topic == conf_config.get("response_topic"):
+            self._handle_confirmation_response(payload)
 
     # ── Image pipeline delegation ──────────────────────────────────────────
     # These methods delegate to ImagePipeline. Config is synced before each
@@ -1496,185 +1363,15 @@ class WatermeterService:
         """Cancel the periodic training stats background task."""
         return self._scheduler.stop_stats_loop()
 
+    # ── MQTT delegation methods ─────────────────────────────────────────────
+
     def publish_discovery(self) -> None:
-        """Publish Home Assistant MQTT Discovery messages for all entities.
-
-        Iterates over the module-level ``_HA_ENTITIES`` registry and publishes
-        one discovery config per entity.  All entities share the same ``device``
-        block so Home Assistant groups them into a single device.
-        """
-        if not self.mqtt_client or not self.mqtt_client.is_connected():
-            logger.warning("MQTT client not connected - skipping discovery")
-            return
-
-        if not self.ha_publish_enabled:
-            logger.warning("Home Assistant publishing not enabled - skipping discovery")
-            return
-
-        ha_config = self.config["homeassistant"]
-        discovery_prefix = ha_config["discovery_prefix"]
-        main_state_topic = ha_config["publish_topic"]
-        training_stats_topic = f"{main_state_topic}/training_stats"
-
-        # Shared device block — identical in every discovery message
-        device_block = {
-            "identifiers": ["watermeter_ai"],
-            "name": ha_config["device"]["name"],
-            "manufacturer": ha_config["device"]["manufacturer"],
-            "model": ha_config["device"]["model"],
-        }
-
-        for entity in _HA_ENTITIES:
-            component = entity["component"]
-            object_id = entity["object_id"]
-
-            # Determine state topic
-            topic_key = entity.get("state_topic_key", "main")
-            state_topic = training_stats_topic if topic_key == "training_stats" else main_state_topic
-
-            # Build discovery payload
-            payload: Dict = {
-                "name": entity["name"],
-                "unique_id": f"watermeter_ai_{object_id}",
-                "state_topic": state_topic,
-                "value_template": "{{ value_json." + object_id + " }}",
-                "device": device_block,
-            }
-
-            # Optional fields
-            for key in ("device_class", "state_class", "unit_of_measurement",
-                        "icon", "entity_category", "options"):
-                if key in entity:
-                    payload[key] = entity[key]
-
-            # Binary sensor specifics
-            if component == "binary_sensor":
-                payload["payload_on"] = True
-                payload["payload_off"] = False
-
-            # Discovery topic: {prefix}/{component}/watermeter_ai/{object_id}/config
-            discovery_topic = f"{discovery_prefix}/{component}/watermeter_ai/{object_id}/config"
-            self.mqtt_client.publish(discovery_topic, json.dumps(payload), qos=1, retain=True)
-
-        logger.info(f"Published MQTT Discovery for {len(_HA_ENTITIES)} entities")
-
-    # MQTT Callbacks
-    def on_mqtt_connect(self, client, userdata, connect_flags, reason_code, properties):
-        """MQTT connect callback (paho v2 API)."""
-        if reason_code == 0:
-            logger.info("Connected to MQTT broker")
-            mqtt_config = self.config["mqtt"]
-
-            # Subscribe to trigger topic only in mqtt/both mode
-            if self.trigger_mode in ("mqtt", "both"):
-                client.subscribe(mqtt_config["trigger_topic"], qos=2)
-                logger.info(f"Subscribed to {mqtt_config['trigger_topic']}")
-            else:
-                logger.info("Cyclic-only mode — skipping trigger topic subscription")
-
-            # Always subscribe to reset and HA status
-            client.subscribe(mqtt_config["reset_topic"], qos=2)
-            client.subscribe("homeassistant/status", qos=1)
-            logger.info(f"Subscribed to {mqtt_config['reset_topic']}")
-            logger.info("Subscribed to homeassistant/status")
-
-            # Subscribe to confirmation response topic if enabled (BL-07)
-            conf_config = self._get_confirmation_config()
-            if conf_config["enabled"]:
-                client.subscribe(conf_config["response_topic"], qos=2)
-                logger.info(f"Subscribed to {conf_config['response_topic']}")
-
-            # Publish discovery on connect, then send initial training stats
-            self.publish_discovery()
-            self.publish_training_stats()
-        else:
-            logger.error(f"MQTT connection failed: {reason_code}")
-
-    def on_mqtt_disconnect(self, client, userdata, disconnect_flags, reason_code, properties):
-        """MQTT disconnect callback (paho v2 API)."""
-        if reason_code == 0:
-            logger.info("Disconnected from MQTT broker (clean)")
-        else:
-            logger.warning(f"Disconnected from MQTT broker: {reason_code} — will reconnect automatically")
-
-    def on_mqtt_message(self, client, userdata, msg):
-        """MQTT message callback."""
-        mqtt_config = self.config["mqtt"]
-        topic = msg.topic
-        payload = msg.payload.decode("utf-8")
-
-        logger.info(f"MQTT message: {topic} = {payload}")
-
-        if topic == mqtt_config["trigger_topic"]:
-            if payload == mqtt_config["trigger_payload"]:
-                logger.info("Trigger received - starting processing")
-                # Start processing in background from MQTT thread
-                if self.loop:
-                    asyncio.run_coroutine_threadsafe(self.process_reading(), self.loop)
-                else:
-                    logger.error("Event loop not available - cannot process reading")
-
-        elif topic == mqtt_config["reset_topic"]:
-            # Route through event loop to avoid mutating shared state from MQTT thread
-            if self.loop:
-                self.loop.call_soon_threadsafe(self.reset_previous_value)
-            else:
-                self.reset_previous_value()
-
-        elif topic == self._get_confirmation_config()["response_topic"]:
-            # Route through event loop to keep state mutations on the main thread
-            if self.loop:
-                self.loop.call_soon_threadsafe(self._handle_confirmation_response, payload)
-            else:
-                self._handle_confirmation_response(payload)
-
-        elif topic == "homeassistant/status":
-            if payload == "online":
-                logger.info("Home Assistant came online - republishing discovery")
-                self.publish_discovery()
+        """Delegate to MqttPublisher."""
+        self._mqtt.publish_discovery()
 
     def start_mqtt(self):
-        """Initialize and start MQTT client.
-
-        Connects to the MQTT broker. If the broker is unreachable the app
-        continues without MQTT — paho's background loop will keep retrying.
-        """
-        # Capture the event loop for MQTT callbacks
-        try:
-            self.loop = asyncio.get_running_loop()
-            logger.info("Event loop captured for MQTT callbacks")
-        except RuntimeError:
-            logger.warning("No running event loop - MQTT triggers may not work")
-
-        mqtt_config = self.config["mqtt"]
-
-        self.mqtt_client = mqtt.Client(
-            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
-            client_id=mqtt_config["client_id"],
-        )
-
-        # MQTT authentication: env vars override config
-        username = os.environ.get("MQTT_USERNAME") or mqtt_config.get("username")
-        password = os.environ.get("MQTT_PASSWORD") or mqtt_config.get("password")
-        if username:
-            self.mqtt_client.username_pw_set(username, password)
-            logger.info("MQTT authentication configured")
-
-        self.mqtt_client.on_connect = self.on_mqtt_connect
-        self.mqtt_client.on_message = self.on_mqtt_message
-        self.mqtt_client.on_disconnect = self.on_mqtt_disconnect
-
-        logger.info(f"Connecting to MQTT broker {mqtt_config['broker']}:{mqtt_config['port']}")
-        try:
-            self.mqtt_client.connect(mqtt_config["broker"], mqtt_config["port"], mqtt_config["keepalive"])
-        except (OSError, ConnectionRefusedError) as exc:
-            logger.warning(
-                f"MQTT broker not reachable ({exc}). " f"App continues without MQTT — will reconnect automatically."
-            )
-
-        # Start loop in background thread (handles reconnect automatically)
-        self.mqtt_client.loop_start()
-        logger.info("MQTT client started")
+        """Delegate to MqttPublisher."""
+        self._mqtt.start()
 
     def reload_config(self, new_config: dict) -> dict:
         """Hot-reload config into the running service.
@@ -1722,6 +1419,10 @@ class WatermeterService:
         # Sync cyclic interval to scheduler
         self._scheduler.cyclic_interval = self.cyclic_interval
 
+        # Sync config to confirmation manager and MQTT publisher
+        self._confirmation_manager.config = new_config
+        self._mqtt.config = new_config
+
         # Reconnect MQTT if connection params changed
         if mqtt_changed and self.mqtt_client:
             logger.info("MQTT config changed — reconnecting")
@@ -1732,11 +1433,8 @@ class WatermeterService:
         return {"config_updated": True, "mqtt_reconnected": mqtt_changed}
 
     def stop_mqtt(self):
-        """Stop MQTT client."""
-        if self.mqtt_client:
-            self.mqtt_client.loop_stop()
-            self.mqtt_client.disconnect()
-            logger.info("MQTT client stopped")
+        """Delegate to MqttPublisher."""
+        self._mqtt.stop()
 
     async def _cyclic_loop(self):
         """Periodically trigger process_reading at the configured interval."""
