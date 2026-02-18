@@ -1156,6 +1156,12 @@ class WatermeterService:
                 self.current_state["warnings"] = ["No inference models loaded. Train or import models via the Training page."]
                 return self.current_state
 
+            # If no digit ROIs are configured, skip processing (fresh install)
+            digit_rois = self.config.get("detection", {}).get("digits", {}).get("rois", [])
+            if not digit_rois:
+                logger.info("Skipping reading -- no digit ROIs configured yet")
+                return self.current_state
+
             t_start = time.monotonic()
             try:
                 self.current_state["processing"] = True
