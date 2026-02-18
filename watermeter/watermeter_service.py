@@ -29,6 +29,7 @@ from .scheduling import SchedulingManager
 from .rate_tracker import RateTracker
 from .leak_detector import LeakDetector
 from .plausibility import PlausibilityChecker
+from .meter_state import MeterState
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -266,38 +267,21 @@ class WatermeterService:
             file_handler.setFormatter(logging.Formatter(log_format))
             logging.getLogger().addHandler(file_handler)
 
-        # State management
-        self.previous_value: Optional[float] = None
-        self.last_update_time: Optional[datetime] = None
-        self.ha_publish_enabled: bool = self.config["homeassistant"]["enabled"]
-        self.current_state: Dict = {
-            "total_value": None,
-            "unit": "m³",
-            "last_update": None,
-            "status": "idle",
-            "warnings": [],
-            "predictions": [],
-            "processing": False,
-            "ha_publish_enabled": self.ha_publish_enabled,
-            "leak_warning": False,
-            "last_published_value": None,
-            "last_published_timestamp": None,
-            "last_rejected_value": None,
-            "last_rejected_timestamp": None,
-            "last_rejected_reasons": [],
-        }
+        # State management — grouped in MeterState data container
+        ha_enabled: bool = self.config["homeassistant"]["enabled"]
+        self._state = MeterState(ha_publish_enabled=ha_enabled)
 
         # Persistence
         persistence_config = self.config.get("persistence", {})
         if persistence_config.get("enabled", False):
             self.state_store = StateStore(persistence_config["state_file"])
             # Load previous state
-            self.previous_value, self.last_update_time = self.state_store.load()
+            self._state.previous_value, self._state.last_update_time = self.state_store.load()
             # Populate last_published from persisted state (BL-14)
-            if self.previous_value is not None:
-                self.current_state["last_published_value"] = self.previous_value
-                self.current_state["last_published_timestamp"] = (
-                    self.last_update_time.strftime("%H:%M") if self.last_update_time else None
+            if self._state.previous_value is not None:
+                self._state.current_state["last_published_value"] = self._state.previous_value
+                self._state.current_state["last_published_timestamp"] = (
+                    self._state.last_update_time.strftime("%H:%M") if self._state.last_update_time else None
                 )
         else:
             self.state_store = None
@@ -323,12 +307,8 @@ class WatermeterService:
             rate_tracker=self._rate_tracker,
         )
 
-        # Consecutive rejection tracking for stuck state detection
-        self.consecutive_rejections = 0
-        self.max_consecutive_rejections = 5  # Warn user after this many rejections
-
-        # Leak detection state
-        self.leak_warning: bool = False
+        # consecutive_rejections, max_consecutive_rejections, and leak_warning
+        # are stored in self._state (MeterState); see @property forwarding below.
 
         # Trigger mode
         trigger_config = self.config.get("trigger", {})
