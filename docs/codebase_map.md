@@ -171,12 +171,59 @@
 
 ---
 
-### `watermeter/watermeter_service.py` (1918 lines) -- Main service orchestration
+### `watermeter/meter_state.py` (52 lines) -- Pure data container for service state
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 13 | class | `MeterState` | Pure data container holding per-reading state for the meter service |
+| 16 | func | `__init__(ha_publish_enabled)` | Initialize all state fields: previous_value, last_update_time, counters, current_state dict |
+| 40 | func | `reset()` | Clear published/rejected tracking fields and reset counters |
+
+---
+
+### `watermeter/confirmation.py` (415 lines) -- User confirmation flow (BL-07)
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 20 | class | `ConfirmationManager` | Manages user-confirmation state for uncertain meter readings |
+| 31 | func | `__init__(config, rate_tracker, meter_state, state_store, logger)` | Initialize with dependencies; no MQTT or event loop stored |
+| 50 | func | `get_config()` | Return confirmation config section with defaults applied |
+| 66 | func | `should_request(total_value, warnings, predictions)` | Decide if reading needs confirmation; returns reason string or None |
+| 117 | func | `publish_request(total_value, warnings, predictions, reason, mqtt_client, loop)` | Publish MQTT confirmation request and start timeout timer |
+| 187 | func | `cancel_timer()` | Cancel the running confirmation timeout timer if any |
+| 193 | func | `_timeout_sync(loop)` | Timer thread callback; routes to event loop for thread safety |
+| 200 | func | `_do_timeout(loop)` | Process confirmation timeout; reverts state, pops rate history |
+| 252 | func | `handle_response(payload, loop, publish_fn)` | Handle confirm/reject/correct response from MQTT |
+| 380 | func | `get_status()` | Return pending confirmation details for /api/confirmation/status |
+| 404 | func | `_compute_raw_total(raw_values)` | Static helper: compute unrounded total from raw digit/arrow values |
+
+---
+
+### `watermeter/mqtt_publisher.py` (579 lines) -- MQTT client and HA integration
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 40 | var | `_HA_ENTITIES` | Registry of 20 HA MQTT Discovery entity descriptors (sensors, binary_sensors) |
+| 227 | class | `MqttPublisher` | Manages paho MQTT client, HA discovery, publish/callback logic |
+| 244 | func | `__init__(config, meter_state, rate_tracker, confirmation_manager, on_trigger, on_reset, ...)` | Initialize with dependencies and optional callback overrides |
+| 271 | prop | `trigger_mode` | Trigger mode string from config |
+| 278 | func | `publish_to_mqtt(value, warnings, predictions, *, leak_warning, raw_value)` | Async: publish full-state JSON payload to shared HA state topic |
+| 345 | func | `publish_training_stats()` | Publish training data statistics to HA (slow cadence) |
+| 385 | func | `publish_discovery()` | Emit HA MQTT Discovery messages for all 20 entities |
+| 444 | func | `on_connect(client, userdata, connect_flags, reason_code, properties)` | paho v2 connect callback; subscribes to topics, publishes discovery |
+| 475 | func | `on_disconnect(client, userdata, disconnect_flags, reason_code, properties)` | paho v2 disconnect callback |
+| 482 | func | `on_message(client, userdata, msg)` | Route trigger/reset/confirmation/HA-status MQTT messages |
+| 529 | func | `start()` | Initialize paho client, configure auth, connect, start background loop |
+| 573 | func | `stop()` | Stop MQTT background loop and disconnect client |
+
+---
+
+### `watermeter/watermeter_service.py` (1461 lines) -- Main service orchestration
 
 | Line | Type | Name | Description |
 |------|------|------|-------------|
 | 243 | class | `WatermeterService` | Main service orchestrating all subsystems |
-| 246 | func | `__init__(config_path)` | Loads config, delegates to component classes |
+| 246 | func | `__init__(config_path)` | Loads config, delegates to component classes (MeterState, MqttPublisher, ConfirmationManager, etc.) |
 | 405 | func | `fetch_images()` | Delegates to ImagePipeline |
 | 410 | func | `fetch_whole_image()` | Delegates to ImagePipeline |
 | 415 | func | `process_whole_image(img_bytes)` | Delegates to ImagePipeline |
@@ -186,34 +233,24 @@
 | 548 | func | `check_consistency(predictions)` | Delegates to PlausibilityChecker |
 | 552 | func | `validate_plausibility(total, ...)` | Delegates to PlausibilityChecker |
 | 560 | func | `_check_sustained_consumption()` | Delegates to LeakDetector |
-| 566 | func | `_get_confirmation_config()` | Read confirmation section from config |
-| 580 | func | `_should_request_confirmation()` | Determine if confirmation request is needed |
-| 621 | func | `_publish_confirmation_request()` | Publish MQTT confirmation request message |
-| 674 | func | `_cancel_confirmation_timer()` | Cancel pending confirmation timeout timer |
-| 680 | func | `_confirmation_timeout()` | Synchronous timeout wrapper |
-| 687 | func | `_do_confirmation_timeout()` | Handle confirmation timeout logic |
-| 728 | func | `_handle_confirmation_response(payload)` | Process MQTT confirmation response |
-| 832 | func | `get_confirmation_status()` | Return current confirmation state dict |
-| 857 | func | `_get_ordered_position_ids()` | Get digit/arrow IDs in display order |
-| 862 | func | `_estimate_expected_range()` | Estimate expected value range from history |
-| 881 | func | `_recalculate_with_replacement()` | Recalculate total substituting corrected prediction |
-| 912 | func | `_check_consistency_improvement()` | Check if correction improves consistency |
-| 963 | func | `_check_cross_arrow_consistency()` | Validate cross-arrow consistency constraints |
-| 1017 | func | `correct_predictions(predictions, ...)` | BL-04: auto-correct low-confidence predictions |
-| 1127 | func | `save_low_confidence(predictions, images)` | Delegates to LowConfidenceCapture |
-| 1133 | func | `process_reading()` | Main pipeline: fetch, infer, validate, correct, publish |
-| 1418 | func | `publish_to_mqtt(status)` | Publish reading result to MQTT topics |
-| 1491 | func | `reset_previous_value()` | Clear previous value from state |
-| 1516 | func | `set_manual_value(value)` | Override meter value manually |
-| 1585 | func | `toggle_ha_publish()` | Toggle HA MQTT publishing flag |
-| 1648 | func | `publish_discovery()` | Emit Home Assistant MQTT discovery messages |
-| 1711 | func | `on_mqtt_connect()` | MQTT connect callback; subscribes to topics |
-| 1742 | func | `on_mqtt_disconnect(...)` | MQTT disconnect callback |
-| 1749 | func | `on_mqtt_message()` | Route incoming MQTT messages |
-| 1785 | func | `start_mqtt()` | Initialize and start MQTT client |
-| 1828 | func | `reload_config(new_config)` | Hot-reload config; reconnect MQTT if needed |
-| 1883 | func | `stop_mqtt()` | Disconnect and stop MQTT client |
-| 1907 | func | `get_service()` | Singleton accessor |
+| 566 | func | `get_confirmation_status()` | Delegation wrapper → ConfirmationManager.get_status() |
+| 572 | func | `_get_ordered_position_ids()` | Get digit/arrow IDs in display order |
+| 577 | func | `_estimate_expected_range()` | Estimate expected value range from history |
+| 596 | func | `_recalculate_with_replacement()` | Recalculate total substituting corrected prediction |
+| 627 | func | `_check_consistency_improvement()` | Check if correction improves consistency |
+| 678 | func | `_check_cross_arrow_consistency()` | Validate cross-arrow consistency constraints |
+| 732 | func | `correct_predictions(predictions, ...)` | BL-04: auto-correct low-confidence predictions |
+| 842 | func | `save_low_confidence(predictions, images)` | Delegates to LowConfidenceCapture |
+| 848 | func | `process_reading()` | Main pipeline: fetch, infer, validate, correct, publish |
+| 1100 | func | `publish_to_mqtt(value, warnings, predictions, ...)` | Delegation wrapper → MqttPublisher.publish_to_mqtt() |
+| 1106 | func | `reset_previous_value()` | Clear previous value from state |
+| 1131 | func | `set_manual_value(value)` | Override meter value manually |
+| 1200 | func | `toggle_ha_publish()` | Toggle HA MQTT publishing flag |
+| 1263 | func | `publish_discovery()` | Delegation wrapper → MqttPublisher.publish_discovery() |
+| 1268 | func | `start_mqtt()` | Delegation wrapper → MqttPublisher.start() |
+| 1274 | func | `reload_config(new_config)` | Hot-reload config; reconnect MQTT if needed |
+| 1429 | func | `stop_mqtt()` | Delegation wrapper → MqttPublisher.stop() |
+| 1443 | func | `get_service()` | Singleton accessor |
 
 ---
 
