@@ -35,13 +35,12 @@ See `backlog_archiv.md` for completed items (BL-01 through BL-25).
   - **Ref**: `routes/models.py:558` (encoding), `routes/label.py:38-89` (no parsing)
   - **Effort**: S
 
-- **BL-30** `in-progress` — **WatermeterService god object refactoring**: 2352 lines → 1461 lines (down from ~1919 pre-Phase-3)
-  - Handles image pipeline, plausibility, correction, MQTT, HA discovery, confirmation, persistence, scheduling
-  - Split into focused modules: `image_pipeline.py`, `plausibility.py`, `correction.py`, `mqtt_publisher.py`, `confirmation.py`, `meter_state.py`
-  - Phase 1 done: image_pipeline, low_confidence, scheduling, position_utils extracted
-  - Phase 2 done: rate_tracker, leak_detector, plausibility extracted; correction rewired
-  - Phase 3 done: confirmation.py (ConfirmationManager, 8 methods), mqtt_publisher.py (MqttPublisher, _HA_ENTITIES, full MQTT lifecycle), meter_state.py (MeterState data class) extracted; watermeter_service.py now delegates via thin wrappers
-  - Phase 4 remaining: correction engine (~210 lines, `_estimate_expected_range`, `_recalculate_with_replacement`, `_check_consistency_improvement`, `_check_cross_arrow_consistency`, `correct_predictions`)
+- **BL-30** `done` — **WatermeterService god object refactoring**: 2352 lines → 1206 lines (all 4 phases complete)
+  - Phase 1: image_pipeline, low_confidence, scheduling, position_utils extracted
+  - Phase 2: rate_tracker, leak_detector, plausibility extracted
+  - Phase 3: confirmation.py (ConfirmationManager), mqtt_publisher.py (MqttPublisher, _HA_ENTITIES), meter_state.py (MeterState) extracted
+  - Phase 4: correction.py (CorrectionEngine, 6 methods: `_get_ordered_position_ids`, `_estimate_expected_range`, `_recalculate_with_replacement`, `_check_consistency_improvement`, `_check_cross_arrow_consistency`, `correct_predictions`) extracted
+  - Remaining on service: process_reading, run_inference, calculate_total, manual control (set_manual_value, toggle_ha_publish, reset_previous_value), and thin delegation wrappers to all extracted components
   - **Effort**: XL
 
 - **BL-31** `idea` — **Missing HTTP-level API tests**: 11 endpoints without HTTP-layer tests

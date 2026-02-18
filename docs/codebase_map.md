@@ -171,6 +171,21 @@
 
 ---
 
+### `watermeter/correction.py` (294 lines) -- BL-04 auto-correction engine (extracted from watermeter_service.py Phase 4)
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 17 | class | `CorrectionEngine` | Auto-correction of low-confidence predictions using contextual signals |
+| 20 | func | `__init__(config, rate_tracker, meter_state)` | Initialize with config dict, RateTracker, and MeterState |
+| 25 | func | `_get_ordered_position_ids()` | Return position IDs in order: digit_1, ..., analog_1, ... (most to least significant) |
+| 30 | func | `_estimate_expected_range()` | Estimate plausible value range for next reading based on rate history |
+| 49 | func | `_recalculate_with_replacement(predictions, replace_id, replace_class, raw_values)` | Calculate hypothetical total with one position replaced |
+| 80 | func | `_check_consistency_improvement(predictions, replace_id, replace_class)` | Check if replacing a position fixes a consistency violation with adjacent positions |
+| 131 | func | `_check_cross_arrow_consistency(predictions, replace_id, replace_class)` | Check if replacing an arrow position improves cross-arrow consistency with adjacent arrow |
+| 185 | func | `correct_predictions(predictions, raw_total, raw_values)` | Correct low-confidence predictions using contextual signals; modifies predictions in-place; returns correction warning strings |
+
+---
+
 ### `watermeter/meter_state.py` (52 lines) -- Pure data container for service state
 
 | Line | Type | Name | Description |
@@ -218,12 +233,12 @@
 
 ---
 
-### `watermeter/watermeter_service.py` (1461 lines) -- Main service orchestration
+### `watermeter/watermeter_service.py` (1206 lines) -- Main service orchestration
 
 | Line | Type | Name | Description |
 |------|------|------|-------------|
 | 243 | class | `WatermeterService` | Main service orchestrating all subsystems |
-| 246 | func | `__init__(config_path)` | Loads config, delegates to component classes (MeterState, MqttPublisher, ConfirmationManager, etc.) |
+| 246 | func | `__init__(config_path)` | Loads config, delegates to component classes (MeterState, MqttPublisher, ConfirmationManager, CorrectionEngine, etc.) |
 | 405 | func | `fetch_images()` | Delegates to ImagePipeline |
 | 410 | func | `fetch_whole_image()` | Delegates to ImagePipeline |
 | 415 | func | `process_whole_image(img_bytes)` | Delegates to ImagePipeline |
@@ -234,23 +249,18 @@
 | 552 | func | `validate_plausibility(total, ...)` | Delegates to PlausibilityChecker |
 | 560 | func | `_check_sustained_consumption()` | Delegates to LeakDetector |
 | 566 | func | `get_confirmation_status()` | Delegation wrapper → ConfirmationManager.get_status() |
-| 572 | func | `_get_ordered_position_ids()` | Get digit/arrow IDs in display order |
-| 577 | func | `_estimate_expected_range()` | Estimate expected value range from history |
-| 596 | func | `_recalculate_with_replacement()` | Recalculate total substituting corrected prediction |
-| 627 | func | `_check_consistency_improvement()` | Check if correction improves consistency |
-| 678 | func | `_check_cross_arrow_consistency()` | Validate cross-arrow consistency constraints |
-| 732 | func | `correct_predictions(predictions, ...)` | BL-04: auto-correct low-confidence predictions |
-| 842 | func | `save_low_confidence(predictions, images)` | Delegates to LowConfidenceCapture |
-| 848 | func | `process_reading()` | Main pipeline: fetch, infer, validate, correct, publish |
-| 1100 | func | `publish_to_mqtt(value, warnings, predictions, ...)` | Delegation wrapper → MqttPublisher.publish_to_mqtt() |
-| 1106 | func | `reset_previous_value()` | Clear previous value from state |
-| 1131 | func | `set_manual_value(value)` | Override meter value manually |
-| 1200 | func | `toggle_ha_publish()` | Toggle HA MQTT publishing flag |
-| 1263 | func | `publish_discovery()` | Delegation wrapper → MqttPublisher.publish_discovery() |
-| 1268 | func | `start_mqtt()` | Delegation wrapper → MqttPublisher.start() |
-| 1274 | func | `reload_config(new_config)` | Hot-reload config; reconnect MQTT if needed |
-| 1429 | func | `stop_mqtt()` | Delegation wrapper → MqttPublisher.stop() |
-| 1443 | func | `get_service()` | Singleton accessor |
+| 572 | func | `correct_predictions(predictions, ...)` | Delegation wrapper → CorrectionEngine.correct_predictions() |
+| 578 | func | `save_low_confidence(predictions, images)` | Delegates to LowConfidenceCapture |
+| 584 | func | `process_reading()` | Main pipeline: fetch, infer, validate, correct, publish |
+| 836 | func | `publish_to_mqtt(value, warnings, predictions, ...)` | Delegation wrapper → MqttPublisher.publish_to_mqtt() |
+| 842 | func | `reset_previous_value()` | Clear previous value from state |
+| 867 | func | `set_manual_value(value)` | Override meter value manually |
+| 936 | func | `toggle_ha_publish()` | Toggle HA MQTT publishing flag |
+| 999 | func | `publish_discovery()` | Delegation wrapper → MqttPublisher.publish_discovery() |
+| 1004 | func | `start_mqtt()` | Delegation wrapper → MqttPublisher.start() |
+| 1010 | func | `reload_config(new_config)` | Hot-reload config; reconnect MQTT if needed |
+| 1165 | func | `stop_mqtt()` | Delegation wrapper → MqttPublisher.stop() |
+| 1179 | func | `get_service()` | Singleton accessor |
 
 ---
 
@@ -768,6 +778,7 @@ logging:        # Logging (level, format, file)
 - `TestShouldRequestConfirmation` L166, `TestPublishConfirmationRequest` L241, `TestHandleConfirmationResponse` L358, `TestConfirmationTimeout` L478, `TestGetConfirmationStatus` L566, `TestResetClearsConfirmation` L615, `TestMqttMessageRouting` L635, `TestMqttConnectSubscription` L674, `TestDisabledMode` L711, `TestProcessReadingSkipsPending` L731, `TestRejectWithNonePreviousValue` L765
 
 #### `tests/unit/test_cross_arrow_consistency.py` (379 lines)
+- Tests `CorrectionEngine._check_cross_arrow_consistency()` directly (post Phase 4 extraction)
 - `TestCheckCrossArrowConsistency` L64, `TestCrossArrowIntegration` L247
 
 #### `tests/unit/test_env_var_substitution.py` (74 lines) -- NEW
@@ -843,6 +854,7 @@ logging:        # Logging (level, format, file)
 - `TestTriggerConfigSchema` L45, `TestTriggerConfigParsing` L65, `TestTriggerModeDefaults` L101, `TestCyclicLoop` L125, `TestMqttSubscriptionConditional` L234, `TestMqttV2Api` L293
 
 #### `tests/unit/test_value_correction.py` (721 lines)
+- Tests `CorrectionEngine` directly (post Phase 4 extraction)
 - `TestPredictDetailed` L97, `TestHelperMethods` L151, `TestConsistencyImprovement` L234, `TestSignalScoring` L290, `TestCorrectionEngine` L467
 
 ---
