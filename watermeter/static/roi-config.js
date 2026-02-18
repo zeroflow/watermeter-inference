@@ -90,7 +90,7 @@
         }
 
         // Round to nearest 0.005
-        function roundToStep(value, step = 0.005) {
+        function roundToStep(value, step = 0.001) {
             return Math.round(value / step) * step;
         }
 
@@ -436,10 +436,10 @@
 
         function updateMarkerInputs(index) {
             const m = overlays.markers[index];
-            document.getElementById(`marker-${index + 1}-x`).value = m.x.toFixed(3);
-            document.getElementById(`marker-${index + 1}-y`).value = m.y.toFixed(3);
-            document.getElementById(`marker-${index + 1}-w`).value = m.width.toFixed(3);
-            document.getElementById(`marker-${index + 1}-h`).value = m.height.toFixed(3);
+            document.getElementById(`marker-${index + 1}-x`).value = m.x.toFixed(4);
+            document.getElementById(`marker-${index + 1}-y`).value = m.y.toFixed(4);
+            document.getElementById(`marker-${index + 1}-w`).value = m.width.toFixed(4);
+            document.getElementById(`marker-${index + 1}-h`).value = m.height.toFixed(4);
         }
 
         function updateMarkerFromInput(index) {
@@ -679,10 +679,10 @@
 
         function updateDigitInputs(index) {
             const d = overlays.digits[index];
-            document.getElementById(`digit-${index + 1}-x`).value = d.x.toFixed(3);
-            document.getElementById(`digit-${index + 1}-y`).value = d.y.toFixed(3);
-            document.getElementById(`digit-${index + 1}-w`).value = d.width.toFixed(3);
-            document.getElementById(`digit-${index + 1}-h`).value = d.height.toFixed(3);
+            document.getElementById(`digit-${index + 1}-x`).value = d.x.toFixed(4);
+            document.getElementById(`digit-${index + 1}-y`).value = d.y.toFixed(4);
+            document.getElementById(`digit-${index + 1}-w`).value = d.width.toFixed(4);
+            document.getElementById(`digit-${index + 1}-h`).value = d.height.toFixed(4);
         }
 
         function updateDigitFromInput(index) {
@@ -1086,10 +1086,10 @@
 
         function updateAnalogInputs(index) {
             const a = overlays.analogs[index];
-            document.getElementById(`analog-${index + 1}-x`).value = a.x.toFixed(3);
-            document.getElementById(`analog-${index + 1}-y`).value = a.y.toFixed(3);
-            document.getElementById(`analog-${index + 1}-w`).value = a.width.toFixed(3);
-            document.getElementById(`analog-${index + 1}-h`).value = a.height.toFixed(3);
+            document.getElementById(`analog-${index + 1}-x`).value = a.x.toFixed(4);
+            document.getElementById(`analog-${index + 1}-y`).value = a.y.toFixed(4);
+            document.getElementById(`analog-${index + 1}-w`).value = a.width.toFixed(4);
+            document.getElementById(`analog-${index + 1}-h`).value = a.height.toFixed(4);
         }
 
         function updateAnalogFromInput(index) {
