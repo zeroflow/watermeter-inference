@@ -1,262 +1,531 @@
 # Codebase Map
 
-> Auto-generated reference. Line numbers as of 2026-02-17.
+> Auto-generated reference. Line numbers as of 2026-02-18.
 
 ## Python Package: `watermeter/`
 
-### `app.py` (200 lines) -- FastAPI app, lifespan, router wiring
-
-- `safe_subpath(base, user_path)` L22 -- path traversal guard
-- `_background_tasks: set` L31, `_create_background_task(coro)` L34
-- `lifespan(app)` L43-101 -- startup/shutdown: service, inference, MQTT, cyclic, dedup on start
-- `tags_metadata` L105-142, `app = FastAPI(...)` L145
-- `main()` L182 -- uvicorn entry
-- Routers included L161-179: pages, service, config, roi, label, training, models, synthetic, mqtt
-
-### `routes/pages.py` (116 lines) -- HTML page routes
-
-- `GET /` L18, `GET /label` L40, `GET /roi-config` L52, `GET /config-editor` L71, `GET /training` L83
-- `GET /api/status/html` L95 -- HTMX status fragment
-
-### `routes/service.py` (229 lines) -- Core service API
-
-- Pydantic: `TrainingSubmission` L34, `SetValueRequest` L43
-- `GET /api/status` L49, `POST /api/trigger` L63, `POST /api/reset` L88
-- `POST /api/set-value` L101, `POST /api/toggle-ha-publish` L135
-- `POST /api/submit-training` L149, `GET /api/confirmation/status` L197, `GET /health` L215
-
-### `routes/config.py` (101 lines) -- Config management
-
-- `GET /api/config` L25, `POST /api/config/save` L48, `GET /api/config/schema.json` L93
-
-### `routes/roi.py` (791 lines) -- ROI configuration wizard
-
-- Pydantic: `RotationSubmission` L25, `MarkerBox` L29, `MarkersSubmission` L36, `DigitRoi` L40, `DigitsSubmission` L47, `SingleRoiSubmission` L52, `AnalogRoi` L59, `AnalogsSubmission` L66
-- `_load_rotated_reference()` L74
-- `POST /api/roi/fetch-image` L99, `POST /api/roi/image-source` L139 (set image source URL), `GET /api/roi/reference-image` L202, `GET /api/roi/config` L220
-- `POST /api/roi/rotation` L240, `DELETE /api/roi/rotation` L271
-- `POST /api/roi/markers` L302, `DELETE /api/roi/markers` L376, `GET /api/roi/marker-image/{id}` L416
-- `POST /api/roi/digits` L432, `DELETE /api/roi/digits` L500, `GET /api/roi/digit-image/{id}` L538
-- `POST /api/roi/digit-preview` L554
-- `POST /api/roi/analogs` L614, `DELETE /api/roi/analogs` L680, `GET /api/roi/analog-image/{id}` L718
-- `POST /api/roi/analog-preview` L734
-
-### `routes/mqtt.py` (207 lines) -- MQTT configuration routes
-
-- `_has_unresolved_tokens(value)` L31 -- checks for unresolved ${...} tokens
-- `GET /api/mqtt/config` L36, `POST /api/mqtt/config` L71, `POST /api/mqtt/test` L124
-- Imports: `config_utils`, `watermeter_service`; references `mqtt_client_class`, `_mqtt_callback_api` L18-28
-
-### `routes/label.py` (218 lines) -- Labeling interface API
-
-- Pydantic: `LabelSubmission` L21, `DeleteSubmission` L27
-- `GET /api/label/next-image` L32, `POST /api/label/submit` L92, `POST /api/label/delete` L183
-
-### `routes/training.py` (411 lines) -- Training job management + ZIP upload
-
-- Pydantic: `TrainingConfig` L29 (field_validator for seeds, training_mode, learning_rate)
-- `GET /api/training/status` L62, `POST /api/training/start` L85, `POST /api/training/cancel` L112
-- `DELETE /api/training/queue/{index}` L141, `DELETE /api/training/queue` L160
-- `POST /api/benchmark/cancel` L176, `GET /api/training/logs/{job_id}` L200, `GET /api/training/progress/{job_id}` L219
-- `_detect_and_sort(images, data_type)` L244 -- detect ZIP format (subdirectory or prefix-based)
-- `POST /api/training-data/upload` L309 -- upload ZIP of training images; supports subdirectory and prefix formats
-
-### `routes/models.py` (706 lines) -- Model management + training data tools
-
-- `GET /api/models/architectures` L25, `GET /api/models` L39, `GET /api/models/{type}/{id}` L76
-- `POST /api/models/{type}/{id}/activate` L98, `POST /api/models/{type}/{id}/archive` L137
-- `DELETE /api/models/{type}/{id}` L159, `GET /api/models/{type}/{id}/logs` L181
-- `POST /api/models/{type}/{id}/benchmark` L205, `GET /api/training-data/stats` L226
-- `POST /api/training-data/dedup` L272
-- `POST /api/training-data/prune/preview` L309, `POST /api/training-data/prune/confirm` L365
-- `_make_thumbnail_base64(path)` L422
-- `scan_mislabeled(model_type, training_path)` L435, `confirm_mislabeled(model_type, training_path, selected_paths)` L518
-- `POST /api/training-data/mislabel/scan` L582, `POST /api/training-data/mislabel/confirm` L632
-
-### `routes/synthetic.py` (157 lines) -- Synthetic data generation API
-
-- Pydantic: `SyntheticConfig` L30 (field_validator for type, count_per_class)
-- Module state: `_generation_lock` L19, `_generation_status` L20
-- Helper: `_run_generation(config, job_id)` L50 -- background thread target
-- `POST /api/synthetic/generate` L89, `GET /api/synthetic/status` L129, `DELETE /api/synthetic/{type}` L140
-
-### `synthetic_generator.py` (507 lines) -- Synthetic training data generator
-
-- Constants: `DIGIT_CLASSES` L19, `ARROW_CLASSES` L20
-- Helpers: `_deterministic_seed(cls, i)` L23, `_load_font(size)` L29
-
-**class `DigitRenderer`** L36:
-- `__init__()` L48, `render(digit_class, seed)` L51 -- renders digit image from font
-
-**class `DigitCompositor`** L89:
-- `__init__(background_dir)` L110, `render(digit_class, seed)` L128 -- composites digit onto photo background
-
-**class `ArrowRenderer`** L174:
-- `__init__()` L177, `render(arrow_class, seed)` L180 -- renders 100x100px dial image with ticks and red pointer
-
-**class `TransformPipeline`** L248:
-- `__init__(seed)` L251, `apply(img, mode)` L255 -- applies geometric (offset, perspective, fisheye), color (brightness, contrast, cast, shadow, vignette), and noise (gaussian, blur, JPEG artifacts) transforms
-
-**class `_MultiCompositor`** L379:
-- `__init__(compositors, seed)` L382, `render(arrow_class, seed)` L386
-
-**class `SyntheticGenerator`** L391:
-- `__init__(base_dir)` L394
-- `_get_digit_renderer()` L397, `_get_arrow_renderer()` L406
-- `generate(type, count_per_class, seed, progress_callback)` L435 -- orchestrates rendering + transforms, writes to ground_truth/
-- `delete_synthetic(type)` L490 -- removes all synth_* files from ground_truth
-
-### `photo_master.py` (143 lines) -- Photo-based master image for arrow compositing
-
-- `extract_pointer_mask(img)` L18 -- HSV color thresholding to isolate red pointer, returns binary mask
-- `inpaint_background(img, mask)` L45 -- removes pointer with inpainting, returns clean background
-- `extract_pointer_template(img, mask)` L62 -- crops pointer region to template
-
-**class `ArrowCompositor`** L75:
-- Composites a real pointer template onto inpainted backgrounds at any angle
-
-- `build_arrow_compositor(photos_dir, ...)` L117 -- factory: loads photo set, extracts pointers, returns ArrowCompositor
-
-### `watermeter_service.py` (1912 lines) -- Main service orchestration
-
-**class `WatermeterService`** L243:
-- `__init__(config_path)` L245 (implicit via get_service())
-- Delegates: `_image_pipeline` (ImagePipeline), `_low_confidence` (LowConfidenceCapture), `_scheduling` (SchedulingManager), `_rate_tracker` (RateTracker), `_leak_detector` (LeakDetector), `_plausibility_checker` (PlausibilityChecker)
-- Image fetching (delegates to ImagePipeline): `fetch_images()` L405, `fetch_whole_image()` L410, `process_whole_image(img_bytes)` L415, `invalidate_marker_cache()` L420
-- Inference: `run_inference(images)` L424, `calculate_total(predictions)` L495
-- Validation: `check_consistency(predictions)` L548 (delegates to PlausibilityChecker), `validate_plausibility(total, ...)` L552 (delegates to PlausibilityChecker)
-- Rate/leak: `_check_sustained_consumption()` L560 (delegates to LeakDetector)
-- BL-07 Confirmation: `_get_confirmation_config()` L566, `_should_request_confirmation()` L580, `_publish_confirmation_request()` L621, `_cancel_confirmation_timer()` L674, `_confirmation_timeout()` L680, `_do_confirmation_timeout()` L687, `_handle_confirmation_response(payload)` L728, `get_confirmation_status()` L832
-- BL-04 Correction: `_get_ordered_position_ids()` L857, `_estimate_expected_range()` L862, `_recalculate_with_replacement()` L881, `_check_consistency_improvement()` L912, `_check_cross_arrow_consistency()` L963, `correct_predictions(predictions, ...)` L1017
-- Low confidence: `save_low_confidence(predictions, images)` L1127 (delegates to LowConfidenceCapture)
-- Pipeline: `process_reading()` L1133, `publish_to_mqtt(status)` L1418
-- Manual: `reset_previous_value()` L1491, `set_manual_value(value)` L1516, `toggle_ha_publish()` L1585
-- HA/MQTT: `publish_discovery()` L1648, `on_mqtt_connect()` L1711, `on_mqtt_disconnect(...)` L1742, `on_mqtt_message()` L1749, `start_mqtt()` L1785, `reload_config(new_config)` L1828, `stop_mqtt()` L1883
-- Cyclic (delegates to SchedulingManager): `start_cyclic_loop()`, `stop_cyclic_loop()`, `start_stats_loop()`, `stop_stats_loop()`
-
-Singleton: `get_service()` L1907
-
-### `training_manager.py` (1367 lines) -- Training/benchmark orchestration
-
-- `JobStatus` (Enum) L20, `TrainingJob` (dataclass) L30, `BenchmarkJob` (dataclass) L77
-
-**class `TrainingManager`** L125:
-- `__init__()` L128
-- Queue: `start_training(config)` L139, `_start_training_now(config)` L156, `start_benchmark(model_type, model_id)` L171
-- Control: `cancel_training(job_id, clear_queue)` L204, `cancel_benchmark(job_id)` L220
-- Status: `get_training_status()` L237, `get_benchmark_status()` L243, `get_queue()` L249, `remove_from_queue(index)` L254, `clear_queue()` L262, `get_job_logs(job_id)` L269
-- Execution: `_run_training(config)` L276, `_process_next_in_queue()` L396, `_run_auto_benchmarks()` L415
-- Core: `_execute_training(job, config)` L441 (~440 lines), `_persist_training_logs(job)` L884, `_persist_failure_metadata(job)` L914, `_get_failure_dir(job)` L950
-- Arrows: `_create_arrow_dataset(gt_dir, dataset_dir, step, job)` L960
-- Benchmark: `_run_benchmark(job)` L1004, `_execute_benchmark(job, model_path)` L1088
-- Helpers: `_generate_arrow_classes(num_classes)` L1300, `_round_to_arrow_class(value, num_classes)` L1313, `_collect_benchmark_images(gt_path, model_type)` L1340
-
-Singleton: `get_training_manager()` L1362
-
-### `model_manager.py` (340 lines) -- Model metadata & files
-
-**class `ModelManager`** L15:
-- `__init__(models_base_path)` L18, `_validate_model_id(id)` L29, `_get_model_types_dir(type)` L34
-- `list_models(type)` L40, `get_model(type, id)` L76, `save_metadata(type, id, metadata)` L113
-- `delete_model(type, id)` L140, `get_active_model(type, config)` L166, `activate_model(type, id, config_path)` L193
-- `get_model_path(type, id)` L249, `create_model_id(type, arch, res)` L268
-- `archive_model(type, id)` L289, `get_model_metadata(type, id)` L308, `refresh()` L321
-
-Singleton: `get_model_manager()` L335
-
-### `inference.py` (462 lines) -- OpenVINO inference with hot-reload
-
-- **class `Classifier`** L12: `__init__` L13, `preprocess` L22, `predict` L32 -> (label, conf), `predict_detailed` L41
-- **class `Regressor`** L54: `__init__` L61, `preprocess` L69, `predict` L80 -> (value, conf), `predict_detailed` L108
-- `_detect_training_mode()` L118
-- **class `InferenceService`** L148: `__init__` L151, `initialize(config)` L157, `reload_models(config)` L225, `predict(model_type, image_path)` L306, `predict_detailed` L332, `get_classifier` L350, `is_reloading` L360, `models_loaded` L365, `loaded_model_types` L370, `digits_classifier` L380, `arrows_classifier` L385
-- `validate_model_config(model_path, model_type, classes, resolution)` L390
-- `get_inference_service()` L457 (singleton)
-
-### `config_utils.py` (509 lines) -- YAML config with comment preservation
-
-- `_yaml` (global) L22, `get_yaml()` L28
-- `load_config(path)` L33, `save_config(config, path)` L67
-- `resolve_env_vars(value)` L48 -- replaces ${VAR_NAME} with environment variable values, works recursively
-- `load_config_string(yaml_string)` L81, `dump_config_string(config)` L94
-- `update_config(path, updater)` L109, `validate_config(yaml_string)` L129
-- `CONFIG_SCHEMA` L156-498, `get_config_schema()` L501, `get_config_schema_json()` L506
-
-### `image_hash.py` (505 lines) -- Perceptual hashing & dedup
-
-- `compute_dhash(image_bytes, hash_size)` L15, `hamming_distance(h1, h2)` L50
-- **class `HashCache`** L64: `__init__` L67, `_load` L74, `_save` L88, `add` L96, `get_all_hashes` L101, `get_hashes_dict` L105, `remove` L109, `find_near_duplicate(new_hash, threshold)` L114, `scan_and_update` L131
-- `purge_duplicates(input_dir, threshold, gt_dirs)` L147
-- `cluster_images_by_hash(hashes, threshold)` L234, `select_prune_candidates(clusters, hashes)` L285
-- `compute_prune_preview(gt_base, threshold)` L328, `confirm_prune(gt_base, preview)` L432
-
-### `training_core.py` (325 lines) -- Shared training utilities
-
-- `IMAGENET_MEAN` L49, `IMAGENET_STD` L50
-- `set_all_seeds(seed)` L28, `worker_init_fn(worker_id)` L39
-- `create_transforms(resolution)` L53, `stratified_split(dataset, train_ratio)` L89
-- `compute_class_weights(dataset, indices, device)` L116
-- `export_to_openvino(model, resolution, output_dir, filename)` L137 -- dual export: ov.convert_model() direct + ONNX dynamo=False
-- `preprocess_image(image_path, resolution)` L185
-- **class `RegressionArrowDataset`** L203: `__init__` L199 (note: actual class starts L203), `__len__` L219, `__getitem__` L222
-- `stratified_split_regression(dataset, train_ratio)` L245
-- `regression_predict(raw_output)` L278
-- `circular_error(pred, true, period=10.0)` L294 -- Shortest-path error on circular dial scale
-- `softmax_predict(logits, classes)` L312
-
-### `persistence.py` (73 lines) -- JSON state persistence
-
-- **class `StateStore`** L16: `__init__` L19, `save(data)` L23, `load()` L45, `clear()` L66
-
-### `image_pipeline.py` (303 lines) -- Image fetching, rotation, marker alignment, ROI extraction
-
-**class `ImagePipeline`** L20:
-- Constants: `SEARCH_MARGIN` L24, `CONFIDENCE_THRESHOLD` L25
-- `__init__(config)` L27
-- Image fetching: `fetch_images()` L32, `fetch_whole_image()` L72, `process_whole_image(image_bytes)` L94
-- Marker alignment: `_load_marker_templates(marker_count)` L157, `invalidate_marker_cache()` L186, `_align_with_markers(img, markers)` L190
-- ROI extraction: `_extract_roi(img, roi, width, height)` L275
-
-### `low_confidence_capture.py` (111 lines) -- Saves low-confidence images for training
-
-**class `LowConfidenceCapture`** L17:
-- `__init__(config)` L20
-- `save_low_confidence(image_id, image_bytes, prediction, next_image_bytes)` L24
-
-### `position_utils.py` (40 lines) -- Position ID utilities
-
-- `get_position_ids(config)` L11 -- compute digit and arrow position IDs from config
-
-### `scheduling.py` (97 lines) -- Cyclic and periodic background task scheduling
-
-**class `SchedulingManager`** L15:
-- `__init__(cyclic_interval, process_fn, stats_fn)` L26
-- Cyclic loop: `_cyclic_loop()` L45, `start_cyclic_loop()` L56, `stop_cyclic_loop()` L64
-- Stats loop: `_stats_loop()` L71, `start_stats_loop()` L84, `stop_stats_loop()` L92
-
-### `rate_tracker.py` (112 lines) -- Rate history ring buffer for plausibility and leak detection
-
-**class `RateTracker`** L12:
-- `__init__(max_size)` L23
-- Properties: `history` L30, `max_size` L35, `average_rate_per_hour` L45
-- Mutation API: `add(value, timestamp)` L65, `pop_last()` L77, `replace_last(value, timestamp)` L82, `reset()` L87, `seed(value, timestamp)` L91
-- Dunder: `__len__()` L101, `__repr__()` L104
-- Internal: `_trim()` L109
-
-### `leak_detector.py` (68 lines) -- Sustained consumption monitoring
-
-**class `LeakDetector`** L16:
-- `__init__(rate_tracker, config)` L24
-- `check()` L28 -- checks if last N consecutive readings all show rate above threshold, returns warning message or None
-
-### `plausibility.py` (141 lines) -- Consistency and plausibility checking
-
-**class `PlausibilityChecker`** L17:
-- `__init__(config, rate_tracker)` L25
-- `check_consistency(predictions)` L29 -- validates adjacent position consistency (half vs upper-half rule), returns list of warnings
-- `validate_plausibility(new_value, previous_value, last_update_time)` L76 -- checks reverse detection, rate limits, returns (is_valid, warnings)
-
-### `__main__.py` (4 lines) -- Entry point, calls `app.main()`
+### `watermeter/app.py` (199 lines) -- FastAPI app, lifespan, router wiring
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 22 | func | `safe_subpath(base, *parts)` | Path traversal guard; raises ValueError if outside base |
+| 31 | var | `_background_tasks: set` | Prevents GC of fire-and-forget asyncio tasks |
+| 34 | func | `_create_background_task(coro)` | Creates asyncio task, registers in `_background_tasks` |
+| 43 | func | `lifespan(app)` | Startup/shutdown: inference init, MQTT, cyclic loop, dedup, initial reading |
+| 105 | var | `tags_metadata` | OpenAPI tag definitions for grouping endpoints |
+| 145 | var | `app` | FastAPI application instance |
+| 161 | — | router includes | pages, service, config, roi, label, training, models, synthetic, mqtt |
+| 182 | func | `main()` | Uvicorn entry point; reads config for host/port |
+
+---
+
+### `watermeter/routes/pages.py` (114 lines) -- HTML page routes
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 18 | route | `GET /` | Dashboard; redirects to `/roi-config?setup=1` if no reference image |
+| 38 | route | `GET /label` | Labeling interface page |
+| 50 | route | `GET /roi-config` | ROI wizard; passes `setup_mode` and `image_src` to template |
+| 69 | route | `GET /config-editor` | Monaco YAML editor page |
+| 81 | route | `GET /training` | Training management page |
+| 93 | route | `GET /api/status/html` | HTMX status fragment; copies state dict to avoid template mutation |
+
+---
+
+### `watermeter/routes/service.py` (229 lines) -- Core service API
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 34 | class | `TrainingSubmission` | Pydantic model for submit-training payload |
+| 43 | class | `SetValueRequest` | Pydantic model for manual value override |
+| 49 | route | `GET /api/status` | Returns full current_state JSON |
+| 63 | route | `POST /api/trigger` | Trigger single reading cycle immediately |
+| 88 | route | `POST /api/reset` | Reset previous value in state |
+| 101 | route | `POST /api/set-value` | Manually set meter value |
+| 135 | route | `POST /api/toggle-ha-publish` | Toggle Home Assistant MQTT publishing |
+| 149 | route | `POST /api/submit-training` | Submit current reading as training label |
+| 197 | route | `GET /api/confirmation/status` | Get pending confirmation request status |
+| 215 | route | `GET /health` | Health check endpoint |
+
+---
+
+### `watermeter/routes/config.py` (101 lines) -- Config management
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 25 | route | `GET /api/config` | Return raw YAML config string |
+| 48 | route | `POST /api/config/save` | Validate and save YAML config; triggers service reload |
+| 93 | route | `GET /api/config/schema.json` | Return JSON schema for config validation |
+
+---
+
+### `watermeter/routes/roi.py` (791 lines) -- ROI configuration wizard
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 25 | class | `RotationSubmission` | Pydantic model for rotation degrees |
+| 29 | class | `MarkerBox` | Pydantic model for a single marker bounding box |
+| 36 | class | `MarkersSubmission` | Pydantic model for list of markers |
+| 40 | class | `DigitRoi` | Pydantic model for a single digit ROI |
+| 47 | class | `DigitsSubmission` | Pydantic model for list of digit ROIs |
+| 52 | class | `SingleRoiSubmission` | Pydantic model for single generic ROI |
+| 59 | class | `AnalogRoi` | Pydantic model for a single analog dial ROI |
+| 66 | class | `AnalogsSubmission` | Pydantic model for list of analog ROIs |
+| 74 | func | `_load_rotated_reference()` | Load reference image applying current rotation config |
+| 99 | route | `POST /api/roi/fetch-image` | Fetch image from URL and save as reference |
+| 139 | route | `POST /api/roi/image-source` | Set image source URL in config |
+| 202 | route | `GET /api/roi/reference-image` | Serve current reference image as JPEG |
+| 220 | route | `GET /api/roi/config` | Return current ROI configuration |
+| 240 | route | `POST /api/roi/rotation` | Save rotation degrees to config |
+| 271 | route | `DELETE /api/roi/rotation` | Reset rotation to zero |
+| 302 | route | `POST /api/roi/markers` | Save marker bounding boxes |
+| 376 | route | `DELETE /api/roi/markers` | Clear all markers |
+| 416 | route | `GET /api/roi/marker-image/{id}` | Serve cropped marker image |
+| 432 | route | `POST /api/roi/digits` | Save digit ROI definitions |
+| 500 | route | `DELETE /api/roi/digits` | Clear all digit ROIs |
+| 538 | route | `GET /api/roi/digit-image/{id}` | Serve cropped digit ROI image |
+| 554 | route | `POST /api/roi/digit-preview` | Run inference on digit ROI, return preview |
+| 614 | route | `POST /api/roi/analogs` | Save analog ROI definitions |
+| 680 | route | `DELETE /api/roi/analogs` | Clear all analog ROIs |
+| 718 | route | `GET /api/roi/analog-image/{id}` | Serve cropped analog ROI image |
+| 734 | route | `POST /api/roi/analog-preview` | Run inference on analog ROI, return preview |
+
+---
+
+### `watermeter/routes/mqtt.py` (206 lines) -- MQTT configuration routes
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 31 | func | `_has_unresolved_tokens(value)` | Check for unresolved `${...}` env-var tokens |
+| 36 | route | `GET /api/mqtt/config` | Return raw config (mqtt, trigger, homeassistant sections); does NOT resolve env vars |
+| 71 | route | `POST /api/mqtt/config` | Save mqtt/trigger/ha sections; triggers service reload |
+| 124 | route | `POST /api/mqtt/test` | Test MQTT connection; resolves env vars in credentials; warns on unresolved tokens |
+
+---
+
+### `watermeter/routes/label.py` (218 lines) -- Labeling interface API
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 21 | class | `LabelSubmission` | Pydantic model for label submission payload |
+| 27 | class | `DeleteSubmission` | Pydantic model for image deletion request |
+| 32 | route | `GET /api/label/next-image` | Return next unlabeled image for labeling |
+| 92 | route | `POST /api/label/submit` | Accept label for an image; moves to ground_truth |
+| 183 | route | `POST /api/label/delete` | Delete an unlabeled image |
+
+---
+
+### `watermeter/routes/training.py` (411 lines) -- Training job management + ZIP upload
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 29 | class | `TrainingConfig` | Pydantic model; validators for seeds, training_mode, learning_rate |
+| 62 | route | `GET /api/training/status` | Return current training/benchmark status |
+| 85 | route | `POST /api/training/start` | Enqueue a new training job |
+| 112 | route | `POST /api/training/cancel` | Cancel active or queued training job |
+| 141 | route | `DELETE /api/training/queue/{index}` | Remove specific item from queue |
+| 160 | route | `DELETE /api/training/queue` | Clear entire training queue |
+| 176 | route | `POST /api/benchmark/cancel` | Cancel active benchmark job |
+| 200 | route | `GET /api/training/logs/{job_id}` | Return training logs for a job |
+| 219 | route | `GET /api/training/progress/{job_id}` | Return training progress for a job |
+| 244 | func | `_detect_and_sort(images, data_type)` | Detect ZIP format (subdirectory or prefix-based) |
+| 309 | route | `POST /api/training-data/upload` | Upload ZIP of training images; supports subdir and prefix formats |
+
+---
+
+### `watermeter/routes/models.py` (706 lines) -- Model management + training data tools
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 25 | route | `GET /api/models/architectures` | List available model architectures |
+| 39 | route | `GET /api/models` | List all models (optionally filtered by type) |
+| 76 | route | `GET /api/models/{type}/{id}` | Get metadata for a specific model |
+| 98 | route | `POST /api/models/{type}/{id}/activate` | Set model as active in config |
+| 137 | route | `POST /api/models/{type}/{id}/archive` | Archive a model (move to archived/) |
+| 159 | route | `DELETE /api/models/{type}/{id}` | Delete a model permanently |
+| 181 | route | `GET /api/models/{type}/{id}/logs` | Return training log for a model |
+| 205 | route | `POST /api/models/{type}/{id}/benchmark` | Start benchmark job for a model |
+| 226 | route | `GET /api/training-data/stats` | Return training data statistics per class |
+| 272 | route | `POST /api/training-data/dedup` | Run deduplication on training data |
+| 309 | route | `POST /api/training-data/prune/preview` | Preview which images would be pruned |
+| 365 | route | `POST /api/training-data/prune/confirm` | Confirm and execute pruning |
+| 422 | func | `_make_thumbnail_base64(path)` | Create base64-encoded JPEG thumbnail |
+| 435 | func | `scan_mislabeled(model_type, training_path)` | Scan for mislabeled training images using active model |
+| 518 | func | `confirm_mislabeled(model_type, training_path, selected_paths)` | Delete confirmed mislabeled images |
+| 582 | route | `POST /api/training-data/mislabel/scan` | Scan training data for mislabeled images |
+| 632 | route | `POST /api/training-data/mislabel/confirm` | Delete selected mislabeled images |
+
+---
+
+### `watermeter/routes/synthetic.py` (157 lines) -- Synthetic data generation API
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 19 | var | `_generation_lock` | Threading lock prevents concurrent generation |
+| 20 | var | `_generation_status` | Module-level generation status dict |
+| 30 | class | `SyntheticConfig` | Pydantic model; validators for type, count_per_class |
+| 50 | func | `_run_generation(config, job_id)` | Background thread target for generation |
+| 89 | route | `POST /api/synthetic/generate` | Start synthetic data generation; 409 if running or training |
+| 129 | route | `GET /api/synthetic/status` | Return current generation status |
+| 140 | route | `DELETE /api/synthetic/{type}` | Delete all synthetic images of given type |
+
+---
+
+### `watermeter/watermeter_service.py` (1918 lines) -- Main service orchestration
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 243 | class | `WatermeterService` | Main service orchestrating all subsystems |
+| 246 | func | `__init__(config_path)` | Loads config, delegates to component classes |
+| 405 | func | `fetch_images()` | Delegates to ImagePipeline |
+| 410 | func | `fetch_whole_image()` | Delegates to ImagePipeline |
+| 415 | func | `process_whole_image(img_bytes)` | Delegates to ImagePipeline |
+| 420 | func | `invalidate_marker_cache()` | Delegates to ImagePipeline |
+| 424 | func | `run_inference(images)` | Run OpenVINO inference on image set |
+| 495 | func | `calculate_total(predictions)` | Compute total meter reading from predictions |
+| 548 | func | `check_consistency(predictions)` | Delegates to PlausibilityChecker |
+| 552 | func | `validate_plausibility(total, ...)` | Delegates to PlausibilityChecker |
+| 560 | func | `_check_sustained_consumption()` | Delegates to LeakDetector |
+| 566 | func | `_get_confirmation_config()` | Read confirmation section from config |
+| 580 | func | `_should_request_confirmation()` | Determine if confirmation request is needed |
+| 621 | func | `_publish_confirmation_request()` | Publish MQTT confirmation request message |
+| 674 | func | `_cancel_confirmation_timer()` | Cancel pending confirmation timeout timer |
+| 680 | func | `_confirmation_timeout()` | Synchronous timeout wrapper |
+| 687 | func | `_do_confirmation_timeout()` | Handle confirmation timeout logic |
+| 728 | func | `_handle_confirmation_response(payload)` | Process MQTT confirmation response |
+| 832 | func | `get_confirmation_status()` | Return current confirmation state dict |
+| 857 | func | `_get_ordered_position_ids()` | Get digit/arrow IDs in display order |
+| 862 | func | `_estimate_expected_range()` | Estimate expected value range from history |
+| 881 | func | `_recalculate_with_replacement()` | Recalculate total substituting corrected prediction |
+| 912 | func | `_check_consistency_improvement()` | Check if correction improves consistency |
+| 963 | func | `_check_cross_arrow_consistency()` | Validate cross-arrow consistency constraints |
+| 1017 | func | `correct_predictions(predictions, ...)` | BL-04: auto-correct low-confidence predictions |
+| 1127 | func | `save_low_confidence(predictions, images)` | Delegates to LowConfidenceCapture |
+| 1133 | func | `process_reading()` | Main pipeline: fetch, infer, validate, correct, publish |
+| 1418 | func | `publish_to_mqtt(status)` | Publish reading result to MQTT topics |
+| 1491 | func | `reset_previous_value()` | Clear previous value from state |
+| 1516 | func | `set_manual_value(value)` | Override meter value manually |
+| 1585 | func | `toggle_ha_publish()` | Toggle HA MQTT publishing flag |
+| 1648 | func | `publish_discovery()` | Emit Home Assistant MQTT discovery messages |
+| 1711 | func | `on_mqtt_connect()` | MQTT connect callback; subscribes to topics |
+| 1742 | func | `on_mqtt_disconnect(...)` | MQTT disconnect callback |
+| 1749 | func | `on_mqtt_message()` | Route incoming MQTT messages |
+| 1785 | func | `start_mqtt()` | Initialize and start MQTT client |
+| 1828 | func | `reload_config(new_config)` | Hot-reload config; reconnect MQTT if needed |
+| 1883 | func | `stop_mqtt()` | Disconnect and stop MQTT client |
+| 1907 | func | `get_service()` | Singleton accessor |
+
+---
+
+### `watermeter/training_manager.py` (1367 lines) -- Training/benchmark orchestration
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 20 | class | `JobStatus` | Enum: pending, running, done, failed, cancelled |
+| 30 | class | `TrainingJob` | Dataclass for a training job |
+| 77 | class | `BenchmarkJob` | Dataclass for a benchmark job |
+| 125 | class | `TrainingManager` | Manages training queue and benchmark execution |
+| 128 | func | `__init__()` | Initialize queues, locks, status tracking |
+| 139 | func | `start_training(config)` | Enqueue or start immediately |
+| 156 | func | `_start_training_now(config)` | Launch training thread immediately |
+| 171 | func | `start_benchmark(model_type, model_id)` | Start benchmark in background thread |
+| 204 | func | `cancel_training(job_id, clear_queue)` | Cancel active or queued training |
+| 220 | func | `cancel_benchmark(job_id)` | Cancel active benchmark |
+| 237 | func | `get_training_status()` | Return current training status dict |
+| 243 | func | `get_benchmark_status()` | Return current benchmark status dict |
+| 249 | func | `get_queue()` | Return list of queued training jobs |
+| 254 | func | `remove_from_queue(index)` | Remove item at index from queue |
+| 262 | func | `clear_queue()` | Remove all queued jobs |
+| 269 | func | `get_job_logs(job_id)` | Return log text for a job |
+| 276 | func | `_run_training(config)` | Thread target: execute + process next in queue |
+| 396 | func | `_process_next_in_queue()` | Start next queued job if idle |
+| 415 | func | `_run_auto_benchmarks()` | Run benchmarks automatically after training |
+| 441 | func | `_execute_training(job, config)` | Core training execution (~440 lines) |
+| 884 | func | `_persist_training_logs(job)` | Save training logs to model directory |
+| 914 | func | `_persist_failure_metadata(job)` | Save failure metadata to model directory |
+| 950 | func | `_get_failure_dir(job)` | Get directory for failed job artifacts |
+| 960 | func | `_create_arrow_dataset(gt_dir, dataset_dir, step, job)` | Build subsampled arrow dataset |
+| 1004 | func | `_run_benchmark(job)` | Thread target for benchmark |
+| 1088 | func | `_execute_benchmark(job, model_path)` | Core benchmark execution logic |
+| 1300 | func | `_generate_arrow_classes(num_classes)` | Generate arrow class label strings |
+| 1313 | func | `_round_to_arrow_class(value, num_classes)` | Round value to nearest arrow class |
+| 1340 | func | `_collect_benchmark_images(gt_path, model_type)` | Collect images for benchmark |
+| 1362 | func | `get_training_manager()` | Singleton accessor |
+
+---
+
+### `watermeter/model_manager.py` (340 lines) -- Model metadata and files
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 15 | class | `ModelManager` | Manages model files, metadata, and activation |
+| 18 | func | `__init__(models_base_path)` | Initialize with base path |
+| 29 | func | `_validate_model_id(id)` | Validate model ID format |
+| 34 | func | `_get_model_types_dir(type)` | Get directory for model type |
+| 40 | func | `list_models(type)` | List all models of a type |
+| 76 | func | `get_model(type, id)` | Get model metadata by ID |
+| 113 | func | `save_metadata(type, id, metadata)` | Write metadata.json for a model |
+| 140 | func | `delete_model(type, id)` | Delete model directory permanently |
+| 166 | func | `get_active_model(type, config)` | Get active model from config |
+| 193 | func | `activate_model(type, id, config_path)` | Set model as active in config file |
+| 249 | func | `get_model_path(type, id)` | Get filesystem path for model |
+| 268 | func | `create_model_id(type, arch, res)` | Generate unique model ID |
+| 289 | func | `archive_model(type, id)` | Move model to archived subdirectory |
+| 308 | func | `get_model_metadata(type, id)` | Read metadata.json for a model |
+| 321 | func | `refresh()` | Invalidate internal caches |
+| 335 | func | `get_model_manager()` | Singleton accessor |
+
+---
+
+### `watermeter/inference.py` (462 lines) -- OpenVINO inference with hot-reload
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 12 | class | `Classifier` | Softmax classifier wrapping OpenVINO model |
+| 13 | func | `__init__` | Load compiled model |
+| 22 | func | `preprocess` | Resize and normalize image |
+| 32 | func | `predict` | Returns (label, conf) tuple |
+| 41 | func | `predict_detailed` | Returns label, conf, and all class scores |
+| 54 | class | `Regressor` | Regression classifier for analog dials |
+| 61 | func | `__init__` | Load compiled model |
+| 69 | func | `preprocess` | Resize and normalize image |
+| 80 | func | `predict` | Returns (value, conf) tuple |
+| 108 | func | `predict_detailed` | Returns value, conf, and all class scores |
+| 118 | func | `_detect_training_mode()` | Detect if digits or arrows training mode |
+| 148 | class | `InferenceService` | Hot-reloadable inference service singleton |
+| 151 | func | `__init__` | Initialize empty model references |
+| 157 | func | `initialize(config)` | Load models from config on startup |
+| 225 | func | `reload_models(config)` | Reload models without restarting service |
+| 306 | func | `predict(model_type, image_path)` | Predict with named model type |
+| 332 | func | `predict_detailed` | Detailed prediction with all scores |
+| 350 | func | `get_classifier` | Get classifier by model type |
+| 360 | func | `is_reloading` | Property: True if reload in progress |
+| 365 | func | `models_loaded` | Property: True if any models loaded |
+| 370 | func | `loaded_model_types` | Property: list of loaded model types |
+| 380 | func | `digits_classifier` | Property: digits classifier instance |
+| 385 | func | `arrows_classifier` | Property: arrows classifier instance |
+| 390 | func | `validate_model_config(model_path, model_type, classes, resolution)` | Validate model file and config |
+| 457 | func | `get_inference_service()` | Singleton accessor |
+
+---
+
+### `watermeter/config_utils.py` (508 lines) -- YAML config with comment preservation
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 22 | var | `_yaml` | Global ruamel.yaml instance |
+| 28 | func | `get_yaml()` | Get or create ruamel.yaml instance |
+| 33 | func | `load_config(path)` | Load config file preserving comments |
+| 48 | func | `resolve_env_vars(value)` | Replace `${VAR}` with env values recursively |
+| 67 | func | `save_config(config, path)` | Save config preserving comments |
+| 81 | func | `load_config_string(yaml_string)` | Parse YAML string to dict |
+| 94 | func | `dump_config_string(config)` | Serialize config dict to YAML string |
+| 109 | func | `update_config(path, updater)` | Load, apply updater function, save |
+| 129 | func | `validate_config(yaml_string)` | Validate YAML string against schema |
+| 156 | var | `CONFIG_SCHEMA` | Full JSON schema for config.yaml (L156-498) |
+| 501 | func | `get_config_schema()` | Return CONFIG_SCHEMA dict |
+| 506 | func | `get_config_schema_json()` | Return CONFIG_SCHEMA as JSON string |
+
+---
+
+### `watermeter/image_hash.py` (505 lines) -- Perceptual hashing and dedup
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 15 | func | `compute_dhash(image_bytes, hash_size)` | Compute difference hash of image bytes |
+| 50 | func | `hamming_distance(h1, h2)` | Compute bit distance between two hashes |
+| 64 | class | `HashCache` | Persistent hash cache for dedup operations |
+| 67 | func | `__init__` | Initialize with cache file path |
+| 74 | func | `_load` | Load cache from JSON file |
+| 88 | func | `_save` | Save cache to JSON file |
+| 96 | func | `add` | Add hash for an image path |
+| 101 | func | `get_all_hashes` | Return list of all cached hashes |
+| 105 | func | `get_hashes_dict` | Return dict of path->hash |
+| 109 | func | `remove` | Remove hash for a path |
+| 114 | func | `find_near_duplicate(new_hash, threshold)` | Find near-duplicate in cache |
+| 131 | func | `scan_and_update` | Scan directory and update cache |
+| 147 | func | `purge_duplicates(input_dir, threshold, gt_dirs)` | Remove duplicates from input dir |
+| 234 | func | `cluster_images_by_hash(hashes, threshold)` | Group near-duplicate images into clusters |
+| 285 | func | `select_prune_candidates(clusters, hashes)` | Pick images to delete from clusters |
+| 328 | func | `compute_prune_preview(gt_base, threshold)` | Preview which images would be pruned |
+| 432 | func | `confirm_prune(gt_base, preview)` | Execute pruning based on preview result |
+
+---
+
+### `watermeter/synthetic_generator.py` (507 lines) -- Synthetic training data generator
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 19 | var | `DIGIT_CLASSES` | List of digit class labels (0-9 + NAN) |
+| 20 | var | `ARROW_CLASSES` | List of 100 arrow class labels (0.00-0.99) |
+| 23 | func | `_deterministic_seed(cls, i)` | Generate deterministic seed from class and index |
+| 29 | func | `_load_font(size)` | Load TrueType font for digit rendering |
+| 36 | class | `DigitRenderer` | Renders digit images from font |
+| 48 | func | `__init__()` | Initialize font and color settings |
+| 51 | func | `render(digit_class, seed)` | Render digit image from font |
+| 89 | class | `DigitCompositor` | Composites digit onto photo background |
+| 110 | func | `__init__(background_dir)` | Load background photos |
+| 128 | func | `render(digit_class, seed)` | Composite digit onto photo background |
+| 174 | class | `ArrowRenderer` | Renders 100x100px dial image with ticks and red pointer |
+| 177 | func | `__init__()` | Initialize dial parameters |
+| 180 | func | `render(arrow_class, seed)` | Render dial at given angle class |
+| 248 | class | `TransformPipeline` | Applies geometric, color, and noise transforms |
+| 251 | func | `__init__(seed)` | Initialize with RNG seed |
+| 255 | func | `apply(img, mode)` | Apply all transforms (offset, perspective, fisheye, color, noise) |
+| 379 | class | `_MultiCompositor` | Wraps multiple compositors for arrow rendering |
+| 382 | func | `__init__(compositors, seed)` | Initialize with compositor pool |
+| 386 | func | `render(arrow_class, seed)` | Delegate to random compositor |
+| 391 | class | `SyntheticGenerator` | Orchestrates synthetic data generation |
+| 394 | func | `__init__(base_dir)` | Initialize with output base directory |
+| 397 | func | `_get_digit_renderer()` | Get or create digit renderer |
+| 406 | func | `_get_arrow_renderer()` | Get or create arrow renderer |
+| 435 | func | `generate(type, count_per_class, seed, progress_callback)` | Generate synthetic images to ground_truth/ |
+| 490 | func | `delete_synthetic(type)` | Remove all `synth_*` files from ground_truth |
+
+---
+
+### `watermeter/photo_master.py` (143 lines) -- Photo-based master image for arrow compositing
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 18 | func | `extract_pointer_mask(img)` | HSV thresholding to isolate red pointer; returns binary mask |
+| 45 | func | `inpaint_background(img, mask)` | Remove pointer with inpainting; returns clean background |
+| 62 | func | `extract_pointer_template(img, mask)` | Crop pointer region to template |
+| 75 | class | `ArrowCompositor` | Composites real pointer template onto inpainted backgrounds |
+| 117 | func | `build_arrow_compositor(photos_dir, ...)` | Factory: load photos, extract pointers, return compositor |
+
+---
+
+### `watermeter/training_core.py` (325 lines) -- Shared training utilities
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 28 | func | `set_all_seeds(seed)` | Set RNG seeds for reproducibility |
+| 39 | func | `worker_init_fn(worker_id)` | DataLoader worker seed initializer |
+| 49 | var | `IMAGENET_MEAN` | ImageNet normalization mean values |
+| 50 | var | `IMAGENET_STD` | ImageNet normalization std values |
+| 53 | func | `create_transforms(resolution)` | Create train and val transform pipelines |
+| 89 | func | `stratified_split(dataset, train_ratio)` | Split dataset preserving class ratios |
+| 116 | func | `compute_class_weights(dataset, indices, device)` | Compute per-class loss weights |
+| 137 | func | `export_to_openvino(model, resolution, output_dir, filename)` | Dual export: direct + ONNX dynamo=False |
+| 185 | func | `preprocess_image(image_path, resolution)` | Load and preprocess single image |
+| 203 | class | `RegressionArrowDataset` | Dataset for regression-based arrow classification |
+| 219 | func | `__len__` | Return dataset length |
+| 222 | func | `__getitem__` | Return (image, label) pair |
+| 245 | func | `stratified_split_regression(dataset, train_ratio)` | Split regression dataset by class |
+| 278 | func | `regression_predict(raw_output)` | Convert regression output to class prediction |
+| 294 | func | `circular_error(pred, true, period=10.0)` | Shortest-path error on circular dial scale |
+| 312 | func | `softmax_predict(logits, classes)` | Convert logits to (label, conf) via softmax |
+
+---
+
+### `watermeter/image_pipeline.py` (303 lines) -- Image fetching, rotation, marker alignment, ROI extraction
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 20 | class | `ImagePipeline` | Image fetch, alignment, and ROI extraction |
+| 24 | var | `SEARCH_MARGIN` | Pixel margin for marker search region |
+| 25 | var | `CONFIDENCE_THRESHOLD` | Minimum confidence for marker matching |
+| 27 | func | `__init__(config)` | Initialize with config dict |
+| 32 | func | `fetch_images()` | Fetch and process full image pipeline |
+| 72 | func | `fetch_whole_image()` | Fetch raw whole image bytes |
+| 94 | func | `process_whole_image(image_bytes)` | Process fetched image: rotate, align, extract ROIs |
+| 157 | func | `_load_marker_templates(marker_count)` | Load marker template images from disk |
+| 186 | func | `invalidate_marker_cache()` | Clear cached marker templates |
+| 190 | func | `_align_with_markers(img, markers)` | Align image using marker template matching |
+| 275 | func | `_extract_roi(img, roi, width, height)` | Extract ROI crop from full image |
+
+---
+
+### `watermeter/low_confidence_capture.py` (111 lines) -- Saves low-confidence images for training
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 17 | class | `LowConfidenceCapture` | Saves low-confidence images for active learning |
+| 20 | func | `__init__(config)` | Initialize with config dict |
+| 24 | func | `save_low_confidence(image_id, image_bytes, prediction, next_image_bytes)` | Save image if below confidence threshold |
+
+---
+
+### `watermeter/persistence.py` (73 lines) -- JSON state persistence
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 16 | class | `StateStore` | Atomic JSON state file persistence |
+| 19 | func | `__init__` | Initialize with file path |
+| 23 | func | `save(data)` | Atomically write state to JSON file |
+| 45 | func | `load()` | Load state from JSON file |
+| 66 | func | `clear()` | Delete state file |
+
+---
+
+### `watermeter/plausibility.py` (141 lines) -- Consistency and plausibility checking
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 17 | class | `PlausibilityChecker` | Validates readings for consistency and plausibility |
+| 25 | func | `__init__(config, rate_tracker)` | Initialize with config and rate tracker |
+| 29 | func | `check_consistency(predictions)` | Validate adjacent position consistency (half vs upper-half rule) |
+| 76 | func | `validate_plausibility(new_value, previous_value, last_update_time)` | Check reverse, rate limits; returns (is_valid, warnings) |
+
+---
+
+### `watermeter/rate_tracker.py` (112 lines) -- Rate history ring buffer
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 12 | class | `RateTracker` | Ring buffer for rate history used by plausibility and leak detection |
+| 23 | func | `__init__(max_size)` | Initialize with max buffer size |
+| 30 | func | `history` | Property: list of (value, timestamp) tuples |
+| 35 | func | `max_size` | Property: maximum buffer size |
+| 45 | func | `average_rate_per_hour` | Property: computed average rate |
+| 65 | func | `add(value, timestamp)` | Append new reading |
+| 77 | func | `pop_last()` | Remove and return last reading |
+| 82 | func | `replace_last(value, timestamp)` | Replace last reading in-place |
+| 87 | func | `reset()` | Clear all history |
+| 91 | func | `seed(value, timestamp)` | Initialize history with single reading |
+| 101 | func | `__len__()` | Return number of readings |
+| 104 | func | `__repr__()` | String representation |
+| 109 | func | `_trim()` | Enforce max_size constraint |
+
+---
+
+### `watermeter/leak_detector.py` (68 lines) -- Sustained consumption monitoring
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 16 | class | `LeakDetector` | Monitors for sustained non-zero consumption (leak) |
+| 24 | func | `__init__(rate_tracker, config)` | Initialize with rate tracker and config |
+| 28 | func | `check()` | Returns warning message if N consecutive readings exceed threshold |
+
+---
+
+### `watermeter/scheduling.py` (97 lines) -- Cyclic and periodic background task scheduling
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 15 | class | `SchedulingManager` | Manages cyclic reading loop and stats loop |
+| 26 | func | `__init__(cyclic_interval, process_fn, stats_fn)` | Initialize with callbacks |
+| 45 | func | `_cyclic_loop()` | Threaded loop: call process_fn on interval |
+| 56 | func | `start_cyclic_loop()` | Start background cyclic thread |
+| 64 | func | `stop_cyclic_loop()` | Stop cyclic thread |
+| 71 | func | `_stats_loop()` | Threaded loop: call stats_fn on interval |
+| 84 | func | `start_stats_loop()` | Start background stats thread |
+| 92 | func | `stop_stats_loop()` | Stop stats thread |
+
+---
+
+### `watermeter/position_utils.py` (40 lines) -- Position ID utilities
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 11 | func | `get_position_ids(config)` | Compute digit and arrow position IDs from config |
+
+---
+
+### `watermeter/__main__.py` (3 lines) -- Entry point
+
+Calls `app.main()`.
 
 ---
 
@@ -298,7 +567,7 @@ Singleton: `get_model_manager()` L335
 - `uploadTrainingData` L1482 -- handles ZIP upload UI
 - `startSyntheticGeneration` L1561, `pollSyntheticStatus` L1591, `deleteSyntheticData` L1627
 
-### `roi-config.js` (1587 lines, inline in template)
+### `roi-config.js` (1594 lines, inline in template)
 - Setup mode (step 0): `testImageSource` L4
 - Canvas/overlay state L50-85, mouse events L86-245
 - Drawing: `drawCrosshair` L246, `drawBox` L271, `render` L312
@@ -309,8 +578,8 @@ Singleton: `get_model_manager()` L335
 - Rotation: `getTotalRotation` L1332, `saveRotation` L1369, `changeRotation` L1416
 - Image loading: `fetchAndReload` L1436, `loadImage` L1462, `loadConfig` L1488
 
-### `mqtt-config.js` (388 lines)
-- IIFE module: `MqttConfig` with public API: `init` L368, `loadConfig` L113, `save` L163, `edit` L288, `testConnection` L297
+### `mqtt-config.js` (387 lines)
+- IIFE module `MqttConfig` with public API: `init` L368, `loadConfig` L113, `save` L163, `edit` L288, `testConnection` L297
 - Helpers: `_getVal` L7, `_setVal` L12, `_setChecked` L17, `_show` L22, `_hide` L27, `_getCheckedRadio` L32, `_setCheckedRadio` L40
 - Trigger mode: `_setupTriggerModeRadios` L51, `_updateTriggerFields` L63
 - HA toggle: `_setupHaToggle` L76
@@ -322,7 +591,7 @@ Singleton: `get_model_manager()` L335
 
 ---
 
-## Static CSS: `watermeter/static/style.css` (1607 lines)
+## Static CSS: `watermeter/static/style.css` (1777 lines)
 
 **Variables (L8-18):** `--primary: #2563eb`, `--primary-light: #3b82f6`, `--primary-dark: #1d4ed8`, `--success: #059669`, `--warning: #d97706`, `--danger: #dc2626`, `--bg-dark: #1e293b`, `--bg-light: #f8fafc`, `--text-dark: #0f172a`, `--text-light: #64748b`, `--border: #e2e8f0`
 
@@ -353,137 +622,261 @@ logging:        # Logging (level, format, file)
 
 ## Root-Level Scripts (standalone, not in package)
 
-`train_digits.py`, `train_arrows.py`, `benchmark_digits.py`, `benchmark_arrows.py`
+### `benchmark_digits.py` (427 lines)
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 21 | func | `check_cuda_available()` | Detect CUDA availability for ONNX Runtime |
+| 62 | class | `DigitClassifier` | Lightweight classifier supporting ONNX+CUDA or OpenVINO |
+| 82 | func | `preprocess` | Resize and normalize image |
+| 91 | func | `predict` | Return (predicted_class, confidence, inference_time) |
+| 114 | func | `parse_model_filename(filepath)` | Parse model filename to extract metadata |
+| 138 | func | `generate_classes(num_classes)` | Generate digit class labels |
+| 154 | func | `collect_test_images(dataset_path)` | Collect images organized by ground truth label |
+| 176 | func | `calculate_accuracy(predictions, expected_label)` | Compute accuracy by exact label match |
+| 192 | func | `discover_models(model_dir, use_onnx)` | Discover model files in directory |
+| 215 | func | `main()` | Entry: discover, load, benchmark, report |
+
+### `benchmark_arrows.py` (446 lines)
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 22 | func | `check_cuda_available()` | Detect CUDA availability |
+| 30 | class | `ArrowClassifier` | Arrow classifier for ONNX or OpenVINO |
+| 82 | func | `parse_model_filename(filepath)` | Parse model filename |
+| 107 | func | `generate_classes(num_classes)` | Generate arrow class labels |
+| 129 | func | `round_to_class(value, num_classes)` | Round float to nearest arrow class |
+| 164 | func | `collect_test_images(dataset_path)` | Collect images by ground truth |
+| 189 | func | `calculate_accuracy(predictions, expected_label)` | Compute accuracy |
+| 205 | func | `discover_models(model_dir, use_onnx)` | Discover model files |
+| 228 | func | `main()` | Entry: discover, load, benchmark, report |
+
+### `train_digits.py` (499 lines)
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 55 | func | `analyze_dataset(dataset_dir)` | Print dataset class distribution |
+| 79 | func | `create_data_loaders(dataset_dir, resolution, batch_size)` | Build train/val DataLoaders |
+| 130 | func | `compute_class_weights(dataset, train_idx, device)` | Compute balanced class weights |
+| 163 | func | `train_model(model_name, resolution, epochs, ...)` | Full training loop with export |
+| 423 | func | `main()` | CLI entry point |
+
+### `train_arrows.py` (635 lines)
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 29 | func | `set_all_seeds(seed)` | Set all RNG seeds |
+| 41 | func | `worker_init_fn(worker_id)` | DataLoader worker seed init |
+| 81 | func | `create_subsampled_dataset(gt_dir, dataset_dir, step)` | Build subsampled arrow dataset |
+| 146 | func | `analyze_dataset(dataset_dir)` | Print dataset distribution |
+| 175 | func | `create_data_loaders(dataset_dir, resolution, batch_size)` | Build train/val DataLoaders |
+| 231 | func | `compute_class_weights(dataset, train_idx, device)` | Compute balanced class weights |
+| 264 | func | `train_model(model_name, resolution, epochs, ...)` | Full training loop with export |
+| 524 | func | `main()` | CLI entry point |
+
+---
+
+## Scripts: `scripts/`
+
+### `scripts/backfill_training_samples.py` (88 lines)
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 27 | func | `prettify_arch(codename)` | Convert arch codename to display name |
+| 37 | func | `backfill()` | Backfill training_samples, val_samples, architecture_display into metadata.json |
+
+### `scripts/tune_synthetic.py` (191 lines)
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 34 | func | `generate_mini_dataset(tmpdir, data_type, count_per_class)` | Generate small synthetic dataset |
+| 41 | func | `train_mini_model(dataset_dir, num_classes, resolution, epochs)` | Train tiny model on synthetic data |
+| 96 | func | `evaluate_against_real(model, classes, input_dir, resolution)` | Evaluate model against real photos |
+| 131 | func | `main()` | CLI entry: generate, train, evaluate |
 
 ---
 
 ## Tests: `tests/`
 
+### `tests/conftest.py` (113 lines) -- Root-level shared fixtures
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 17 | func | `pytest_addoption(parser)` | Adds `--base-url`, `--image`, `--no-build` CLI options |
+| 36 | fixture | `sample_config_yaml` | Minimal valid YAML config string |
+| 82 | fixture | `sample_config_dict` | Config as plain dict |
+
+---
+
 ### Unit Tests: `tests/unit/`
 
-### `test_synthetic_digit_renderer.py` (138 lines)
-- `TestDigitRenderer`: render returns PIL image, correct size (20x32), RGB mode, all 10 classes, white background, dark pixels, different digits differ, invalid class raises
+#### `tests/unit/conftest.py` (129 lines) -- Unit test fixtures
 
-### `test_synthetic_arrow_renderer.py` (80 lines)
-- `TestArrowRenderer`: render returns PIL image, square (100x100), RGB mode, all 100 classes, red pixels (pointer), dark pixels (ticks), different classes differ, opposite pointers, invalid class raises
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 26 | func | `_install_mock_modules()` | Installs mocks for cv2, paho, openvino |
+| 56 | fixture | `mock_service` | Mock WatermeterService with current_state and config |
+| 80 | fixture | `test_client` | FastAPI TestClient with mocked services and tmp_path |
 
-### `test_synthetic_transforms.py` (114 lines)
-- `TestTransformPipeline`: returns PIL image, preserves size, preserves RGB, changes image, same seed = same result, different seed = different result, arrow mode fisheye, digit mode no fisheye, pixel values in range
-
-### `test_synthetic_generator.py` (194 lines)
-- `TestSyntheticGenerator`: generate digits, generate arrows (all 100 classes), generate both, valid JPEG output, reproducible with seed, progress callback, synth_ prefix, does not overwrite existing
-- `TestDeleteSynthetic`: removes synth files, preserves real files, returns correct count
-
-### `test_synthetic_routes.py` (165 lines)
-- `TestSyntheticRoutes`: generate endpoint exists, returns job_id, invalid type 422, status endpoint exists, status returns fields, delete endpoint exists, delete returns count, invalid type 400, conflict when running 409, conflict when training 409, delete conflict when running 409
-
-### `test_api_routes.py` (266 lines)
+#### `tests/unit/test_api_routes.py` (266 lines)
 - `TestConfigEndpoints` L13, `TestTrainingStatus` L83, `TestModelEndpoints` L103, `TestLabelValidation` L157
 
-### `test_arrow_regression.py` (431 lines)
+#### `tests/unit/test_arrow_regression.py` (431 lines)
 - `TestRegressionArrowDataset` L131, `TestStratifiedSplitRegression` L178, `TestRegressionPredict` L220, `TestRegressor` L259, `TestDetectTrainingMode` L321, `TestTrainingConfigValidation` L372, `TestValidateModelConfigContinuous` L407
 
-### `test_circular_error.py` (52 lines)
+#### `tests/unit/test_circular_error.py` (52 lines)
 - `TestCircularError` L5: shortest-path error on circular scale
 
-### `test_config_reload.py` (165 lines)
+#### `tests/unit/test_config_reload.py` (165 lines)
 - `TestReloadConfig` L50: config reload behavior
 
-### `test_config_utils.py` (165 lines)
+#### `tests/unit/test_config_utils.py` (165 lines)
 - `TestLoadSaveConfig` L17, `TestConfigString` L50, `TestUpdateConfig` L81, `TestValidateConfig` L113, `TestConfigSchema` L153
 
-### `test_confirmation.py` (791 lines)
+#### `tests/unit/test_confirmation.py` (791 lines)
 - `TestShouldRequestConfirmation` L166, `TestPublishConfirmationRequest` L241, `TestHandleConfirmationResponse` L358, `TestConfirmationTimeout` L478, `TestGetConfirmationStatus` L566, `TestResetClearsConfirmation` L615, `TestMqttMessageRouting` L635, `TestMqttConnectSubscription` L674, `TestDisabledMode` L711, `TestProcessReadingSkipsPending` L731, `TestRejectWithNonePreviousValue` L765
 
-### `test_cross_arrow_consistency.py` (379 lines)
+#### `tests/unit/test_cross_arrow_consistency.py` (379 lines)
 - `TestCheckCrossArrowConsistency` L64, `TestCrossArrowIntegration` L247
 
-### `test_image_hash.py` (190 lines)
+#### `tests/unit/test_env_var_substitution.py` (74 lines) -- NEW
+- `TestResolveEnvVars` L6: string, dict, list, nested substitution; missing vars kept; non-string passthrough
+
+#### `tests/unit/test_image_hash.py` (190 lines)
 - `TestComputeDhash` L9, `TestHammingDistance` L81, `TestHashCache` L100
 
-### `test_leak_detection.py` (322 lines)
+#### `tests/unit/test_leak_detection.py` (322 lines)
 - `TestCreateTransforms` L6, `TestCheckSustainedConsumption` L101, `TestLeakWarningMqtt` L208, `TestLeakWarningStateManagement` L268
 
-### `test_leak_detector.py` (115 lines)
+#### `tests/unit/test_leak_detector.py` (115 lines)
 - `TestLeakDetectorInit` L35, `TestLeakDetectorCheck` L42
 
-### `test_marker_alignment.py` (478 lines)
+#### `tests/unit/test_marker_alignment.py` (478 lines)
 - `TestFewerThanTwoMarkers` L196, `TestMissingTemplateFiles` L213, `TestLowConfidenceMatch` L239, `TestAlreadyAlignedImage` L267, `TestShiftedImageCorrected` L299, `TestTemplateCaching` L346, `TestCacheInvalidation` L374, `TestSearchRegionNearEdge` L413
 
-### `test_mislabel.py` (714 lines)
+#### `tests/unit/test_mislabel.py` (714 lines)
 - `TestScanMislabeled` L26, `TestConfirmMislabeled` L275, `TestMakeThumbnailBase64` L426, `TestMislabelAPIEndpoints` L451
 
-### `test_model_manager.py` (271 lines)
+#### `tests/unit/test_model_manager.py` (271 lines)
 - `TestModelManagerValidation` L31, `TestModelManagerCRUD` L62, `TestModelManagerActivation` L132, `TestModelManagerHelpers` L229
 
-### `test_persistence.py` (93 lines)
+#### `tests/unit/test_mqtt_routes.py` (360 lines) -- NEW
+- `TestMqttGetConfig` L8: returns 200, returns sections, returns raw env tokens, correct broker value, 404 on missing config
+- `TestMqttPostConfig` L96: saves config, calls reload_config, returns reconnected message, persists to file
+- `TestMqttTestConnection` L199: missing broker 400, success ok, refused error, OSError error, resolves env vars, warns on unresolved, disconnects after test, uses 5s keepalive
+
+#### `tests/unit/test_persistence.py` (93 lines)
 - `TestStateStore` L11
 
-### `test_photo_master.py` (109 lines)
+#### `tests/unit/test_photo_master.py` (109 lines)
 - `TestPointerExtractor` L29, `TestArrowCompositor` L65, `TestBuildArrowCompositor` L97
 
-### `test_plausibility.py` (163 lines)
+#### `tests/unit/test_plausibility.py` (163 lines)
 - `TestCheckConsistency` L46, `TestValidatePlausibility` L100
 
-### `test_position_utils.py` (131 lines)
+#### `tests/unit/test_position_utils.py` (131 lines)
 - `TestGetPositionIds` L6
 
-### `test_prune.py` (653 lines)
+#### `tests/unit/test_prune.py` (653 lines)
 - `TestClusterImagesByHash` L13, `TestSelectPruneCandidates` L88, `TestComputePrunePreview` L150, `TestConfirmPrune` L265, `TestConfirmPrunePathTraversal` L376, `TestHashCacheExtensions` L458, `TestPruneAPIEndpoints` L501
 
-### `test_pure_functions.py` (136 lines)
+#### `tests/unit/test_pure_functions.py` (136 lines)
 - `TestSafeSubpath` L16, `TestGenerateArrowClasses` L60, `TestRoundToArrowClass` L97
 
-### `test_rate_tracker.py` (168 lines)
+#### `tests/unit/test_rate_tracker.py` (168 lines)
 - `TestRateTrackerInit` L10, `TestRateTrackerAdd` L31, `TestRateTrackerMutations` L64, `TestRateTrackerAverageRate` L113, `TestRateTrackerMaxSize` L153
 
-### `test_training_augmentation.py` (44 lines)
+#### `tests/unit/test_synthetic_digit_renderer.py` (138 lines)
+- `TestDigitRenderer`: render returns PIL image, correct size (20x32), RGB, all 10 classes, white background, dark pixels, invalid class raises
+
+#### `tests/unit/test_synthetic_arrow_renderer.py` (80 lines)
+- `TestArrowRenderer`: render returns PIL image, 100x100, RGB, all 100 classes, red pixels, different classes differ, invalid class raises
+
+#### `tests/unit/test_synthetic_transforms.py` (114 lines)
+- `TestTransformPipeline`: returns PIL, preserves size, changes image, same seed same result, arrow mode fisheye, digit mode no fisheye
+
+#### `tests/unit/test_synthetic_generator.py` (194 lines)
+- `TestSyntheticGenerator`: generate digits/arrows/both, valid JPEG, reproducible seed, progress callback, synth_ prefix, no overwrite
+- `TestDeleteSynthetic`: removes synth files, preserves real, returns correct count
+
+#### `tests/unit/test_synthetic_routes.py` (165 lines)
+- `TestSyntheticRoutes`: generate endpoint, returns job_id, invalid type 422, status fields, delete endpoint, 409 conflict, training conflict
+
+#### `tests/unit/test_training_augmentation.py` (44 lines)
 - `TestCreateTransforms` L6: verifies transform pipeline output types and sizes
 
-### `test_training_config.py` (85 lines)
+#### `tests/unit/test_training_config.py` (85 lines)
 - `TestTrainingConfigLearningRate` L6: validates learning rate field in TrainingConfig
 
-### `test_trigger_mode.py` (416 lines)
+#### `tests/unit/test_trigger_mode.py` (416 lines)
 - `TestTriggerConfigSchema` L45, `TestTriggerConfigParsing` L65, `TestTriggerModeDefaults` L101, `TestCyclicLoop` L125, `TestMqttSubscriptionConditional` L234, `TestMqttV2Api` L293
 
-### `test_value_correction.py` (721 lines)
+#### `tests/unit/test_value_correction.py` (721 lines)
 - `TestPredictDetailed` L97, `TestHelperMethods` L151, `TestConsistencyImprovement` L234, `TestSignalScoring` L290, `TestCorrectionEngine` L467
 
 ---
 
 ### Integration Tests: `tests/integration/`
 
-### `test_smoke.py` (41 lines)
+#### `tests/integration/conftest.py` (186 lines) -- Docker-based integration fixtures
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 27 | func | `_find_free_port()` | Find free TCP port |
+| 35 | func | `_image_exists(image)` | Check if Docker image exists locally |
+| 44 | func | `_docker_build(image, build_dir)` | Build Docker image |
+| 57 | func | `_docker_run(image, host_port)` | Start fresh container; return name |
+| 76 | func | `_docker_cp(container, src, dst)` | Copy files into container |
+| 84 | func | `_docker_rm(container)` | Stop and remove container |
+| 92 | func | `_wait_healthy(url, timeout)` | Poll /health until 200 |
+| 107 | func | `_copy_ground_truth(container)` | Copy local ground truth into test container |
+| 121 | fixture | `base_url` | Session-scoped: start container or use `--base-url` |
+| 176 | fixture | `api` | Session-scoped httpx client with base_url |
+| 183 | fixture | `unique_id` | Generate unique ID for test isolation |
+
+#### `tests/integration/test_smoke.py` (41 lines)
 - `test_health_endpoint`, `test_status_endpoint`, `test_dashboard_page`, `test_training_page`, `test_training_status_endpoint`
 
-### `test_config.py` (56 lines)
+#### `tests/integration/test_config.py` (56 lines)
 - `test_get_config`, `test_get_config_schema`, `test_save_invalid_yaml`, `test_config_roundtrip`
 
-### `test_models.py` (51 lines)
+#### `tests/integration/test_models.py` (51 lines)
 - `test_list_architectures`, `test_list_architectures_short_query_returns_empty`, `test_list_digits_models`, `test_list_arrows_models`, `test_training_data_stats`, `test_model_not_found`
 
-### `test_training.py` (165 lines)
+#### `tests/integration/test_training.py` (165 lines)
 - `test_training_e2e` L58, `test_training_cancel` L106, `test_training_queue` L134
 
-### `test_benchmark.py` (148 lines)
+#### `tests/integration/test_benchmark.py` (148 lines)
 - `test_benchmark_digits` L72, `test_benchmark_arrows` L103, `test_benchmark_cancel` L124
 
-### `test_synthetic.py` (105 lines)
-- `test_synthetic_status_idle`, `test_synthetic_generation_digits` (generate + poll + cleanup), `test_synthetic_cannot_run_twice` (409 concurrency guard), `test_synthetic_delete_nonexistent`, `test_synthetic_invalid_type_on_delete`
+#### `tests/integration/test_synthetic.py` (105 lines)
+- `test_synthetic_status_idle`, `test_synthetic_generation_digits`, `test_synthetic_cannot_run_twice` (409), `test_synthetic_delete_nonexistent`, `test_synthetic_invalid_type_on_delete`
 
 ---
 
 ### Regression Tests: `tests/regression/`
 
-### `test_config_comments.py` (39 lines)
+#### `tests/regression/test_config_comments.py` (39 lines)
 - `test_inline_comment_preserved`, `test_block_comment_preserved`, `test_comment_survives_file_round_trip`
 
-### `test_nan_class_label.py` (22 lines)
+#### `tests/regression/test_nan_class_label.py` (22 lines)
 - `test_arrow_classes_do_not_contain_nan`: verifies NAN handling in arrow class generation
 
 ---
 
 ### Export Tests: `tests/export/`
 
-### `test_export_openvino.py` (80 lines)
+#### `tests/export/conftest.py` (35 lines)
+- `unmock_openvino` (autouse): removes mocked openvino from sys.modules before each test; forces real modules
+
+#### `tests/export/test_export_openvino.py` (80 lines)
 - `TestExportToOpenvino` L8: tests dual-path OpenVINO export from PyTorch model
+
+---
+
+## `.claude/agents/` -- Subagent Definitions
+
+| File | Name | Model | Max Turns | Purpose |
+|------|------|-------|-----------|---------|
+| `debugger.md` | debugger | sonnet | 10 | Test failures, stack traces, runtime errors |
+| `dev.md` | dev | sonnet | 15 | All implementation: features, refactoring, bugs |
+| `frontend.md` | frontend | sonnet | 15 | Templates (Jinja2), HTMX, CSS styling |
+| `planner.md` | planner | opus | 12 | Codebase exploration, task doc creation, architecture |
+| `researcher.md` | researcher | sonnet | 8 | Library docs, API research, best practices |
+| `reviewer-light.md` | reviewer-light | sonnet | 8 | Trivial/small-diff review: config, single-file fixes |
+| `reviewer.md` | reviewer | opus | 8 | Complex multi-file review, security audit, architecture |
+| `tester.md` | tester | sonnet | 10 | Unit/regression tests, Playwright browser testing (port 8002) |
