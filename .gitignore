@@ -67,6 +67,9 @@ config/*
 # Claude Code (local settings are personal, agents are shared)
 .claude/settings.local.json
 
+# Ephemeral agent communication files
+docs/agent_output/
+
 # Secrets
 .env
 token.txt
