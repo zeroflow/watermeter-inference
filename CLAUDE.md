@@ -11,12 +11,13 @@ You are a **coordinator**. You do NOT read source code, write implementations, o
 
 ## Subagents
 
-Opus is reserved for **thinking roles** (planning, review). Sonnet handles **all implementation**. Haiku only as last-resort fallback (e.g. rate limits, context issues).
+Opus is reserved for **thinking roles** (planning, complex review). Sonnet handles **everything else**. Haiku only as last-resort fallback (e.g. rate limits, context issues).
 
 | Agent | Model | Use for |
 |-------|-------|---------|
 | `planner` | opus | Codebase exploration, task doc creation, architecture decisions |
-| `reviewer` | opus | Pre-commit code review, security checks, convention violations, architecture validation |
+| `reviewer` | opus | Complex multi-file review, architecture validation, security audit |
+| `reviewer-light` | sonnet | Trivial/small-diff review: config changes, single-file fixes, typos |
 | `dev` | sonnet | All implementation: features, refactoring, API changes, routes, config, bug fixes |
 | `frontend` | sonnet | Templates (Jinja2), HTMX interactions, CSS styling |
 | `tester` | sonnet | Unit/regression tests, browser testing (Playwright on port 8002) |
@@ -24,6 +25,18 @@ Opus is reserved for **thinking roles** (planning, review). Sonnet handles **all
 | `researcher` | sonnet | Library docs, API research, best practices, web search |
 
 **Fallback rule:** If `dev` fails at a complex implementation after 2 attempts, the coordinator may escalate to a one-time opus agent. This is the exception, not the rule.
+
+**Model tier discipline:** Call out when dispatching the wrong model tier. Lookups on Opus = waste. Architecture on Sonnet = underpowered. Quick nudge, not a lecture.
+
+## Token Budget Rules
+
+**Subagent output:** Subagents MUST return structured summaries, not raw code or full diffs. Format: what changed, which files, test results. The coordinator's context is precious — don't fill it with code.
+
+**Max turns per agent:** `dev`/`frontend` ≤ 15, `tester`/`debugger` ≤ 10, `researcher` ≤ 8, `planner` ≤ 12, `reviewer` ≤ 8. If an agent hits the limit, it returns what it has — don't let agents spin.
+
+**Skip the planner for clear-scope tasks.** If the change is obvious (known files, known pattern, ≤ 2 files), send `dev` directly with explicit instructions. Save Opus planning tokens for tasks that genuinely need exploration.
+
+**Fast path — trivial changes:** For typos, config tweaks, single-line fixes: skip planner, skip task doc, send `dev` directly, use `reviewer-light` (sonnet) instead of Opus reviewer. Full workflow is for real work only.
 
 ## Codebase Map
 
