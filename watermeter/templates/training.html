@@ -159,8 +159,8 @@
         /* Training Data Stats */
         .stats-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 24px;
+            grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+            gap: 16px;
         }
 
         .stats-column h3 {
@@ -445,6 +445,7 @@
         .form-actions {
             margin-top: 16px;
             display: flex;
+            flex-wrap: wrap;
             gap: 12px;
         }
 
@@ -472,6 +473,8 @@
 
         .progress-header {
             display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 16px;
@@ -530,6 +533,7 @@
 
         .progress-metrics {
             display: flex;
+            flex-wrap: wrap;
             gap: 24px;
             margin-bottom: 16px;
             padding: 12px;
@@ -734,7 +738,7 @@
         }
 
         .model-actions button {
-            padding: 6px 12px;
+            padding: 4px 8px;
             font-size: 12px;
             border: none;
             border-radius: 6px;
@@ -987,7 +991,7 @@
         }
 
         /* Responsive - narrow/mobile */
-        @media (max-width: 1200px) {
+        @media (max-width: 900px) {
             .training-content {
                 padding: 8px;
                 gap: 12px;
@@ -996,7 +1000,6 @@
 
             .section {
                 padding: 12px;
-                overflow: hidden;
             }
 
             .section h2 {
