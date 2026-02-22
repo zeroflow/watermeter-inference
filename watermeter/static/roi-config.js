@@ -284,14 +284,15 @@
             if (drawAlignmentHelpers) {
                 const cx = x + w / 2;
                 const cy = y + h / 2;
-                const radius = Math.min(w, h) / 2 - 2;
+                const radiusX = w / 2 - 2;
+                const radiusY = h / 2 - 2;
 
                 ctx.setLineDash([3, 3]);
                 ctx.lineWidth = 1;
 
-                // Draw circle
+                // Draw ellipse inscribed in ROI box
                 ctx.beginPath();
-                ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
+                ctx.ellipse(cx, cy, radiusX, radiusY, 0, 0, 2 * Math.PI);
                 ctx.stroke();
 
                 // Draw crosshair inside box
