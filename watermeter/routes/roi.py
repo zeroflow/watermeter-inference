@@ -32,7 +32,7 @@ class FisheyeSubmission(BaseModel):
     fisheye_correction: float
 
 
-class MarkerBox(BaseModel):
+class RoiBounds(BaseModel):
     x: float
     y: float
     width: float
@@ -40,38 +40,17 @@ class MarkerBox(BaseModel):
 
 
 class MarkersSubmission(BaseModel):
-    markers: list[MarkerBox]
-
-
-class DigitRoi(BaseModel):
-    x: float
-    y: float
-    width: float
-    height: float
+    markers: list[RoiBounds]
 
 
 class DigitsSubmission(BaseModel):
     count: int
-    rois: list[DigitRoi]
-
-
-class SingleRoiSubmission(BaseModel):
-    x: float
-    y: float
-    width: float
-    height: float
-
-
-class AnalogRoi(BaseModel):
-    x: float
-    y: float
-    width: float
-    height: float
+    rois: list[RoiBounds]
 
 
 class AnalogsSubmission(BaseModel):
     count: int
-    rois: list[AnalogRoi]
+    rois: list[RoiBounds]
 
 
 # --- Helper ---
@@ -666,7 +645,7 @@ async def get_digit_image(digit_id: int):
     summary="Preview digit inference",
     description="Run inference on a single digit ROI and return the prediction for validation",
 )
-async def preview_digit_inference(submission: SingleRoiSubmission):
+async def preview_digit_inference(submission: RoiBounds):
     """Run inference on a single ROI and return the prediction."""
     try:
         result = _load_corrected_reference()
@@ -844,7 +823,7 @@ async def get_analog_image(analog_id: int):
     summary="Preview analog dial inference",
     description="Run inference on a single analog dial ROI and return the prediction for validation",
 )
-async def preview_analog_inference(submission: SingleRoiSubmission):
+async def preview_analog_inference(submission: RoiBounds):
     """Run inference on a single analog ROI and return the prediction."""
     try:
         result = _load_corrected_reference()
