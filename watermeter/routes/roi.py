@@ -27,6 +27,10 @@ class RotationSubmission(BaseModel):
     rotation: float
 
 
+class FisheyeSubmission(BaseModel):
+    fisheye_correction: float
+
+
 class MarkerBox(BaseModel):
     x: float
     y: float
@@ -261,6 +265,7 @@ async def get_roi_config():
     detection = service.config.get("detection", {})
     return JSONResponse(
         {
+            "fisheye_correction": detection.get("fisheye_correction"),
             "rotation": detection.get("rotation"),
             "markers": detection.get("markers"),
             "digits": detection.get("digits"),
@@ -328,6 +333,77 @@ async def delete_rotation():
 
     except Exception as e:
         logger.error(f"Error deleting rotation: {e}")
+        return JSONResponse({"success": False, "message": f"Error: {str(e)}"}, status_code=500)
+
+
+@router.post("/api/roi/fisheye", tags=["ROI Setup"], summary="Save fisheye correction")
+async def save_fisheye(submission: FisheyeSubmission):
+    """Save fisheye correction coefficient to config."""
+    try:
+        config_path = Path("config.yaml")
+
+        def _update(config):
+            if "detection" not in config:
+                config["detection"] = {}
+            config["detection"]["fisheye_correction"] = round(submission.fisheye_correction, 4)
+
+        config = config_utils.update_config(config_path, _update)
+        service = watermeter_service.get_service()
+        service.config = config
+
+        logger.info(f"Fisheye correction saved: {submission.fisheye_correction}")
+        return JSONResponse({"success": True, "message": f"Fisheye correction saved: {submission.fisheye_correction}"})
+
+    except Exception as e:
+        logger.error(f"Error saving fisheye correction: {e}")
+        return JSONResponse({"success": False, "message": f"Error: {str(e)}"}, status_code=500)
+
+
+@router.delete("/api/roi/fisheye", tags=["ROI Setup"], summary="Delete fisheye correction")
+async def delete_fisheye():
+    """Remove fisheye correction from config."""
+    try:
+        config_path = Path("config.yaml")
+
+        def _update(config):
+            if "detection" in config and "fisheye_correction" in config["detection"]:
+                del config["detection"]["fisheye_correction"]
+                if not config["detection"]:
+                    del config["detection"]
+
+        config = config_utils.update_config(config_path, _update)
+        service = watermeter_service.get_service()
+        service.config = config
+
+        logger.info("Fisheye correction deleted")
+        return JSONResponse({"success": True, "message": "Fisheye correction deleted"})
+
+    except Exception as e:
+        logger.error(f"Error deleting fisheye correction: {e}")
+        return JSONResponse({"success": False, "message": f"Error: {str(e)}"}, status_code=500)
+
+
+@router.post("/api/roi/fisheye-preview", tags=["ROI Setup"], summary="Preview fisheye correction")
+async def fisheye_preview(submission: FisheyeSubmission):
+    """Return the reference image with fisheye correction applied as JPEG."""
+    try:
+        reference_path = Path("/data/reference_raw.jpg")
+        if not reference_path.exists():
+            return JSONResponse({"success": False, "message": "No reference image"}, status_code=404)
+
+        img = cv2.imread(str(reference_path))
+        if img is None:
+            return JSONResponse({"success": False, "message": "Cannot read reference image"}, status_code=500)
+
+        if submission.fisheye_correction != 0:
+            img = _apply_fisheye_correction(img, submission.fisheye_correction)
+
+        _, buffer = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        encoded = base64.b64encode(buffer).decode('utf-8')
+        return JSONResponse({"success": True, "image": f"data:image/jpeg;base64,{encoded}"})
+
+    except Exception as e:
+        logger.error(f"Error generating fisheye preview: {e}")
         return JSONResponse({"success": False, "message": f"Error: {str(e)}"}, status_code=500)
 
 
