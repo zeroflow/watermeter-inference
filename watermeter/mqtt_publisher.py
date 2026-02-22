@@ -10,6 +10,8 @@ import asyncio
 import json
 import logging
 import os
+import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
@@ -265,6 +267,7 @@ class MqttPublisher:
 
         self.mqtt_client = None
         self.loop = None
+        self._reconnecting = False  # guard against concurrent reconnect loops
 
     # ── State accessors ─────────────────────────────────────────────────────
 
@@ -476,8 +479,34 @@ class MqttPublisher:
         """MQTT disconnect callback (paho v2 API)."""
         if reason_code == 0:
             logger.info("Disconnected from MQTT broker (clean)")
-        else:
-            logger.warning(f"Disconnected from MQTT broker: {reason_code} — will reconnect automatically")
+            return
+
+        logger.warning(f"Disconnected from MQTT broker: {reason_code}")
+
+        # Guard: only one reconnect loop at a time
+        if self._reconnecting:
+            logger.debug("Reconnect loop already active — skipping")
+            return
+
+        self._reconnecting = True
+        thread = threading.Thread(target=self._reconnect_loop, daemon=True)
+        thread.start()
+
+    def _reconnect_loop(self):
+        """Reconnect to broker with exponential backoff (5s -> 120s cap)."""
+        delay = 5
+        try:
+            while True:
+                time.sleep(delay)
+                try:
+                    self.mqtt_client.reconnect()
+                    logger.info("Reconnected to MQTT broker")
+                    return
+                except (OSError, ConnectionRefusedError) as exc:
+                    logger.warning(f"MQTT reconnect failed ({exc}), retrying in {delay}s")
+                    delay = min(delay * 2, 120)
+        finally:
+            self._reconnecting = False
 
     def on_message(self, client, userdata, msg):
         """MQTT message callback."""
