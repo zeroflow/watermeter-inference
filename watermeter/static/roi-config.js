@@ -1568,7 +1568,13 @@
                 loadingIndicator.style.display = 'none';
                 canvas.width = image.width;
                 canvas.height = image.height;
-                render();
+                // Re-apply fisheye correction if saved
+                const activeFisheye = getActiveFisheye();
+                if (activeFisheye !== 0) {
+                    fetchFisheyePreview(activeFisheye);
+                } else {
+                    render();
+                }
             };
 
             image.onerror = function() {
