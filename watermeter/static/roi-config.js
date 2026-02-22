@@ -914,16 +914,16 @@
             const container = document.getElementById('completed-steps');
             let html = '';
 
-            // Step 1: Rotation
+            // Step 1: Image Correction
             if (savedRotation !== null) {
                 html += `
                 <div class="completed-step">
                     <div class="completed-step-header">
-                        <span class="completed-step-title">Step 1: Rotation</span>
+                        <span class="completed-step-title">Step 1: Image Correction</span>
                         <button class="btn btn-small btn-secondary" onclick="changeRotation()">Change</button>
                     </div>
                     <div class="completed-step-data">
-                        <span class="completed-value">${savedRotation.toFixed(1)}°</span>
+                        <span class="completed-value">Lens: ${(savedFisheye || 0).toFixed(2)}, Rotation: ${savedRotation.toFixed(1)}°</span>
                     </div>
                 </div>`;
             }
@@ -1329,6 +1329,14 @@
 
         let savedRotation = null;
 
+        // Fisheye correction
+        const fisheyeSlider = document.getElementById('fisheye-slider');
+        const fisheyeValueDisplay = document.getElementById('fisheye-value');
+        const savedFisheyeDisplay = document.getElementById('saved-fisheye-value');
+
+        let savedFisheye = null;
+        let fisheyeDebounceTimer = null;
+
         function getTotalRotation() {
             const coarse = parseFloat(rotationCoarse.value) || 0;
             const fine = parseFloat(rotationFine.value) || 0;
@@ -1338,6 +1346,47 @@
         function getActiveRotation() {
             if (savedRotation !== null) return savedRotation;
             return getTotalRotation();
+        }
+
+        function getActiveFisheye() {
+            if (savedFisheye !== null) return savedFisheye;
+            return parseFloat(fisheyeSlider.value) || 0;
+        }
+
+        function updateFisheyeValue() {
+            const val = parseFloat(fisheyeSlider.value) || 0;
+            fisheyeValueDisplay.textContent = val.toFixed(2);
+
+            // Debounced server-side preview
+            clearTimeout(fisheyeDebounceTimer);
+            fisheyeDebounceTimer = setTimeout(() => fetchFisheyePreview(val), 300);
+        }
+
+        async function fetchFisheyePreview(k1) {
+            try {
+                const response = await fetch('/api/roi/fisheye-preview', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fisheye_correction: k1 })
+                });
+                const data = await response.json();
+                if (data.success && data.image) {
+                    const newImg = new Image();
+                    newImg.onload = () => {
+                        image = newImg;
+                        imageLoaded = true;
+                        render();
+                    };
+                    newImg.src = data.image;
+                }
+            } catch (error) {
+                console.error('Fisheye preview error:', error);
+            }
+        }
+
+        function resetFisheyeSlider() {
+            fisheyeSlider.value = 0;
+            updateFisheyeValue();
         }
 
         function updateTotalRotation() {
@@ -1361,6 +1410,9 @@
             rotationSaved.style.display = 'none';
             document.getElementById('step-rotation').style.display = 'none';
             savedRotationValue.textContent = savedRotation.toFixed(1);
+            if (savedFisheyeDisplay) {
+                savedFisheyeDisplay.textContent = (savedFisheye || 0).toFixed(2);
+            }
             setOverlayMode(null);
             render();
             updateCompletedSteps();
@@ -1368,11 +1420,30 @@
 
         async function saveRotation() {
             const total = getTotalRotation();
+            const fisheye = parseFloat(fisheyeSlider.value) || 0;
             const btn = document.getElementById('save-rotation-btn');
             btn.disabled = true;
             btn.textContent = 'Saving...';
 
             try {
+                // Save fisheye if non-zero, or delete any previously stored value
+                if (fisheye !== 0) {
+                    const fisheyeResp = await fetch('/api/roi/fisheye', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ fisheye_correction: fisheye })
+                    });
+                    const fisheyeData = await fisheyeResp.json();
+                    if (!fisheyeData.success) {
+                        alert('Error saving fisheye: ' + fisheyeData.message);
+                        return;
+                    }
+                } else {
+                    // Remove any previously stored fisheye value
+                    await fetch('/api/roi/fisheye', { method: 'DELETE' });
+                }
+
+                // Save rotation
                 const response = await fetch('/api/roi/rotation', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1382,6 +1453,7 @@
 
                 if (data.success) {
                     savedRotation = total;
+                    savedFisheye = fisheye;
                     showRotationSavedMode();
                     showMarkersEditMode();
                 } else {
@@ -1397,6 +1469,8 @@
 
         async function restartRotation() {
             try {
+                // Delete both fisheye and rotation
+                await fetch('/api/roi/fisheye', { method: 'DELETE' });
                 const response = await fetch('/api/roi/rotation', { method: 'DELETE' });
                 const data = await response.json();
 
@@ -1405,6 +1479,21 @@
                     rotationCoarse.value = Math.trunc(total);
                     rotationFine.value = (total - Math.trunc(total)).toFixed(1);
                     updateTotalRotation();
+
+                    // Reset fisheye slider to zero (clear stale savedFisheye state)
+                    savedFisheye = null;
+                    fisheyeSlider.value = 0;
+                    fisheyeValueDisplay.textContent = '0.00';
+
+                    // Reload original image (no fisheye applied)
+                    const origImg = new Image();
+                    origImg.onload = () => {
+                        image = origImg;
+                        imageLoaded = true;
+                        render();
+                    };
+                    origImg.src = '/api/roi/reference-image?' + Date.now();
+
                     showRotationEditMode();
                 }
             } catch (error) {
@@ -1419,6 +1508,12 @@
             rotationFine.value = (total - Math.trunc(total)).toFixed(1);
             savedRotation = null;
             updateTotalRotation();
+
+            // Restore fisheye slider
+            fisheyeSlider.value = savedFisheye || 0;
+            savedFisheye = null;
+            updateFisheyeValue();
+
             rotationEdit.style.display = 'block';
             rotationSaved.style.display = 'none';
             document.getElementById('step-rotation').style.display = 'block';
@@ -1429,6 +1524,7 @@
 
         rotationCoarse.addEventListener('input', updateTotalRotation);
         rotationFine.addEventListener('input', updateTotalRotation);
+        fisheyeSlider.addEventListener('input', updateFisheyeValue);
 
         // ============================================================
         // Image Loading
@@ -1489,6 +1585,13 @@
             try {
                 const response = await fetch('/api/roi/config');
                 const data = await response.json();
+
+                // Fisheye correction
+                if (data.fisheye_correction !== null && data.fisheye_correction !== undefined) {
+                    savedFisheye = data.fisheye_correction;
+                    fisheyeSlider.value = data.fisheye_correction;
+                    fisheyeValueDisplay.textContent = data.fisheye_correction.toFixed(2);
+                }
 
                 // Rotation
                 if (data.rotation !== null && data.rotation !== undefined) {

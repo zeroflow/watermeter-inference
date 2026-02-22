@@ -108,7 +108,18 @@ class ImagePipeline:
 
         detection = self.config.get("detection", {})
 
-        # 1. Apply rotation if configured
+        # 1. Apply fisheye correction if configured
+        fisheye_k1 = detection.get("fisheye_correction", 0)
+        if fisheye_k1 != 0:
+            h, w = img.shape[:2]
+            fx = fy = float(w)
+            cx, cy = w / 2.0, h / 2.0
+            camera_matrix = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], dtype=np.float64)
+            dist_coeffs = np.array([fisheye_k1, 0, 0, 0, 0], dtype=np.float64)
+            img = cv2.undistort(img, camera_matrix, dist_coeffs)
+            logger.debug(f"Applied fisheye correction: k1={fisheye_k1}")
+
+        # 2. Apply rotation if configured
         rotation = detection.get("rotation", 0)
         if rotation != 0:
             center = (width / 2, height / 2)
@@ -116,13 +127,13 @@ class ImagePipeline:
             img = cv2.warpAffine(img, matrix, (width, height))
             logger.debug(f"Applied rotation: {rotation}°")
 
-        # 2. Marker-based alignment if markers are configured
+        # 3. Marker-based alignment if markers are configured
         markers = detection.get("markers", [])
         if len(markers) >= 2:
             img = self._align_with_markers(img, markers)
             height, width = img.shape[:2]  # Update dimensions after alignment
 
-        # 3. Extract ROIs
+        # 4. Extract ROIs
         images = {}
 
         # Extract digit ROIs - use detection config count, generate IDs

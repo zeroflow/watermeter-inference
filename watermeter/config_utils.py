@@ -192,6 +192,7 @@ CONFIG_SCHEMA = {
             "description": "ROI detection settings for whole image mode",
             "properties": {
                 "rotation": {"type": "number", "description": "Image rotation in degrees"},
+                "fisheye_correction": {"type": "number", "description": "Lens distortion correction coefficient k1 (-1.0 to +1.0)"},
                 "digits": {
                     "type": "object",
                     "properties": {

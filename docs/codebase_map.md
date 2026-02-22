@@ -65,17 +65,22 @@
 |------|------|------|-------------|
 | 25 | class | `RotationSubmission` | Pydantic model for rotation degrees |
 | 29 | class | `MarkerBox` | Pydantic model for a single marker bounding box |
+| 30 | class | `FisheyeSubmission` | Pydantic model for fisheye correction endpoints (k1 float field) |
 | 36 | class | `MarkersSubmission` | Pydantic model for list of markers |
 | 40 | class | `DigitRoi` | Pydantic model for a single digit ROI |
 | 47 | class | `DigitsSubmission` | Pydantic model for list of digit ROIs |
 | 52 | class | `SingleRoiSubmission` | Pydantic model for single generic ROI |
 | 59 | class | `AnalogRoi` | Pydantic model for a single analog dial ROI |
 | 66 | class | `AnalogsSubmission` | Pydantic model for list of analog ROIs |
-| 74 | func | `_load_rotated_reference()` | Load reference image applying current rotation config |
+| 79 | func | `_apply_fisheye_correction(image, k1)` | Apply radial distortion correction using cv2.undistort; returns corrected numpy image |
+| 99 | func | `_load_corrected_reference()` | Load reference image applying fisheye correction then rotation (renamed from `_load_rotated_reference`) |
+| 339 | route | `POST /api/roi/fisheye` (`save_fisheye`) | Save fisheye correction k1 value to config |
+| 362 | route | `DELETE /api/roi/fisheye` (`delete_fisheye`) | Remove fisheye correction from config |
+| 386 | route | `POST /api/roi/fisheye-preview` (`fisheye_preview`) | Return fisheye-corrected reference image as base64 JPEG |
 | 99 | route | `POST /api/roi/fetch-image` | Fetch image from URL and save as reference |
 | 139 | route | `POST /api/roi/image-source` | Set image source URL in config |
 | 202 | route | `GET /api/roi/reference-image` | Serve current reference image as JPEG |
-| 220 | route | `GET /api/roi/config` | Return current ROI configuration |
+| 220 | route | `GET /api/roi/config` | Return current ROI configuration (now includes `fisheye_correction`) |
 | 240 | route | `POST /api/roi/rotation` | Save rotation degrees to config |
 | 271 | route | `DELETE /api/roi/rotation` | Reset rotation to zero |
 | 302 | route | `POST /api/roi/markers` | Save marker bounding boxes |
@@ -369,7 +374,7 @@
 | 94 | func | `dump_config_string(config)` | Serialize config dict to YAML string |
 | 109 | func | `update_config(path, updater)` | Load, apply updater function, save |
 | 129 | func | `validate_config(yaml_string)` | Validate YAML string against schema |
-| 156 | var | `CONFIG_SCHEMA` | Full JSON schema for config.yaml (L156-498) |
+| 156 | var | `CONFIG_SCHEMA` | Full JSON schema for config.yaml (L156-498); detection section includes `fisheye_correction` (number, k1 coefficient) |
 | 501 | func | `get_config_schema()` | Return CONFIG_SCHEMA dict |
 | 506 | func | `get_config_schema_json()` | Return CONFIG_SCHEMA as JSON string |
 
@@ -476,7 +481,7 @@
 | 27 | func | `__init__(config)` | Initialize with config dict |
 | 32 | func | `fetch_images()` | Fetch and process full image pipeline |
 | 72 | func | `fetch_whole_image()` | Fetch raw whole image bytes |
-| 94 | func | `process_whole_image(image_bytes)` | Process fetched image: rotate, align, extract ROIs |
+| 94 | func | `process_whole_image(image_bytes)` | Process fetched image: apply fisheye correction, rotate, align, extract ROIs |
 | 157 | func | `_load_marker_templates(marker_count)` | Load marker template images from disk |
 | 186 | func | `invalidate_marker_cache()` | Clear cached marker templates |
 | 190 | func | `_align_with_markers(img, markers)` | Align image using marker template matching |
@@ -626,7 +631,7 @@
 - `uploadTrainingData` L1482 -- handles ZIP upload UI
 - `startSyntheticGeneration` L1561, `pollSyntheticStatus` L1591, `deleteSyntheticData` L1627
 
-### `roi-config.js` (1594 lines, inline in template)
+### `roi-config.js` (inline in `roi_config.html` template)
 - Setup mode (step 0): `testImageSource` L4
 - Canvas/overlay state L50-85, mouse events L86-245
 - Drawing: `drawCrosshair` L246, `drawBox` L271, `render` L312
@@ -635,6 +640,7 @@
 - Completed steps: `updateCompletedSteps` L913
 - Analogs: `updateAnalogBoxes` L1016, `selectAnalogInPicture` L1080, `runAnalogInference` L1156, `saveAnalogs` L1213, `changeAnalogs` L1272
 - Rotation: `getTotalRotation` L1332, `saveRotation` L1369, `changeRotation` L1416
+- Fisheye: `getActiveFisheye` L1351, `updateFisheyeValue` L1356, `fetchFisheyePreview` L1365, `resetFisheyeSlider` L1387
 - Image loading: `fetchAndReload` L1436, `loadImage` L1462, `loadConfig` L1488
 
 ### `mqtt-config.js` (387 lines)
@@ -663,7 +669,7 @@
 ```
 aiote:          # Device (host, image_path, timeout, fetch_delay)
 images:         # Sources (process_separate, src, digits[], arrows[])
-detection:      # ROI (rotation, digits{count,rois}, analogs{count,rois}, markers[])
+detection:      # ROI (rotation, fisheye_correction, digits{count,rois}, analogs{count,rois}, markers[])
 trigger:        # Mode (mqtt|cyclic|both, cyclic_interval)
 mqtt:           # Broker (broker, port, client_id, topics)
 homeassistant:  # HA (enabled, discovery_prefix, device, sensor)
@@ -816,6 +822,13 @@ Runs a full end-to-end one-shot reading in Docker using an nginx sidecar to serv
 
 #### `tests/unit/test_env_var_substitution.py` (74 lines) -- NEW
 - `TestResolveEnvVars` L6: string, dict, list, nested substitution; missing vars kept; non-string passthrough
+
+#### `tests/unit/test_fisheye.py` (261 lines)
+- `test_apply_fisheye_no_correction` L42, `test_apply_fisheye_barrel_correction` L53, `test_apply_fisheye_pincushion_correction` L66: tests for `_apply_fisheye_correction` helper
+- `TestFisheyeSave` L83: POST `/api/roi/fisheye` returns success, saves value to config, creates detection section if missing, handles zero value, updates service config
+- `TestFisheyeDelete` L143: DELETE `/api/roi/fisheye` returns success, removes key from config, handles missing key, removes empty detection section
+- `TestRoiConfigIncludesFisheye` L190: GET `/api/roi/config` returns `fisheye_correction` key, correct value, None when not set
+- `TestFisheyePreview` L251: POST `/api/roi/fisheye-preview` returns 404 when no reference image
 
 #### `tests/unit/test_image_hash.py` (190 lines)
 - `TestComputeDhash` L9, `TestHammingDistance` L81, `TestHashCache` L100
