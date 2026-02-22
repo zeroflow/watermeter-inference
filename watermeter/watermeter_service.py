@@ -669,7 +669,7 @@ class WatermeterService:
                     whole_image = await self.fetch_whole_image()
                     if not whole_image:
                         raise Exception("Failed to fetch whole image")
-                    images = self.process_whole_image(whole_image)
+                    images = await asyncio.get_running_loop().run_in_executor(None, self.process_whole_image, whole_image)
                     if not images:
                         raise Exception("No ROIs extracted from whole image")
 
