@@ -1645,3 +1645,152 @@ async function deleteSyntheticData() {
     }
 }
 
+// --- Mislabel Detection ---
+
+async function startMislabelScan() {
+    const type = document.getElementById('mislabel-type').value;
+    const btn = document.getElementById('mislabel-scan-btn');
+    const statusEl = document.getElementById('mislabel-status');
+    const resultsEl = document.getElementById('mislabel-results');
+
+    btn.disabled = true;
+    btn.textContent = 'Scanning...';
+    resultsEl.style.display = 'none';
+
+    statusEl.style.display = 'block';
+    statusEl.className = 'mislabel-status scanning';
+    statusEl.textContent = 'Scanning ground truth images against the active model...';
+
+    try {
+        const resp = await fetch('/api/training-data/mislabel/scan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type })
+        });
+        const data = await resp.json();
+
+        if (!resp.ok || !data.success) {
+            statusEl.className = 'mislabel-status error';
+            statusEl.textContent = data.detail || data.message || 'Scan failed';
+            return;
+        }
+
+        statusEl.className = 'mislabel-status complete';
+        statusEl.textContent = 'Scanned ' + data.total_scanned + ' images. Found ' + data.total_suspects + ' suspect(s).';
+
+        if (data.suspects.length === 0) {
+            return;
+        }
+
+        renderMislabelResults(data.suspects, type);
+    } catch (err) {
+        statusEl.className = 'mislabel-status error';
+        statusEl.textContent = 'Network error: ' + err.message;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Scan for Mislabels';
+    }
+}
+
+function renderMislabelResults(suspects, type) {
+    const grid = document.getElementById('mislabel-grid');
+    const resultsEl = document.getElementById('mislabel-results');
+    const countEl = document.getElementById('mislabel-count');
+
+    // Clear previous results safely
+    while (grid.firstChild) grid.removeChild(grid.firstChild);
+    countEl.textContent = suspects.length + ' suspect(s) found';
+
+    suspects.forEach(function(s, i) {
+        const card = document.createElement('div');
+        card.className = 'mislabel-card selected';
+        card.dataset.path = s.path;
+        card.dataset.index = i;
+        card.onclick = function() { card.classList.toggle('selected'); };
+
+        // Build card contents with safe DOM methods
+        const img = document.createElement('img');
+        img.src = 'data:image/jpeg;base64,' + s.image_base64;
+        img.alt = s.filename;
+
+        const labelsDiv = document.createElement('div');
+        labelsDiv.className = 'mislabel-labels';
+
+        const currentDiv = document.createElement('div');
+        currentDiv.className = 'label-current';
+        currentDiv.textContent = 'Was: ' + s.current_label;
+
+        const predictedDiv = document.createElement('div');
+        predictedDiv.className = 'label-predicted';
+        predictedDiv.textContent = 'Model: ' + s.predicted_label;
+
+        const confDiv = document.createElement('div');
+        confDiv.style.cssText = 'font-size:0.75rem;color:var(--text-light)';
+        confDiv.textContent = (s.confidence * 100).toFixed(1) + '%';
+
+        labelsDiv.appendChild(currentDiv);
+        labelsDiv.appendChild(predictedDiv);
+        labelsDiv.appendChild(confDiv);
+
+        card.appendChild(img);
+        card.appendChild(labelsDiv);
+
+        grid.appendChild(card);
+    });
+
+    resultsEl.style.display = 'block';
+}
+
+function toggleAllMislabels(select) {
+    document.querySelectorAll('.mislabel-card').forEach(function(card) {
+        if (select) {
+            card.classList.add('selected');
+        } else {
+            card.classList.remove('selected');
+        }
+    });
+}
+
+async function confirmMislabels() {
+    const type = document.getElementById('mislabel-type').value;
+    const selected = Array.from(document.querySelectorAll('.mislabel-card.selected'))
+        .map(function(card) { return card.dataset.path; });
+
+    if (selected.length === 0) {
+        showMessage('No images selected', 'error');
+        return;
+    }
+
+    const btn = document.getElementById('mislabel-confirm-btn');
+    btn.disabled = true;
+    btn.textContent = 'Moving...';
+
+    try {
+        const resp = await fetch('/api/training-data/mislabel/confirm', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: type, selected: selected })
+        });
+        const data = await resp.json();
+
+        if (!resp.ok || !data.success) {
+            showMessage(data.detail || data.message || 'Confirm failed', 'error');
+            return;
+        }
+
+        showMessage('Moved ' + data.moved_count + ' image(s) to input queue for re-labeling', 'success');
+
+        // Hide results and refresh stats
+        document.getElementById('mislabel-results').style.display = 'none';
+        document.getElementById('mislabel-status').style.display = 'none';
+        if (typeof loadTrainingStats === 'function') {
+            loadTrainingStats();
+        }
+    } catch (err) {
+        showMessage('Network error: ' + err.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Move Selected to Input Queue';
+    }
+}
+
