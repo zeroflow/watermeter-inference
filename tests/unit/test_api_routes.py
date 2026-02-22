@@ -312,3 +312,32 @@ class TestNextImageLabelHint:
         assert resp.status_code == 200
         data = resp.json()
         assert data["label_hint"] == "4.5"
+
+
+class TestDedupEndpoint:
+    """Tests for POST /api/training-data/dedup."""
+
+    def test_dedup_returns_results(self, test_client, tmp_path):
+        """Dedup endpoint returns per-type counts."""
+        digits_input = tmp_path / "digits" / "input"
+        digits_input.mkdir(parents=True)
+        arrows_input = tmp_path / "arrows" / "input"
+        arrows_input.mkdir(parents=True)
+
+        with patch("watermeter.routes.models.watermeter_service") as mock_svc:
+            mock_svc.get_service.return_value.config = {
+                "low_confidence": {
+                    "save_path": str(tmp_path),
+                    "dedup_threshold": 10,
+                    "dedup_scope": "input",
+                }
+            }
+            with patch("watermeter.routes.models.purge_duplicates") as mock_purge:
+                mock_purge.return_value = 3
+                resp = test_client.post("/api/training-data/dedup", json={})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert "digits" in data["results"]
+        assert "arrows" in data["results"]
