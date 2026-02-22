@@ -135,14 +135,14 @@ async def test_mqtt_connection(request: Request):
         broker = data.get("broker", "").strip()
         if not broker:
             return JSONResponse(
-                {"status": "error", "message": "Broker address is required"},
+                {"success": False, "message": "Broker address is required"},
                 status_code=400,
             )
 
         port = int(data.get("port", 1883))
         if not (1 <= port <= 65535):
             return JSONResponse(
-                {"status": "error", "message": "Port must be between 1 and 65535"},
+                {"success": False, "message": "Port must be between 1 and 65535"},
                 status_code=400,
             )
         raw_username = data.get("username", "")
@@ -164,7 +164,7 @@ async def test_mqtt_connection(request: Request):
         if client_class is None:
             # Fallback for environments without paho (should not happen in prod)
             return JSONResponse(
-                {"status": "error", "message": "paho-mqtt not available"},
+                {"success": False, "message": "paho-mqtt not available"},
                 status_code=500,
             )
 
@@ -190,18 +190,12 @@ async def test_mqtt_connection(request: Request):
             message = f"Connection failed: {exc}"
             if warnings:
                 message += f" | Warnings: {'; '.join(warnings)}"
-            return JSONResponse({"status": "error", "message": message})
+            return JSONResponse({"success": False, "message": message})
 
-        message = "Connection successful"
+        result = {"success": True, "message": "Connection successful"}
         if warnings:
-            return JSONResponse(
-                {
-                    "status": "ok",
-                    "message": message,
-                    "warning": "; ".join(warnings),
-                }
-            )
-        return JSONResponse({"status": "ok", "message": message})
+            result["warnings"] = warnings
+        return JSONResponse(result)
 
     except Exception as e:
         logger.error(f"Error testing MQTT connection: {e}")

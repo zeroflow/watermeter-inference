@@ -224,10 +224,10 @@ class TestMqttTestConnection:
         )
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "ok"
+        assert data["success"] is True
 
     def test_connection_refused_returns_error(self, test_client, monkeypatch):
-        """POST /api/mqtt/test returns status=error when connection fails."""
+        """POST /api/mqtt/test returns success=false when connection fails."""
         import watermeter.routes.mqtt as mqtt_module
 
         mock_client_instance = MagicMock()
@@ -242,11 +242,11 @@ class TestMqttTestConnection:
         )
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "error"
-        assert "refused" in data["message"].lower() or "error" in data["message"].lower()
+        assert data["success"] is False
+        assert "refused" in data["message"].lower() or "failed" in data["message"].lower()
 
     def test_oserror_returns_error(self, test_client, monkeypatch):
-        """POST /api/mqtt/test returns status=error on OSError (host not found)."""
+        """POST /api/mqtt/test returns success=false on OSError (host not found)."""
         import watermeter.routes.mqtt as mqtt_module
 
         mock_client_instance = MagicMock()
@@ -261,7 +261,7 @@ class TestMqttTestConnection:
         )
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "error"
+        assert data["success"] is False
 
     def test_resolves_env_vars_in_credentials(self, test_client, monkeypatch):
         """POST /api/mqtt/test resolves ${ENV_VAR} in username/password."""
@@ -287,7 +287,7 @@ class TestMqttTestConnection:
         )
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "ok"
+        assert data["success"] is True
         # username_pw_set should be called with resolved values
         mock_client_instance.username_pw_set.assert_called_once_with(
             "resolved_user", "resolved_pass"
@@ -316,8 +316,8 @@ class TestMqttTestConnection:
         )
         assert response.status_code == 200
         data = response.json()
-        # Should warn about unresolved vars in the message
-        assert "warning" in data or "unresolved" in data.get("message", "").lower()
+        # Should include warnings array with unresolved var info
+        assert "warnings" in data or "unresolved" in data.get("message", "").lower()
 
     def test_disconnects_after_successful_connect(self, test_client, monkeypatch):
         """POST /api/mqtt/test disconnects after testing."""
