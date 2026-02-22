@@ -1372,6 +1372,7 @@ function renderModels() {
                     ${isActive ? 'Active' : 'Activate'}
                 </button>
                 ${benchBtnHtml}
+                <button class="btn-archive" onclick="archiveModel('${modelType}', '${model.id}')"${model.status === 'archived' ? ' disabled title="Already archived"' : ''}>Archive</button>
                 <button class="btn-delete" onclick="deleteModel('${modelType}', '${model.id}')" ${isActive ? 'disabled' : ''}>Delete</button>
             `;
         }
@@ -1642,6 +1643,31 @@ async function deleteSyntheticData() {
     } catch (error) {
         console.error('Error deleting synthetic data:', error);
         showMessage('Error deleting synthetic data', 'error');
+    }
+}
+
+// --- Model Archive ---
+
+async function archiveModel(modelType, modelId) {
+    if (!confirm('Archive model ' + modelId + '? It will be hidden from the active list.')) {
+        return;
+    }
+
+    try {
+        var resp = await fetch('/api/models/' + encodeURIComponent(modelType) + '/' + encodeURIComponent(modelId) + '/archive', {
+            method: 'POST'
+        });
+        var data = await resp.json();
+
+        if (!resp.ok || !data.success) {
+            showMessage(data.message || 'Archive failed', 'error');
+            return;
+        }
+
+        showMessage('Model ' + modelId + ' archived.', 'success');
+        loadModels();
+    } catch (err) {
+        showMessage('Network error: ' + err.message, 'error');
     }
 }
 

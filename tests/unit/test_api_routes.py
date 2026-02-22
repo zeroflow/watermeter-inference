@@ -266,6 +266,32 @@ class TestLabelValidation:
         assert resp.status_code == 404
 
 
+class TestArchiveEndpoint:
+    """Tests for POST /api/models/{type}/{id}/archive."""
+
+    def test_archive_success(self, test_client):
+        """Archive endpoint returns success when model exists."""
+        mock_mm = MagicMock()
+        mock_mm.archive_model.return_value = True
+        with patch("watermeter.routes.models.get_model_manager", return_value=mock_mm):
+            resp = test_client.post("/api/models/digits/test-model/archive")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+
+    def test_archive_not_found(self, test_client):
+        """Archive endpoint returns 404 when model not found."""
+        mock_mm = MagicMock()
+        mock_mm.archive_model.return_value = False
+        with patch("watermeter.routes.models.get_model_manager", return_value=mock_mm):
+            resp = test_client.post("/api/models/digits/nonexistent/archive")
+
+        assert resp.status_code == 404
+        data = resp.json()
+        assert data["success"] is False
+
+
 class TestNextImageLabelHint:
     """Tests for _label=X hint parsing in GET /api/label/next-image."""
 
