@@ -41,10 +41,10 @@ def _make_circle_image(size=200):
 
 def test_apply_fisheye_no_correction():
     """k1=0 should return the original image object unchanged (identity fast-path)."""
-    from watermeter.routes.roi import _apply_fisheye_correction
+    from watermeter.image_pipeline import apply_fisheye_correction
     img = np.zeros((100, 200, 3), dtype=np.uint8)
     img[50, 100] = [255, 255, 255]  # single white pixel at center
-    result = _apply_fisheye_correction(img, 0.0)
+    result = apply_fisheye_correction(img, 0.0)
     assert result.shape == img.shape
     # k1=0 returns original object unchanged
     assert result is img
@@ -54,10 +54,10 @@ def test_apply_fisheye_barrel_correction():
     """Positive k1 (barrel) should produce a different image via cv2.undistort."""
     import unittest.mock
     real_cv2 = _real_cv2()
-    with unittest.mock.patch('watermeter.routes.roi.cv2', real_cv2):
-        from watermeter.routes.roi import _apply_fisheye_correction
+    with unittest.mock.patch('watermeter.image_pipeline.cv2', real_cv2):
+        from watermeter.image_pipeline import apply_fisheye_correction
         img = _make_circle_image(200)
-        result = _apply_fisheye_correction(img, 0.5)
+        result = apply_fisheye_correction(img, 0.5)
     assert result.shape == img.shape
     # The images should differ (distortion was applied)
     assert not np.array_equal(result, img)
@@ -67,10 +67,10 @@ def test_apply_fisheye_pincushion_correction():
     """Negative k1 (pincushion) should also produce a different image via cv2.undistort."""
     import unittest.mock
     real_cv2 = _real_cv2()
-    with unittest.mock.patch('watermeter.routes.roi.cv2', real_cv2):
-        from watermeter.routes.roi import _apply_fisheye_correction
+    with unittest.mock.patch('watermeter.image_pipeline.cv2', real_cv2):
+        from watermeter.image_pipeline import apply_fisheye_correction
         img = _make_circle_image(200)
-        result = _apply_fisheye_correction(img, -0.5)
+        result = apply_fisheye_correction(img, -0.5)
     assert result.shape == img.shape
     assert not np.array_equal(result, img)
 

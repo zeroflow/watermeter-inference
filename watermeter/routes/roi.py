@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 from .. import config_utils, watermeter_service
+from ..image_pipeline import apply_fisheye_correction
 from ..inference import get_inference_service
 
 logger = logging.getLogger(__name__)
@@ -56,25 +57,6 @@ class AnalogsSubmission(BaseModel):
 # --- Helper ---
 
 
-def _apply_fisheye_correction(image, k1):
-    """Apply radial distortion correction using a single k1 coefficient.
-
-    Args:
-        image: BGR image as numpy array
-        k1: radial distortion coefficient. Positive=barrel, negative=pincushion, 0=no change.
-
-    Returns:
-        Corrected image (same shape).
-    """
-    if k1 == 0:
-        return image
-    h, w = image.shape[:2]
-    fx = fy = float(w)
-    cx, cy = w / 2.0, h / 2.0
-    camera_matrix = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], dtype=np.float64)
-    dist_coeffs = np.array([k1, 0, 0, 0, 0], dtype=np.float64)
-    return cv2.undistort(image, camera_matrix, dist_coeffs)
-
 
 def _load_corrected_reference():
     """Load reference image with fisheye correction and rotation applied.
@@ -97,7 +79,7 @@ def _load_corrected_reference():
     # 1. Fisheye correction (before rotation)
     fisheye_k1 = detection.get("fisheye_correction", 0)
     if fisheye_k1 != 0:
-        img = _apply_fisheye_correction(img, fisheye_k1)
+        img = apply_fisheye_correction(img, fisheye_k1)
 
     # 2. Rotation
     rotation = detection.get("rotation", 0)
@@ -376,7 +358,7 @@ async def fisheye_preview(submission: FisheyeSubmission):
             return JSONResponse({"success": False, "message": "Cannot read reference image"}, status_code=500)
 
         if submission.fisheye_correction != 0:
-            img = _apply_fisheye_correction(img, submission.fisheye_correction)
+            img = apply_fisheye_correction(img, submission.fisheye_correction)
 
         _, buffer = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 85])
         encoded = base64.b64encode(buffer).decode('utf-8')

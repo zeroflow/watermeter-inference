@@ -17,6 +17,26 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
+def apply_fisheye_correction(image, k1):
+    """Apply radial distortion correction using a single k1 coefficient.
+
+    Args:
+        image: BGR image as numpy array
+        k1: radial distortion coefficient. Positive=barrel, negative=pincushion, 0=no change.
+
+    Returns:
+        Corrected image (same shape).
+    """
+    if k1 == 0:
+        return image
+    h, w = image.shape[:2]
+    fx = fy = float(w)
+    cx, cy = w / 2.0, h / 2.0
+    camera_matrix = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], dtype=np.float64)
+    dist_coeffs = np.array([k1, 0, 0, 0, 0], dtype=np.float64)
+    return cv2.undistort(image, camera_matrix, dist_coeffs)
+
+
 class ImagePipeline:
     """Handles image fetching, rotation, marker alignment, and ROI extraction."""
 
@@ -111,12 +131,7 @@ class ImagePipeline:
         # 1. Apply fisheye correction if configured
         fisheye_k1 = detection.get("fisheye_correction", 0)
         if fisheye_k1 != 0:
-            h, w = img.shape[:2]
-            fx = fy = float(w)
-            cx, cy = w / 2.0, h / 2.0
-            camera_matrix = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], dtype=np.float64)
-            dist_coeffs = np.array([fisheye_k1, 0, 0, 0, 0], dtype=np.float64)
-            img = cv2.undistort(img, camera_matrix, dist_coeffs)
+            img = apply_fisheye_correction(img, fisheye_k1)
             logger.debug(f"Applied fisheye correction: k1={fisheye_k1}")
 
         # 2. Apply rotation if configured
