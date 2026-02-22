@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import watermeter.mislabel_detector as mislabel_mod
 
 
 # ---------------------------------------------------------------------------
@@ -28,14 +29,14 @@ class TestScanMislabeled:
 
     def test_empty_ground_truth(self, tmp_path):
         """Empty or nonexistent GT directory returns zero suspects."""
-        from watermeter.routes.models import scan_mislabeled
+        from watermeter.mislabel_detector import scan_mislabeled
 
         # Mock inference service
         mock_svc = MagicMock()
         mock_classifier = MagicMock()
         mock_svc.get_classifier.return_value = mock_classifier
 
-        with patch('watermeter.routes.models.get_inference_service', return_value=mock_svc):
+        with patch('watermeter.mislabel_detector.get_inference_service', return_value=mock_svc):
             result = scan_mislabeled("digits", tmp_path)
 
         assert result["total_scanned"] == 0
@@ -44,7 +45,7 @@ class TestScanMislabeled:
 
     def test_all_correct_predictions(self, tmp_path):
         """When model agrees with all labels, no suspects."""
-        from watermeter.routes.models import scan_mislabeled
+        from watermeter.mislabel_detector import scan_mislabeled
 
         gt_base = tmp_path / "digits" / "ground_truth"
         _make_gt_image(gt_base / "3", "a.jpg")
@@ -62,7 +63,7 @@ class TestScanMislabeled:
         mock_svc = MagicMock()
         mock_svc.get_classifier.return_value = mock_classifier
 
-        with patch('watermeter.routes.models.get_inference_service', return_value=mock_svc):
+        with patch('watermeter.mislabel_detector.get_inference_service', return_value=mock_svc):
             result = scan_mislabeled("digits", tmp_path)
 
         assert result["total_scanned"] == 2
@@ -70,7 +71,7 @@ class TestScanMislabeled:
 
     def test_detects_mislabeled_digits(self, tmp_path):
         """Suspects are collected when prediction != folder label."""
-        from watermeter.routes.models import scan_mislabeled
+        from watermeter.mislabel_detector import scan_mislabeled
 
         gt_base = tmp_path / "digits" / "ground_truth"
         _make_gt_image(gt_base / "3", "correct.jpg")
@@ -91,7 +92,7 @@ class TestScanMislabeled:
         mock_svc = MagicMock()
         mock_svc.get_classifier.return_value = mock_classifier
 
-        with patch('watermeter.routes.models.get_inference_service', return_value=mock_svc):
+        with patch('watermeter.mislabel_detector.get_inference_service', return_value=mock_svc):
             result = scan_mislabeled("digits", tmp_path)
 
         assert result["total_scanned"] == 3
@@ -106,7 +107,7 @@ class TestScanMislabeled:
 
     def test_arrows_regression_tolerance(self, tmp_path):
         """Regression arrows: within 0.5 dial positions is NOT a suspect."""
-        from watermeter.routes.models import scan_mislabeled
+        from watermeter.mislabel_detector import scan_mislabeled
 
         gt_base = tmp_path / "arrows" / "ground_truth"
         _make_gt_image(gt_base / "3.5", "close.jpg")
@@ -132,7 +133,7 @@ class TestScanMislabeled:
         mock_svc = MagicMock()
         mock_svc.get_classifier.return_value = mock_regressor
 
-        with patch('watermeter.routes.models.get_inference_service', return_value=mock_svc):
+        with patch('watermeter.mislabel_detector.get_inference_service', return_value=mock_svc):
             result = scan_mislabeled("arrows", tmp_path)
 
         assert result["total_scanned"] == 2
@@ -143,7 +144,7 @@ class TestScanMislabeled:
 
     def test_arrows_regression_wraparound(self, tmp_path):
         """Regression arrows: wraparound case 9.9 vs 0.1 should NOT be a suspect."""
-        from watermeter.routes.models import scan_mislabeled
+        from watermeter.mislabel_detector import scan_mislabeled
 
         gt_base = tmp_path / "arrows" / "ground_truth"
         _make_gt_image(gt_base / "9.9", "wrap_close.jpg")
@@ -169,7 +170,7 @@ class TestScanMislabeled:
         mock_svc = MagicMock()
         mock_svc.get_classifier.return_value = mock_regressor
 
-        with patch('watermeter.routes.models.get_inference_service', return_value=mock_svc):
+        with patch('watermeter.mislabel_detector.get_inference_service', return_value=mock_svc):
             result = scan_mislabeled("arrows", tmp_path)
 
         # Only the far one should be a suspect
@@ -181,7 +182,7 @@ class TestScanMislabeled:
 
     def test_arrows_classification_exact_match(self, tmp_path):
         """Classification arrows: exact string match required."""
-        from watermeter.routes.models import scan_mislabeled
+        from watermeter.mislabel_detector import scan_mislabeled
 
         gt_base = tmp_path / "arrows" / "ground_truth"
         _make_gt_image(gt_base / "4.0", "img.jpg")
@@ -195,7 +196,7 @@ class TestScanMislabeled:
         mock_svc = MagicMock()
         mock_svc.get_classifier.return_value = mock_classifier
 
-        with patch('watermeter.routes.models.get_inference_service', return_value=mock_svc):
+        with patch('watermeter.mislabel_detector.get_inference_service', return_value=mock_svc):
             result = scan_mislabeled("arrows", tmp_path)
 
         assert result["total_suspects"] == 1
@@ -203,7 +204,7 @@ class TestScanMislabeled:
 
     def test_no_active_model_raises(self, tmp_path):
         """When no model is loaded, scan should raise RuntimeError."""
-        from watermeter.routes.models import scan_mislabeled
+        from watermeter.mislabel_detector import scan_mislabeled
 
         gt_base = tmp_path / "digits" / "ground_truth"
         _make_gt_image(gt_base / "0", "a.jpg")
@@ -211,13 +212,13 @@ class TestScanMislabeled:
         mock_svc = MagicMock()
         mock_svc.get_classifier.return_value = None
 
-        with patch('watermeter.routes.models.get_inference_service', return_value=mock_svc):
+        with patch('watermeter.mislabel_detector.get_inference_service', return_value=mock_svc):
             with pytest.raises(RuntimeError, match="No active"):
                 scan_mislabeled("digits", tmp_path)
 
     def test_prediction_error_skips_image(self, tmp_path):
         """If predict() raises for one image, it's skipped (not a suspect)."""
-        from watermeter.routes.models import scan_mislabeled
+        from watermeter.mislabel_detector import scan_mislabeled
 
         gt_base = tmp_path / "digits" / "ground_truth"
         _make_gt_image(gt_base / "1", "bad.jpg")
@@ -236,7 +237,7 @@ class TestScanMislabeled:
         mock_svc = MagicMock()
         mock_svc.get_classifier.return_value = mock_classifier
 
-        with patch('watermeter.routes.models.get_inference_service', return_value=mock_svc):
+        with patch('watermeter.mislabel_detector.get_inference_service', return_value=mock_svc):
             result = scan_mislabeled("digits", tmp_path)
 
         # bad.jpg was skipped, good.jpg was correct
@@ -245,7 +246,7 @@ class TestScanMislabeled:
 
     def test_suspect_has_base64_thumbnail(self, tmp_path):
         """Suspect entry includes base64 image data."""
-        from watermeter.routes.models import scan_mislabeled
+        from watermeter.mislabel_detector import scan_mislabeled
 
         gt_base = tmp_path / "digits" / "ground_truth"
         img_path = _make_gt_image(gt_base / "2", "img.jpg")
@@ -257,7 +258,7 @@ class TestScanMislabeled:
         mock_svc = MagicMock()
         mock_svc.get_classifier.return_value = mock_classifier
 
-        with patch('watermeter.routes.models.get_inference_service', return_value=mock_svc):
+        with patch('watermeter.mislabel_detector.get_inference_service', return_value=mock_svc):
             result = scan_mislabeled("digits", tmp_path)
 
         suspect = result["suspects"][0]
@@ -277,7 +278,7 @@ class TestConfirmMislabeled:
 
     def test_moves_file_to_input(self, tmp_path):
         """Selected file is moved from ground_truth to input with label hint."""
-        from watermeter.routes.models import confirm_mislabeled
+        from watermeter.mislabel_detector import confirm_mislabeled
 
         gt_dir = tmp_path / "digits" / "ground_truth" / "3"
         gt_dir.mkdir(parents=True)
@@ -299,7 +300,7 @@ class TestConfirmMislabeled:
 
     def test_moves_multiple_files(self, tmp_path):
         """Multiple files from different classes can be moved."""
-        from watermeter.routes.models import confirm_mislabeled
+        from watermeter.mislabel_detector import confirm_mislabeled
 
         gt_base = tmp_path / "digits" / "ground_truth"
         (gt_base / "3").mkdir(parents=True)
@@ -321,7 +322,7 @@ class TestConfirmMislabeled:
 
     def test_nonexistent_file_is_error(self, tmp_path):
         """If a selected file doesn't exist, it's counted as an error."""
-        from watermeter.routes.models import confirm_mislabeled
+        from watermeter.mislabel_detector import confirm_mislabeled
 
         # Path must be within ground_truth to pass traversal check
         gt_dir = tmp_path / "digits" / "ground_truth" / "0"
@@ -336,7 +337,7 @@ class TestConfirmMislabeled:
 
     def test_empty_selection(self, tmp_path):
         """Empty selection list produces zero moves."""
-        from watermeter.routes.models import confirm_mislabeled
+        from watermeter.mislabel_detector import confirm_mislabeled
 
         result = confirm_mislabeled("digits", tmp_path, [])
 
@@ -345,7 +346,7 @@ class TestConfirmMislabeled:
 
     def test_avoids_overwrite(self, tmp_path):
         """If a file with the same label-hint name already exists, a counter suffix is added."""
-        from watermeter.routes.models import confirm_mislabeled
+        from watermeter.mislabel_detector import confirm_mislabeled
 
         gt_dir = tmp_path / "digits" / "ground_truth" / "5"
         gt_dir.mkdir(parents=True)
@@ -366,7 +367,7 @@ class TestConfirmMislabeled:
 
     def test_arrows_label_hint_with_decimals(self, tmp_path):
         """Arrow labels (e.g. '4.5') are correctly encoded in filename."""
-        from watermeter.routes.models import confirm_mislabeled
+        from watermeter.mislabel_detector import confirm_mislabeled
 
         gt_dir = tmp_path / "arrows" / "ground_truth" / "4.5"
         gt_dir.mkdir(parents=True)
@@ -382,7 +383,7 @@ class TestConfirmMislabeled:
 
     def test_creates_input_dir_if_missing(self, tmp_path):
         """Input directory is created if it doesn't exist."""
-        from watermeter.routes.models import confirm_mislabeled
+        from watermeter.mislabel_detector import confirm_mislabeled
 
         gt_dir = tmp_path / "digits" / "ground_truth" / "0"
         gt_dir.mkdir(parents=True)
@@ -398,7 +399,7 @@ class TestConfirmMislabeled:
 
     def test_confirm_mislabeled_blocks_path_traversal(self, tmp_path):
         """Paths outside ground_truth should be blocked and counted as errors."""
-        from watermeter.routes.models import confirm_mislabeled
+        from watermeter.mislabel_detector import confirm_mislabeled
 
         # Create a file outside the expected ground_truth directory
         outside_dir = tmp_path / "other"
@@ -427,7 +428,7 @@ class TestMakeThumbnailBase64:
     """Test the base64 thumbnail helper."""
 
     def test_valid_file(self, tmp_path):
-        from watermeter.routes.models import _make_thumbnail_base64
+        from watermeter.mislabel_detector import _make_thumbnail_base64
         import base64
 
         img = tmp_path / "test.jpg"
@@ -438,7 +439,7 @@ class TestMakeThumbnailBase64:
         assert base64.b64decode(result) == b'\xff\xd8\xff\xe0some_jpeg'
 
     def test_missing_file(self, tmp_path):
-        from watermeter.routes.models import _make_thumbnail_base64
+        from watermeter.mislabel_detector import _make_thumbnail_base64
 
         result = _make_thumbnail_base64(tmp_path / "nonexistent.jpg")
         assert result == ""
@@ -545,7 +546,7 @@ class TestMislabelAPIEndpoints:
         mock_svc = MagicMock()
         mock_svc.get_classifier.return_value = mock_classifier
 
-        with patch.object(models_mod, 'get_inference_service', return_value=mock_svc):
+        with patch.object(mislabel_mod, 'get_inference_service', return_value=mock_svc):
             resp = test_client.post(
                 "/api/training-data/mislabel/scan",
                 json={"type": "digits"},
@@ -583,7 +584,7 @@ class TestMislabelAPIEndpoints:
         mock_svc = MagicMock()
         mock_svc.get_classifier.return_value = mock_classifier
 
-        with patch.object(models_mod, 'get_inference_service', return_value=mock_svc):
+        with patch.object(mislabel_mod, 'get_inference_service', return_value=mock_svc):
             resp = test_client.post(
                 "/api/training-data/mislabel/scan",
                 json={"type": "digits"},
@@ -620,7 +621,7 @@ class TestMislabelAPIEndpoints:
         mock_svc.get_classifier.return_value = mock_classifier
 
         # Step 1: Scan
-        with patch.object(models_mod, 'get_inference_service', return_value=mock_svc):
+        with patch.object(mislabel_mod, 'get_inference_service', return_value=mock_svc):
             resp = test_client.post(
                 "/api/training-data/mislabel/scan",
                 json={"type": "digits"},
@@ -669,7 +670,7 @@ class TestMislabelAPIEndpoints:
         mock_svc.get_classifier.return_value = mock_classifier
 
         # Scan
-        with patch.object(models_mod, 'get_inference_service', return_value=mock_svc):
+        with patch.object(mislabel_mod, 'get_inference_service', return_value=mock_svc):
             test_client.post("/api/training-data/mislabel/scan", json={"type": "digits"})
 
         suspect_path = models_mod._mislabel_scans["digits"]["suspects"][0]["path"]
@@ -704,7 +705,7 @@ class TestMislabelAPIEndpoints:
         mock_svc = MagicMock()
         mock_svc.get_classifier.return_value = None
 
-        with patch.object(models_mod, 'get_inference_service', return_value=mock_svc):
+        with patch.object(mislabel_mod, 'get_inference_service', return_value=mock_svc):
             resp = test_client.post(
                 "/api/training-data/mislabel/scan",
                 json={"type": "digits"},
