@@ -72,4 +72,4 @@ docs/agent_output/
 
 # Secrets
 .env
-token.txt
+token.txt.worktrees/
