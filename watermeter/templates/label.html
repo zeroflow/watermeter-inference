@@ -352,6 +352,33 @@
             min-height: auto !important;
             overflow: hidden;
         }
+
+        .label-hint {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 4px;
+            padding: 6px 12px;
+            background: var(--info-bg, #dbeafe);
+            border: 1px solid var(--primary, #2563eb);
+            border-radius: 6px;
+            font-size: 0.9rem;
+            color: var(--text-dark);
+        }
+
+        .hint-accept-btn {
+            padding: 2px 10px;
+            background: var(--primary, #2563eb);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+
+        .hint-accept-btn:hover {
+            opacity: 0.85;
+        }
     </style>
 </head>
 <body>
@@ -425,6 +452,11 @@
                         autofocus>
                 </div>
 
+                <div id="label-hint" class="label-hint" style="display: none;">
+                    Suggested: <span id="label-hint-value"></span>
+                    <button type="button" class="hint-accept-btn" onclick="acceptLabelHint()" title="Accept suggestion (Tab)">Use</button>
+                </div>
+
                 <button class="delete-button" onclick="deleteImage()">Delete (Garbage)</button>
 
                 <div class="label-actions">
@@ -446,6 +478,6 @@
         </main>
     </div>
 
-    <script src="/static/label.js?v=4"></script>
+    <script src="/static/label.js?v=5"></script>
 </body>
 </html>

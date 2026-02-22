@@ -70,7 +70,20 @@ async function loadNextImage() {
         document.getElementById('labeling-interface').style.display = 'block';
         document.getElementById('no-images').style.display = 'none';
 
-        input.value = '';
+        // Show label hint if present
+        const hintEl = document.getElementById('label-hint');
+        const hintValueEl = document.getElementById('label-hint-value');
+        if (data.label_hint) {
+            hintValueEl.textContent = data.label_hint;
+            hintEl.style.display = 'flex';
+            // Pre-fill the input
+            document.getElementById('label-input').value = data.label_hint;
+        } else {
+            hintEl.style.display = 'none';
+            hintValueEl.textContent = '';
+            input.value = '';
+        }
+
         input.focus();
 
         // Hide message
@@ -220,7 +233,21 @@ function validateAndSubmit(value) {
     }
 }
 
-// Event listener for Enter key
+function acceptLabelHint() {
+    const hint = document.getElementById('label-hint-value').textContent;
+    const input = document.getElementById('label-input');
+    input.value = hint;
+    input.focus();
+}
+
+// Event listener for Enter key and Tab (hint accept)
+document.getElementById('label-input').addEventListener('keydown', function(e) {
+    if (e.key === 'Tab' && document.getElementById('label-hint').style.display !== 'none') {
+        e.preventDefault();
+        acceptLabelHint();
+    }
+});
+
 document.getElementById('label-input').addEventListener('keypress', function(e) {
     if (e.key === 'Enter') {
         validateAndSubmit(this.value);
