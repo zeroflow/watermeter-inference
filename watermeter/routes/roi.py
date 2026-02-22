@@ -7,11 +7,12 @@ from urllib.parse import urlparse
 
 import cv2
 import httpx
+import numpy as np
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
-from .. import watermeter_service, config_utils
+from .. import config_utils, watermeter_service
 from ..inference import get_inference_service
 
 logger = logging.getLogger(__name__)
@@ -71,8 +72,31 @@ class AnalogsSubmission(BaseModel):
 # --- Helper ---
 
 
-def _load_rotated_reference():
-    """Load reference image with rotation applied. Returns (img, height, width) or None."""
+def _apply_fisheye_correction(image, k1):
+    """Apply radial distortion correction using a single k1 coefficient.
+
+    Args:
+        image: BGR image as numpy array
+        k1: radial distortion coefficient. Positive=barrel, negative=pincushion, 0=no change.
+
+    Returns:
+        Corrected image (same shape).
+    """
+    if k1 == 0:
+        return image
+    h, w = image.shape[:2]
+    fx = fy = float(w)
+    cx, cy = w / 2.0, h / 2.0
+    camera_matrix = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], dtype=np.float64)
+    dist_coeffs = np.array([k1, 0, 0, 0, 0], dtype=np.float64)
+    return cv2.undistort(image, camera_matrix, dist_coeffs)
+
+
+def _load_corrected_reference():
+    """Load reference image with fisheye correction and rotation applied.
+
+    Returns (img, height, width) or None.
+    """
     reference_path = Path("/data/reference_raw.jpg")
     if not reference_path.exists():
         return None
@@ -84,7 +108,15 @@ def _load_rotated_reference():
     height, width = img.shape[:2]
 
     service = watermeter_service.get_service()
-    rotation = service.config.get("detection", {}).get("rotation", 0)
+    detection = service.config.get("detection", {})
+
+    # 1. Fisheye correction (before rotation)
+    fisheye_k1 = detection.get("fisheye_correction", 0)
+    if fisheye_k1 != 0:
+        img = _apply_fisheye_correction(img, fisheye_k1)
+
+    # 2. Rotation
+    rotation = detection.get("rotation", 0)
     if rotation != 0:
         center = (width / 2, height / 2)
         matrix = cv2.getRotationMatrix2D(center, rotation, 1.0)
@@ -308,7 +340,7 @@ async def delete_rotation():
 async def save_markers(submission: MarkersSubmission):
     """Save marker boxes to config and extract marker images."""
     try:
-        result = _load_rotated_reference()
+        result = _load_corrected_reference()
         if result is None:
             return JSONResponse(
                 {"success": False, "message": "Reference image not found or failed to load"}, status_code=400
@@ -438,7 +470,7 @@ async def get_marker_image(marker_id: int):
 async def save_digits(submission: DigitsSubmission):
     """Save digit ROIs to config and extract digit images."""
     try:
-        result = _load_rotated_reference()
+        result = _load_corrected_reference()
         if result is None:
             return JSONResponse(
                 {"success": False, "message": "Reference image not found or failed to load"}, status_code=400
@@ -562,7 +594,7 @@ async def preview_digit_inference(submission: SingleRoiSubmission):
     try:
         import tempfile
 
-        result = _load_rotated_reference()
+        result = _load_corrected_reference()
         if result is None:
             return JSONResponse(
                 {"success": False, "message": "Reference image not found or failed to load"}, status_code=400
@@ -620,7 +652,7 @@ async def preview_digit_inference(submission: SingleRoiSubmission):
 async def save_analogs(submission: AnalogsSubmission):
     """Save analog ROIs to config and extract analog images."""
     try:
-        result = _load_rotated_reference()
+        result = _load_corrected_reference()
         if result is None:
             return JSONResponse(
                 {"success": False, "message": "Reference image not found or failed to load"}, status_code=400
@@ -742,7 +774,7 @@ async def preview_analog_inference(submission: SingleRoiSubmission):
     try:
         import tempfile
 
-        result = _load_rotated_reference()
+        result = _load_corrected_reference()
         if result is None:
             return JSONResponse(
                 {"success": False, "message": "Reference image not found or failed to load"}, status_code=400
