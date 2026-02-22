@@ -1146,6 +1146,133 @@
                 padding: 12px 16px;
             }
         }
+
+        /* Mislabel Detection */
+        .mislabel-controls {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .mislabel-type-select {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .mislabel-type-select select {
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: 1px solid var(--border-input, #cbd5e1);
+            background: var(--bg-input, #fff);
+            color: var(--text-dark);
+            font-size: 0.9rem;
+        }
+
+        .mislabel-status {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            font-size: 0.9rem;
+        }
+
+        .mislabel-status.scanning {
+            background: var(--info-bg, #dbeafe);
+            color: var(--text-dark);
+        }
+
+        .mislabel-status.complete {
+            background: var(--success-bg, #d1fae5);
+            color: var(--text-dark);
+        }
+
+        .mislabel-status.error {
+            background: var(--danger-bg, #fee2e2);
+            color: var(--text-dark);
+        }
+
+        .mislabel-results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .mislabel-select-controls {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-sm {
+            padding: 4px 10px;
+            font-size: 0.8rem;
+            border-radius: 4px;
+            border: 1px solid var(--border-input, #cbd5e1);
+            background: var(--bg-surface, #fff);
+            color: var(--text-dark);
+            cursor: pointer;
+        }
+
+        .btn-sm:hover {
+            background: var(--bg-alt, #f1f5f9);
+        }
+
+        .mislabel-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .mislabel-card {
+            border: 2px solid var(--border, #e2e8f0);
+            border-radius: 8px;
+            padding: 8px;
+            cursor: pointer;
+            transition: border-color 0.15s, background 0.15s;
+            text-align: center;
+        }
+
+        .mislabel-card:hover {
+            border-color: var(--primary, #2563eb);
+        }
+
+        .mislabel-card.selected {
+            border-color: var(--primary, #2563eb);
+            background: var(--info-bg, #dbeafe);
+        }
+
+        .mislabel-card img {
+            width: 100%;
+            height: 120px;
+            object-fit: contain;
+            border-radius: 4px;
+            background: var(--bg-inset, #f1f5f9);
+            margin-bottom: 6px;
+        }
+
+        .mislabel-card .mislabel-labels {
+            font-size: 0.8rem;
+            line-height: 1.4;
+        }
+
+        .mislabel-card .label-current {
+            color: var(--danger, #dc2626);
+            text-decoration: line-through;
+        }
+
+        .mislabel-card .label-predicted {
+            color: var(--success, #059669);
+            font-weight: 600;
+        }
+
+        .mislabel-actions {
+            display: flex;
+            justify-content: flex-end;
+        }
     </style>
 </head>
 <body>
@@ -1293,6 +1420,43 @@
                     <div class="stat">
                         <span class="stat-label">Unlabeled:</span>
                         <span class="stat-value" id="total-unlabeled">-</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Mislabel Detection -->
+            <section class="section" id="mislabel-section">
+                <h2>Mislabel Detection</h2>
+                <p class="section-description">Scan ground truth images against the active model to find potential mislabels.</p>
+
+                <div class="mislabel-controls">
+                    <div class="mislabel-type-select">
+                        <label for="mislabel-type">Model type:</label>
+                        <select id="mislabel-type">
+                            <option value="digits">Digits</option>
+                            <option value="arrows">Arrows</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-primary" id="mislabel-scan-btn" onclick="startMislabelScan()">
+                        Scan for Mislabels
+                    </button>
+                </div>
+
+                <div id="mislabel-status" class="mislabel-status" style="display: none;"></div>
+
+                <div id="mislabel-results" class="mislabel-results" style="display: none;">
+                    <div class="mislabel-results-header">
+                        <span id="mislabel-count"></span>
+                        <div class="mislabel-select-controls">
+                            <button class="btn btn-sm" onclick="toggleAllMislabels(true)">Select All</button>
+                            <button class="btn btn-sm" onclick="toggleAllMislabels(false)">Deselect All</button>
+                        </div>
+                    </div>
+                    <div id="mislabel-grid" class="mislabel-grid"></div>
+                    <div class="mislabel-actions">
+                        <button class="btn btn-primary" id="mislabel-confirm-btn" onclick="confirmMislabels()">
+                            Move Selected to Input Queue
+                        </button>
                     </div>
                 </div>
             </section>
