@@ -595,6 +595,9 @@ class MqttPublisher:
                 f"App continues without MQTT — will reconnect automatically."
             )
 
+        # Configure paho's built-in reconnect backoff as belt-and-suspenders
+        self.mqtt_client.reconnect_delay_set(min_delay=5, max_delay=120)
+
         # Start loop in background thread (handles reconnect automatically)
         self.mqtt_client.loop_start()
         logger.info("MQTT client started")

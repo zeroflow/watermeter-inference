@@ -194,3 +194,29 @@ class TestMqttReconnect:
             time.sleep(0.5)
 
         assert publisher.mqtt_client.reconnect.call_count <= 2
+
+    def test_start_configures_reconnect_delay(self):
+        """start() must call reconnect_delay_set on the paho client."""
+        from enum import IntEnum
+
+        import watermeter.mqtt_publisher as _mqtt_pub_module
+
+        class CallbackAPIVersion(IntEnum):
+            VERSION1 = 1
+            VERSION2 = 2
+
+        publisher = self._make_publisher()
+        publisher.mqtt_client = None  # will be created in start()
+
+        mock_mqtt = MagicMock()
+        mock_mqtt.CallbackAPIVersion = CallbackAPIVersion
+        mock_instance = MagicMock()
+        mock_mqtt.Client.return_value = mock_instance
+        mock_instance.connect.return_value = None
+
+        with patch.object(_mqtt_pub_module, "mqtt", mock_mqtt):
+            publisher.start()
+
+            mock_instance.reconnect_delay_set.assert_called_once_with(
+                min_delay=5, max_delay=120
+            )
