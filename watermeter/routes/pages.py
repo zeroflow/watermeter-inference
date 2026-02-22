@@ -91,6 +91,18 @@ async def training_page(request: Request):
 
 
 @router.get(
+    "/training/explore",
+    response_class=HTMLResponse,
+    tags=["Pages"],
+    summary="Explore & Tune page",
+    description="Render the Explore & Tune page for browsing training images and running data tools",
+)
+async def explore_page(request: Request):
+    """Render the Explore & Tune page."""
+    return templates.TemplateResponse(request, "explore.html", context={"nav_active": "training"})
+
+
+@router.get(
     "/api/status/html",
     response_class=HTMLResponse,
     tags=["Status & Reading"],
