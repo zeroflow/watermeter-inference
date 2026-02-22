@@ -159,6 +159,78 @@ class WatermeterService:
 
         logger.info(f"WatermeterService initialized (trigger_mode={self.trigger_mode})")
 
+    # ── MeterState forwarding properties ────────────────────────────────────
+    # These bridge the gap left by d2a0705 which moved state fields into
+    # self._state (MeterState) without adding @property forwarding on the
+    # service itself.  All external call sites and internal methods that
+    # reference self.xxx continue to work through these properties.
+    #
+    # Tests that use object.__new__() bypass __init__ and never create
+    # self._state.  The _ensure_state() helper lazily initialises a default
+    # MeterState so those test fixtures can still write to these attributes
+    # directly (e.g. svc.leak_warning = False) without an AttributeError.
+
+    def _ensure_state(self) -> "MeterState":
+        """Lazily create self._state for tests that bypass __init__."""
+        if not hasattr(self, '_state'):
+            object.__setattr__(self, '_state', MeterState(ha_publish_enabled=False))
+        return self._state
+
+    @property
+    def current_state(self) -> Dict:
+        """Getter-only: dict is mutated in-place, never replaced."""
+        return self._ensure_state().current_state
+
+    @current_state.setter
+    def current_state(self, value: Dict) -> None:
+        """Allow tests to replace the whole dict (object.__new__ pattern)."""
+        self._ensure_state().current_state = value
+
+    @property
+    def previous_value(self) -> Optional[float]:
+        return self._ensure_state().previous_value
+
+    @previous_value.setter
+    def previous_value(self, value: Optional[float]) -> None:
+        self._ensure_state().previous_value = value
+
+    @property
+    def last_update_time(self):
+        return self._ensure_state().last_update_time
+
+    @last_update_time.setter
+    def last_update_time(self, value) -> None:
+        self._ensure_state().last_update_time = value
+
+    @property
+    def consecutive_rejections(self) -> int:
+        return self._ensure_state().consecutive_rejections
+
+    @consecutive_rejections.setter
+    def consecutive_rejections(self, value: int) -> None:
+        self._ensure_state().consecutive_rejections = value
+
+    @property
+    def max_consecutive_rejections(self) -> int:
+        """Read-only: set once in MeterState.__init__, never reassigned."""
+        return self._ensure_state().max_consecutive_rejections
+
+    @property
+    def leak_warning(self) -> bool:
+        return self._ensure_state().leak_warning
+
+    @leak_warning.setter
+    def leak_warning(self, value: bool) -> None:
+        self._ensure_state().leak_warning = value
+
+    @property
+    def ha_publish_enabled(self) -> bool:
+        return self._ensure_state().ha_publish_enabled
+
+    @ha_publish_enabled.setter
+    def ha_publish_enabled(self, value: bool) -> None:
+        self._ensure_state().ha_publish_enabled = value
+
     # ── MQTT delegation properties ──────────────────────────────────────────
 
     def _ensure_mqtt_stub(self):
