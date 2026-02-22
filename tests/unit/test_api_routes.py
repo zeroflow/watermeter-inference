@@ -340,6 +340,104 @@ class TestNextImageLabelHint:
         assert data["label_hint"] == "4.5"
 
 
+class TestTrainingDataImages:
+    """Tests for training data image browsing endpoints."""
+
+    def test_list_images_for_class(self, test_client, tmp_path):
+        """GET /api/training-data/images returns filenames for a class."""
+        gt_dir = tmp_path / "digits" / "ground_truth" / "5"
+        gt_dir.mkdir(parents=True)
+        (gt_dir / "img001.jpg").write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 50)
+        (gt_dir / "img002.jpg").write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 50)
+        (gt_dir / "img003.jpg").write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 50)
+
+        with patch("watermeter.routes.models.watermeter_service") as mock_svc:
+            mock_svc.get_service.return_value.config = {
+                "low_confidence": {"save_path": str(tmp_path)}
+            }
+            resp = test_client.get(
+                "/api/training-data/images",
+                params={"type": "digits", "class_name": "5", "offset": "0", "limit": "50"},
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert data["total"] == 3
+        assert len(data["filenames"]) == 3
+
+    def test_list_images_pagination(self, test_client, tmp_path):
+        """Pagination works with offset and limit."""
+        gt_dir = tmp_path / "digits" / "ground_truth" / "5"
+        gt_dir.mkdir(parents=True)
+        for i in range(10):
+            (gt_dir / f"img{i:03d}.jpg").write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 50)
+
+        with patch("watermeter.routes.models.watermeter_service") as mock_svc:
+            mock_svc.get_service.return_value.config = {
+                "low_confidence": {"save_path": str(tmp_path)}
+            }
+            resp = test_client.get(
+                "/api/training-data/images",
+                params={"type": "digits", "class_name": "5", "offset": "0", "limit": "3"},
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 10
+        assert len(data["filenames"]) == 3
+
+    def test_list_images_invalid_type(self, test_client):
+        """Invalid type returns 400."""
+        resp = test_client.get(
+            "/api/training-data/images",
+            params={"type": "invalid", "class_name": "5"},
+        )
+        assert resp.status_code == 400
+
+    def test_serve_image(self, test_client, tmp_path):
+        """GET /api/training-data/image serves a JPEG file."""
+        gt_dir = tmp_path / "digits" / "ground_truth" / "5"
+        gt_dir.mkdir(parents=True)
+        img_bytes = b"\xff\xd8\xff\xe0" + b"\x00" * 50
+        (gt_dir / "img001.jpg").write_bytes(img_bytes)
+
+        with patch("watermeter.routes.models.watermeter_service") as mock_svc:
+            mock_svc.get_service.return_value.config = {
+                "low_confidence": {"save_path": str(tmp_path)}
+            }
+            resp = test_client.get("/api/training-data/image/digits/5/img001.jpg")
+
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "image/jpeg"
+
+    def test_serve_image_not_found(self, test_client, tmp_path):
+        """Missing image returns 404."""
+        gt_dir = tmp_path / "digits" / "ground_truth" / "5"
+        gt_dir.mkdir(parents=True)
+
+        with patch("watermeter.routes.models.watermeter_service") as mock_svc:
+            mock_svc.get_service.return_value.config = {
+                "low_confidence": {"save_path": str(tmp_path)}
+            }
+            resp = test_client.get("/api/training-data/image/digits/5/nonexistent.jpg")
+
+        assert resp.status_code == 404
+
+    def test_serve_image_path_traversal(self, test_client, tmp_path):
+        """Path traversal attempt returns 400."""
+        gt_dir = tmp_path / "digits" / "ground_truth" / "5"
+        gt_dir.mkdir(parents=True)
+
+        with patch("watermeter.routes.models.watermeter_service") as mock_svc:
+            mock_svc.get_service.return_value.config = {
+                "low_confidence": {"save_path": str(tmp_path)}
+            }
+            resp = test_client.get("/api/training-data/image/digits/5/..%2F..%2Fetc%2Fpasswd")
+
+        assert resp.status_code == 400
+
+
 class TestDedupEndpoint:
     """Tests for POST /api/training-data/dedup."""
 

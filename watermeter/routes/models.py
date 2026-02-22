@@ -7,7 +7,7 @@ from pathlib import Path
 import timm
 import yaml
 from fastapi import APIRouter
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from .. import watermeter_service
 from ..inference import get_inference_service
@@ -575,4 +575,115 @@ async def mislabel_confirm(request: dict):
 
     except Exception as e:
         logger.error(f"Error confirming mislabel rework: {e}")
+        return JSONResponse({"success": False, "message": f"Error: {str(e)}"}, status_code=500)
+
+
+# ---------------------------------------------------------------------------
+# Training data image browsing
+# ---------------------------------------------------------------------------
+
+_VALID_MODEL_TYPES = {"digits", "arrows"}
+
+
+def _validate_path_component(component: str) -> bool:
+    """Return True if component is safe (no path separators or ..)."""
+    if ".." in component:
+        return False
+    if "/" in component or "\\" in component:
+        return False
+    return True
+
+
+@router.get(
+    "/api/training-data/images",
+    tags=["Training Data"],
+    summary="List training images for a class",
+    description="List JPEG filenames in ground_truth/{type}/{class_name}/ with pagination",
+)
+async def list_training_images(
+    type: str,
+    class_name: str,
+    offset: int = 0,
+    limit: int = 50,
+):
+    """List JPEG filenames in a ground truth class directory with pagination."""
+    if type not in _VALID_MODEL_TYPES:
+        return JSONResponse(
+            {"success": False, "message": "type must be 'digits' or 'arrows'"},
+            status_code=400,
+        )
+
+    if not _validate_path_component(class_name):
+        return JSONResponse(
+            {"success": False, "message": "Invalid class_name"},
+            status_code=400,
+        )
+
+    try:
+        service = watermeter_service.get_service()
+        training_path = Path(service.config.get("low_confidence", {}).get("save_path", "/training"))
+        class_dir = training_path / type / "ground_truth" / class_name
+
+        if not class_dir.exists():
+            return JSONResponse({"success": True, "filenames": [], "total": 0})
+
+        all_files = sorted(p.name for p in class_dir.glob("*.jpg"))
+        total = len(all_files)
+        page = all_files[offset: offset + limit]
+
+        return JSONResponse({"success": True, "filenames": page, "total": total})
+
+    except Exception as e:
+        logger.error(f"Error listing training images: {e}")
+        return JSONResponse({"success": False, "message": f"Error: {str(e)}"}, status_code=500)
+
+
+@router.get(
+    "/api/training-data/image/{model_type}/{class_name}/{filename:path}",
+    tags=["Training Data"],
+    summary="Serve a training image",
+    description="Serve a single JPEG from ground_truth/{model_type}/{class_name}/{filename}",
+)
+async def serve_training_image(model_type: str, class_name: str, filename: str):
+    """Serve a single training image file."""
+    if model_type not in _VALID_MODEL_TYPES:
+        return JSONResponse(
+            {"success": False, "message": "model_type must be 'digits' or 'arrows'"},
+            status_code=400,
+        )
+
+    if (
+        not _validate_path_component(class_name)
+        or not _validate_path_component(filename)
+        or "/" in filename
+        or "\\" in filename
+    ):
+        return JSONResponse(
+            {"success": False, "message": "Invalid path component"},
+            status_code=400,
+        )
+
+    try:
+        service = watermeter_service.get_service()
+        training_path = Path(service.config.get("low_confidence", {}).get("save_path", "/training"))
+        base_dir = training_path / model_type / "ground_truth" / class_name
+        file_path = (base_dir / filename).resolve()
+
+        # Path traversal guard
+        if not file_path.is_relative_to(base_dir.resolve()):
+            return JSONResponse(
+                {"success": False, "message": "Invalid path"},
+                status_code=400,
+            )
+
+        if not file_path.exists():
+            return JSONResponse(
+                {"success": False, "message": "Image not found"},
+                status_code=404,
+            )
+
+        return FileResponse(str(file_path), media_type="image/jpeg")
+
+    except Exception as e:
+        logger.error(f"Error serving training image: {e}")
         return JSONResponse({"success": False, "message": f"Error: {str(e)}"}, status_code=500)
