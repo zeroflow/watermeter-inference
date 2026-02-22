@@ -109,4 +109,4 @@ class RateTracker:
     def _trim(self) -> None:
         """Drop oldest entries if over max_size."""
         if len(self._history) > self._max_size:
-            self._history = self._history[-self._max_size:]
+            del self._history[:-self._max_size]

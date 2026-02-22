@@ -1,3 +1,4 @@
+import json
 import openvino as ov
 import cv2
 import numpy as np
@@ -34,7 +35,8 @@ class Classifier:
         result = self.compiled([img])[self.compiled.output(0)][0]
         # Numerically stable softmax (subtract max to prevent overflow)
         result = result - result.max()
-        probs = np.exp(result) / np.exp(result).sum()
+        exp_result = np.exp(result)
+        probs = exp_result / exp_result.sum()
         idx = probs.argmax()
         return {"class": self.classes[idx], "confidence": float(probs[idx])}
 
@@ -43,7 +45,8 @@ class Classifier:
         img = self.preprocess(image_path)
         result = self.compiled([img])[self.compiled.output(0)][0]
         result = result - result.max()
-        probs = np.exp(result) / np.exp(result).sum()
+        exp_result = np.exp(result)
+        probs = exp_result / exp_result.sum()
 
         k = min(top_k, len(self.classes))
         top_indices = probs.argsort()[::-1][:k]
@@ -124,15 +127,13 @@ def _detect_training_mode(model_path: str) -> str:
     Returns:
         "discrete" or "continuous"
     """
-    import json as _json
-
     model_dir = Path(model_path).parent
     metadata_file = model_dir / "metadata.json"
 
     if metadata_file.exists():
         try:
             with open(metadata_file, "r") as f:
-                metadata = _json.load(f)
+                metadata = json.load(f)
             return metadata.get("training_mode", "discrete")
         except Exception:
             pass

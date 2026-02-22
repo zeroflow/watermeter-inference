@@ -33,8 +33,6 @@ from .confirmation import ConfirmationManager
 from .mqtt_publisher import MqttPublisher
 from .correction import CorrectionEngine
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -1104,18 +1102,18 @@ class WatermeterService:
 
         payload = {
             "unlabeled_digits": (
-                len(list(digits_input.glob("*.jpg"))) if digits_input.exists() else 0
+                sum(1 for _ in digits_input.glob("*.jpg")) if digits_input.exists() else 0
             ),
             "unlabeled_arrows": (
-                len(list(arrows_input.glob("*.jpg"))) if arrows_input.exists() else 0
+                sum(1 for _ in arrows_input.glob("*.jpg")) if arrows_input.exists() else 0
             ),
             "training_digits": (
-                sum(len(list(d.glob("*.jpg"))) for d in digits_gt.iterdir() if d.is_dir())
+                sum(sum(1 for _ in d.glob("*.jpg")) for d in digits_gt.iterdir() if d.is_dir())
                 if digits_gt.exists()
                 else 0
             ),
             "training_arrows": (
-                sum(len(list(d.glob("*.jpg"))) for d in arrows_gt.iterdir() if d.is_dir())
+                sum(sum(1 for _ in d.glob("*.jpg")) for d in arrows_gt.iterdir() if d.is_dir())
                 if arrows_gt.exists()
                 else 0
             ),
