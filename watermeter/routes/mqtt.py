@@ -140,6 +140,11 @@ async def test_mqtt_connection(request: Request):
             )
 
         port = int(data.get("port", 1883))
+        if not (1 <= port <= 65535):
+            return JSONResponse(
+                {"status": "error", "message": "Port must be between 1 and 65535"},
+                status_code=400,
+            )
         raw_username = data.get("username", "")
         raw_password = data.get("password", "")
 

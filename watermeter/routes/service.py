@@ -6,10 +6,12 @@ from datetime import datetime
 import logging
 import math
 from pathlib import Path
+import re
+from typing import Optional
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from .. import watermeter_service
 from ..app import safe_subpath
@@ -37,7 +39,14 @@ class TrainingSubmission(BaseModel):
     id: str
     image_base64: str
     model: str
-    next_image_base64: str = None  # Optional: next dial image for annotation help
+    next_image_base64: Optional[str] = None  # Optional: next dial image for annotation help
+
+    @field_validator("id")
+    @classmethod
+    def validate_id(cls, v):
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", v):
+            raise ValueError("id must contain only alphanumeric characters, underscores, and hyphens")
+        return v
 
 
 class SetValueRequest(BaseModel):

@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # --- Training data upload constants ---
+MAX_ZIP_BYTES = 200 * 1024 * 1024  # 200 MB upload limit
 DIGIT_CLASSES = set(str(i) for i in range(10)) | {"NAN", "NaN", "nan"}
 ARROW_CLASSES = set(f"{i}.{j}" for i in range(10) for j in range(10))
 DIGIT_PREFIX_RE = re.compile(r"^(NaN|[0-9])_")
@@ -77,7 +78,7 @@ async def get_training_status():
             "training": training_status,
             "benchmark": benchmark_status,
             "queue": queue,
-            "auto_benchmark_pending": len(training_mgr._auto_benchmark_pending),
+            "auto_benchmark_pending": len(training_mgr.auto_benchmark_pending),
         }
     )
 
@@ -339,9 +340,11 @@ async def upload_training_data(
 
         # Save uploaded file to temp directory
         try:
-            content = await file.read()
+            content = await file.read(MAX_ZIP_BYTES + 1)
             if not content:
                 raise HTTPException(status_code=400, detail="Uploaded file is empty")
+            if len(content) > MAX_ZIP_BYTES:
+                raise HTTPException(status_code=413, detail=f"ZIP file too large (max {MAX_ZIP_BYTES // (1024*1024)} MB)")
             with open(tmp_zip, "wb") as f:
                 f.write(content)
         finally:

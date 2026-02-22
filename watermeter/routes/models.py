@@ -188,6 +188,7 @@ async def get_model_logs(model_type: str, model_id: str):
     """Get persisted training logs for a model (successful or failed)."""
     try:
         model_mgr = get_model_manager()
+        model_mgr._validate_model_id(model_id)
         model_dir = model_mgr._get_model_types_dir(model_type) / model_id
         log_file = model_dir / "training.log"
 
@@ -420,9 +421,8 @@ _mislabel_scans: dict = {}
 
 
 def _make_thumbnail_base64(image_path: Path, max_size: int = 128) -> str:
-    """Read an image file and return a base64-encoded JPEG thumbnail.
+    """Read an image file and return a base64-encoded representation of its raw bytes.
 
-    The thumbnail is resized so its longest side is at most *max_size* pixels.
     Returns an empty string if the file cannot be read.
     """
     try:
