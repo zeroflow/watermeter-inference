@@ -162,104 +162,87 @@ class WatermeterService:
     # self._state (MeterState) without adding @property forwarding on the
     # service itself.  All external call sites and internal methods that
     # reference self.xxx continue to work through these properties.
-    #
-    # Tests that use object.__new__() bypass __init__ and never create
-    # self._state.  The _ensure_state() helper lazily initialises a default
-    # MeterState so those test fixtures can still write to these attributes
-    # directly (e.g. svc.leak_warning = False) without an AttributeError.
-
-    def _ensure_state(self) -> "MeterState":
-        """Lazily create self._state for tests that bypass __init__."""
-        if not hasattr(self, '_state'):
-            object.__setattr__(self, '_state', MeterState(ha_publish_enabled=False))
-        return self._state
 
     @property
     def current_state(self) -> Dict:
         """Getter-only: dict is mutated in-place, never replaced."""
-        return self._ensure_state().current_state
+        return self._state.current_state
 
     @current_state.setter
     def current_state(self, value: Dict) -> None:
-        """Allow tests to replace the whole dict (object.__new__ pattern)."""
-        self._ensure_state().current_state = value
+        self._state.current_state = value
 
     @property
     def previous_value(self) -> Optional[float]:
-        return self._ensure_state().previous_value
+        return self._state.previous_value
 
     @previous_value.setter
     def previous_value(self, value: Optional[float]) -> None:
-        self._ensure_state().previous_value = value
+        self._state.previous_value = value
 
     @property
     def last_update_time(self):
-        return self._ensure_state().last_update_time
+        return self._state.last_update_time
 
     @last_update_time.setter
     def last_update_time(self, value) -> None:
-        self._ensure_state().last_update_time = value
+        self._state.last_update_time = value
 
     @property
     def consecutive_rejections(self) -> int:
-        return self._ensure_state().consecutive_rejections
+        return self._state.consecutive_rejections
 
     @consecutive_rejections.setter
     def consecutive_rejections(self, value: int) -> None:
-        self._ensure_state().consecutive_rejections = value
+        self._state.consecutive_rejections = value
 
     @property
     def max_consecutive_rejections(self) -> int:
         """Read-only: set once in MeterState.__init__, never reassigned."""
-        return self._ensure_state().max_consecutive_rejections
+        return self._state.max_consecutive_rejections
 
     @property
     def leak_warning(self) -> bool:
-        return self._ensure_state().leak_warning
+        return self._state.leak_warning
 
     @leak_warning.setter
     def leak_warning(self, value: bool) -> None:
-        self._ensure_state().leak_warning = value
+        self._state.leak_warning = value
 
     @property
     def ha_publish_enabled(self) -> bool:
-        return self._ensure_state().ha_publish_enabled
+        return self._state.ha_publish_enabled
 
     @ha_publish_enabled.setter
     def ha_publish_enabled(self, value: bool) -> None:
-        self._ensure_state().ha_publish_enabled = value
+        self._state.ha_publish_enabled = value
+
+    @property
+    def state_store(self):
+        return self._state_store
+
+    @state_store.setter
+    def state_store(self, value) -> None:
+        self._state_store = value
+        if hasattr(self, '_confirmation_manager'):
+            self._confirmation_manager._state_store = value
 
     # ── MQTT delegation properties ──────────────────────────────────────────
 
-    def _ensure_mqtt_stub(self):
-        """Lazily create a minimal namespace for mqtt_client/loop when _mqtt is absent.
-
-        Tests that use object.__new__() bypass __init__ so _mqtt is never set.
-        This stub lets mqtt_client and loop setters/getters work without a full
-        MqttPublisher instance.
-        """
-        if not hasattr(self, '_mqtt'):
-            class _MqttStub:
-                mqtt_client = None
-                loop = None
-            object.__setattr__(self, '_mqtt', _MqttStub())
-
     @property
     def mqtt_client(self):
-        return self._mqtt.mqtt_client if hasattr(self, '_mqtt') else None
+        return self._mqtt.mqtt_client
 
     @mqtt_client.setter
     def mqtt_client(self, value):
-        self._ensure_mqtt_stub()
         self._mqtt.mqtt_client = value
 
     @property
     def loop(self):
-        return self._mqtt.loop if hasattr(self, '_mqtt') else None
+        return self._mqtt.loop
 
     @loop.setter
     def loop(self, value):
-        self._ensure_mqtt_stub()
         self._mqtt.loop = value
 
     # ── rate_history backward-compat property ───────────────────────────────
@@ -267,65 +250,22 @@ class WatermeterService:
     @property
     def rate_history(self):
         """Backward-compat view of _rate_tracker._history (mutable list)."""
-        if not hasattr(self, '_rate_tracker'):
-            from .rate_tracker import RateTracker
-            object.__setattr__(self, '_rate_tracker', RateTracker(max_size=5))
         return self._rate_tracker._history
 
     @rate_history.setter
     def rate_history(self, value):
         """Allow tests to assign a list directly to rate_history."""
-        if not hasattr(self, '_rate_tracker'):
-            from .rate_tracker import RateTracker
-            object.__setattr__(self, '_rate_tracker', RateTracker(max_size=5))
         self._rate_tracker._history = list(value)
 
     # ── MQTT message/connect delegation ─────────────────────────────────────
 
     def on_mqtt_connect(self, client, userdata, connect_flags, reason_code, properties):
-        """Handle MQTT connect: subscribe to topics.
-
-        Delegates to MqttPublisher when available; falls back to inline logic
-        so that tests that bypass __init__ (no _mqtt) still work.
-        """
-        if hasattr(self, '_mqtt') and hasattr(self._mqtt, 'on_connect'):
-            self._mqtt.on_connect(client, userdata, connect_flags, reason_code, properties)
-            return
-
-        # Inline fallback for tests using object.__new__()
-        if reason_code != 0:
-            return
-        mqtt_config = self.config.get("mqtt", {})
-        trigger_mode = getattr(self, 'trigger_mode', 'mqtt')
-        if trigger_mode in ("mqtt", "both"):
-            trigger_topic = mqtt_config.get("trigger_topic")
-            if trigger_topic:
-                client.subscribe(trigger_topic, qos=2)
-        reset_topic = mqtt_config.get("reset_topic")
-        if reset_topic:
-            client.subscribe(reset_topic, qos=2)
-        client.subscribe("homeassistant/status", qos=1)
-        conf_config = self._ensure_confirmation_manager().get_config()
-        if conf_config.get("enabled"):
-            client.subscribe(conf_config["response_topic"], qos=2)
+        """Delegate MQTT connect handling to MqttPublisher."""
+        self._mqtt.on_connect(client, userdata, connect_flags, reason_code, properties)
 
     def on_mqtt_message(self, client, userdata, msg):
-        """Handle an incoming MQTT message.
-
-        Delegates to MqttPublisher when available; falls back to inline logic
-        so that tests that bypass __init__ (no _mqtt) still work.
-        """
-        if hasattr(self, '_mqtt') and hasattr(self._mqtt, 'on_message'):
-            self._mqtt.on_message(client, userdata, msg)
-            return
-
-        # Inline fallback for tests using object.__new__()
-        mqtt_config = self.config.get("mqtt", {})
-        topic = msg.topic
-        payload = msg.payload.decode("utf-8") if isinstance(msg.payload, bytes) else msg.payload
-        conf_config = self._ensure_confirmation_manager().get_config()
-        if conf_config.get("enabled") and topic == conf_config.get("response_topic"):
-            self._handle_confirmation_response(payload)
+        """Delegate MQTT message handling to MqttPublisher."""
+        self._mqtt.on_message(client, userdata, msg)
 
     # ── Image pipeline delegation ──────────────────────────────────────────
     # These methods delegate to ImagePipeline. Config is synced before each
@@ -439,117 +379,37 @@ class WatermeterService:
 
     # ── User Confirmation (BL-07) — delegated to ConfirmationManager ───────
 
-    # Properties forward _pending_confirmation / _confirmation_timer reads and
-    # writes to the manager so that existing call sites (and tests that use
-    # object.__new__ + direct attribute assignment) keep working unchanged.
-
-    def _ensure_confirmation_manager(self) -> "ConfirmationManager":
-        """Return the ConfirmationManager, lazily creating one if needed.
-
-        Tests that use object.__new__() to bypass __init__ never get a
-        _confirmation_manager. This method creates one on-the-fly, using the
-        service's existing _rate_tracker (lazily created via the rate_history
-        setter) and a thin MeterStateAdapter wrapping the service itself.
-        """
-        if not hasattr(self, '_confirmation_manager'):
-            # Ensure _rate_tracker exists (rate_history setter creates it on demand)
-            if not hasattr(self, '_rate_tracker'):
-                from .rate_tracker import RateTracker
-                object.__setattr__(self, '_rate_tracker', RateTracker(max_size=5))
-
-            # Thin adapter so the service itself satisfies the meter_state protocol
-            svc = self
-
-            class _MeterStateAdapter:
-                """Proxy that reads/writes meter state attributes on the service."""
-                @property
-                def previous_value(self):
-                    return getattr(svc, '_previous_value', None) or getattr(svc, 'previous_value', None)
-
-                @previous_value.setter
-                def previous_value(self, v):
-                    # Write through the service's own _state if available,
-                    # otherwise set directly on the service
-                    if hasattr(svc, '_state'):
-                        svc._state.previous_value = v
-                    else:
-                        object.__setattr__(svc, 'previous_value', v)
-
-                @property
-                def last_update_time(self):
-                    if hasattr(svc, '_state'):
-                        return svc._state.last_update_time
-                    return getattr(svc, 'last_update_time', None)
-
-                @last_update_time.setter
-                def last_update_time(self, v):
-                    if hasattr(svc, '_state'):
-                        svc._state.last_update_time = v
-                    else:
-                        object.__setattr__(svc, 'last_update_time', v)
-
-                @property
-                def current_state(self):
-                    return svc.current_state
-
-                @property
-                def leak_warning(self):
-                    return getattr(svc, 'leak_warning', False)
-
-            mgr = ConfirmationManager(
-                config=getattr(self, 'config', {}),
-                rate_tracker=self._rate_tracker,
-                meter_state=_MeterStateAdapter(),
-                state_store=getattr(self, 'state_store', None),
-            )
-            # Restore any pending state that was stored before the manager existed
-            if hasattr(self, '_pending_confirmation_fallback'):
-                mgr._pending_confirmation = self._pending_confirmation_fallback
-                del self._pending_confirmation_fallback
-            if hasattr(self, '_confirmation_timer_fallback'):
-                mgr._confirmation_timer = self._confirmation_timer_fallback
-                del self._confirmation_timer_fallback
-            object.__setattr__(self, '_confirmation_manager', mgr)
-
-        # Always sync state_store in case the test set it after the manager was created
-        self._confirmation_manager._state_store = getattr(self, 'state_store', None)
-        return self._confirmation_manager
-
     @property
     def _pending_confirmation(self) -> Optional[Dict]:
-        mgr = self._ensure_confirmation_manager()
-        return mgr._pending_confirmation
+        return self._confirmation_manager._pending_confirmation
 
     @_pending_confirmation.setter
     def _pending_confirmation(self, value: Optional[Dict]) -> None:
-        mgr = self._ensure_confirmation_manager()
-        mgr._pending_confirmation = value
+        self._confirmation_manager._pending_confirmation = value
 
     @property
     def _confirmation_timer(self) -> Optional[threading.Timer]:
-        mgr = self._ensure_confirmation_manager()
-        return mgr._confirmation_timer
+        return self._confirmation_manager._confirmation_timer
 
     @_confirmation_timer.setter
     def _confirmation_timer(self, value: Optional[threading.Timer]) -> None:
-        mgr = self._ensure_confirmation_manager()
-        mgr._confirmation_timer = value
+        self._confirmation_manager._confirmation_timer = value
 
     def _get_confirmation_config(self) -> Dict:
         """Delegate to ConfirmationManager.get_config()."""
-        return self._ensure_confirmation_manager().get_config()
+        return self._confirmation_manager.get_config()
 
     def _should_request_confirmation(
         self, total_value: float, warnings: List[str], predictions: Dict[str, Dict]
     ) -> Optional[str]:
         """Delegate to ConfirmationManager.should_request()."""
-        return self._ensure_confirmation_manager().should_request(total_value, warnings, predictions)
+        return self._confirmation_manager.should_request(total_value, warnings, predictions)
 
     def _publish_confirmation_request(
         self, total_value: float, warnings: List[str], predictions: Dict[str, Dict], reason: str
     ) -> None:
         """Delegate to ConfirmationManager.publish_request()."""
-        self._ensure_confirmation_manager().publish_request(
+        self._confirmation_manager.publish_request(
             total_value, warnings, predictions, reason,
             mqtt_client=self.mqtt_client,
             loop=self.loop,
@@ -557,15 +417,10 @@ class WatermeterService:
 
     def _cancel_confirmation_timer(self) -> None:
         """Delegate to ConfirmationManager.cancel_timer()."""
-        self._ensure_confirmation_manager().cancel_timer()
+        self._confirmation_manager.cancel_timer()
 
     def _confirmation_timeout(self) -> None:
-        """Route the timeout to the event loop, or execute directly if no loop.
-
-        The test expects call_soon_threadsafe(service._do_confirmation_timeout)
-        so we do the routing here rather than delegating to the manager's
-        _timeout_sync (which would pass a different callable).
-        """
+        """Route the timeout to the event loop, or execute directly if no loop."""
         if self.loop:
             self.loop.call_soon_threadsafe(self._do_confirmation_timeout)
         else:
@@ -573,11 +428,11 @@ class WatermeterService:
 
     def _do_confirmation_timeout(self) -> None:
         """Delegate to ConfirmationManager._do_timeout()."""
-        self._ensure_confirmation_manager()._do_timeout(self.loop)
+        self._confirmation_manager._do_timeout(self.loop)
 
     def _handle_confirmation_response(self, payload: str) -> None:
         """Delegate to ConfirmationManager.handle_response()."""
-        self._ensure_confirmation_manager().handle_response(
+        self._confirmation_manager.handle_response(
             payload,
             loop=self.loop,
             publish_fn=self.publish_to_mqtt,
@@ -585,7 +440,7 @@ class WatermeterService:
 
     def get_confirmation_status(self) -> Optional[Dict]:
         """Delegate to ConfirmationManager.get_status()."""
-        return self._ensure_confirmation_manager().get_status()
+        return self._confirmation_manager.get_status()
 
     # ── Value Correction Engine (BL-04) — delegates to CorrectionEngine ────
 

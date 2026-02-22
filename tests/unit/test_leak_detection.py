@@ -28,6 +28,8 @@ for _name in ['watermeter_service', 'watermeter.watermeter_service']:
 from watermeter.watermeter_service import WatermeterService  # noqa: E402
 from watermeter.rate_tracker import RateTracker  # noqa: E402
 from watermeter.leak_detector import LeakDetector  # noqa: E402
+from watermeter.meter_state import MeterState  # noqa: E402
+from watermeter.confirmation import ConfirmationManager  # noqa: E402
 
 # Restore the mocks so other test files still work
 for _name, _mock in _ws_mock_backup.items():
@@ -42,8 +44,8 @@ for _name, _mock in _ws_mock_backup.items():
 def service():
     """Create a minimal WatermeterService with a mock config for leak detection tests.
 
-    Bypasses __init__ entirely and sets the attributes that _check_sustained_consumption,
-    publish_to_mqtt, and reset_previous_value rely on.
+    Bypasses __init__ and directly initializes the backing objects so that
+    all service properties work without lazy-init shims.
     """
     svc = object.__new__(WatermeterService)
 
@@ -59,11 +61,24 @@ def service():
         },
     }
 
-    # Create rate tracker and leak detector
+    # Initialize required subsystems
     svc._rate_tracker = RateTracker(max_size=25)
     svc._leak_detector = LeakDetector(rate_tracker=svc._rate_tracker, config=svc.config)
+    svc._state = MeterState(ha_publish_enabled=False)
 
-    # Backward-compatible property access
+    class _MqttMock:
+        mqtt_client = None
+        loop = None
+
+    svc._mqtt = _MqttMock()
+    svc._confirmation_manager = ConfirmationManager(
+        config=svc.config,
+        rate_tracker=svc._rate_tracker,
+        meter_state=svc._state,
+        state_store=None,
+    )
+
+    # Set state attributes via properties (which delegate to _state/_mqtt/_confirmation_manager)
     svc.rate_history = []
     svc.leak_warning = False
     svc.current_state = {

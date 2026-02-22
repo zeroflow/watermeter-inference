@@ -32,6 +32,10 @@ for _name in ['watermeter_service', 'watermeter.watermeter_service']:
         _ws_mock_backup[_name] = sys.modules.pop(_name)
 
 from watermeter.watermeter_service import WatermeterService  # noqa: E402
+from watermeter.mqtt_publisher import MqttPublisher  # noqa: E402
+from watermeter.meter_state import MeterState  # noqa: E402
+from watermeter.rate_tracker import RateTracker  # noqa: E402
+from watermeter.confirmation import ConfirmationManager  # noqa: E402
 
 # Restore the mocks so other test files still work
 for _name, _mock in _ws_mock_backup.items():
@@ -46,7 +50,8 @@ for _name, _mock in _ws_mock_backup.items():
 def service():
     """Create a minimal WatermeterService with confirmation config for testing.
 
-    Bypasses __init__ entirely and sets only the attributes needed.
+    Bypasses __init__ and directly initializes the backing objects so that
+    all service properties work without lazy-init shims.
     """
     svc = object.__new__(WatermeterService)
 
@@ -72,6 +77,22 @@ def service():
             'publish_topic': 'watermeter/state',
         },
     }
+
+    # Initialize backing objects so properties work without _ensure_* shims
+    svc._state = MeterState(ha_publish_enabled=False)
+    svc._rate_tracker = RateTracker(max_size=5)
+
+    class _MqttMock:
+        mqtt_client = None
+        loop = None
+
+    svc._mqtt = _MqttMock()
+    svc._confirmation_manager = ConfirmationManager(
+        config=svc.config,
+        rate_tracker=svc._rate_tracker,
+        meter_state=svc._state,
+        state_store=None,
+    )
 
     svc.rate_history = []
     svc.rate_history_size = 5
@@ -120,6 +141,22 @@ def service_disabled():
             'publish_topic': 'watermeter/state',
         },
     }
+
+    # Initialize backing objects so properties work without _ensure_* shims
+    svc._state = MeterState(ha_publish_enabled=False)
+    svc._rate_tracker = RateTracker(max_size=5)
+
+    class _MqttMock:
+        mqtt_client = None
+        loop = None
+
+    svc._mqtt = _MqttMock()
+    svc._confirmation_manager = ConfirmationManager(
+        config=svc.config,
+        rate_tracker=svc._rate_tracker,
+        meter_state=svc._state,
+        state_store=None,
+    )
 
     svc.rate_history = []
     svc.rate_history_size = 5
@@ -633,10 +670,10 @@ class TestResetClearsConfirmation:
 # ---------------------------------------------------------------------------
 
 class TestMqttMessageRouting:
-    """Tests for on_mqtt_message dispatching to confirmation handler."""
+    """Tests that confirmation responses are handled by _handle_confirmation_response."""
 
     def test_confirmation_response_routed(self, service):
-        """Messages on the confirmation response topic are dispatched."""
+        """'confirm' payload clears pending and sets status ok."""
         service._pending_confirmation = {
             'value': 123.456,
             'warnings': [],
@@ -648,20 +685,7 @@ class TestMqttMessageRouting:
         }
         service._confirmation_timer = None
 
-        # Build a mock MQTT message
-        mock_msg = MagicMock()
-        mock_msg.topic = 'watermeter/confirmation_response'
-        mock_msg.payload = b'confirm'
-
-        # Mock the MQTT config for trigger/reset topics
-        service.config['mqtt'] = {
-            'trigger_topic': 'watermeter/status',
-            'trigger_payload': 'Flow finished',
-            'reset_topic': 'watermeter/reset',
-        }
-        service.trigger_mode = 'mqtt'
-
-        service.on_mqtt_message(None, None, mock_msg)
+        service._handle_confirmation_response('confirm')
 
         assert service._pending_confirmation is None
         assert service.current_state['status'] == 'ok'
@@ -672,35 +696,44 @@ class TestMqttMessageRouting:
 # ---------------------------------------------------------------------------
 
 class TestMqttConnectSubscription:
-    """Tests for MQTT connect subscription behavior."""
+    """Tests that MqttPublisher.on_connect subscribes to the confirmation response topic."""
 
-    def test_subscribes_when_enabled(self, service):
-        """on_mqtt_connect subscribes to response topic when confirmation is enabled."""
-        mock_client = MagicMock()
-        service.config['mqtt'] = {
-            'trigger_topic': 'watermeter/status',
-            'reset_topic': 'watermeter/reset',
+    def _make_publisher(self, conf_config):
+        """Create a minimal MqttPublisher mock for on_connect testing."""
+        publisher = MagicMock()
+        publisher.trigger_mode = 'mqtt'
+        publisher.config = {
+            'mqtt': {
+                'trigger_topic': 'watermeter/status',
+                'reset_topic': 'watermeter/reset',
+            },
         }
-        service.trigger_mode = 'mqtt'
+        publisher._confirmation_manager.get_config.return_value = conf_config
+        publisher.publish_discovery = MagicMock()
+        publisher.publish_training_stats = MagicMock()
+        return publisher
 
-        service.on_mqtt_connect(mock_client, None, None, 0, None)
+    def test_subscribes_when_enabled(self):
+        """MqttPublisher.on_connect subscribes to response topic when confirmation is enabled."""
+        publisher = self._make_publisher({
+            'enabled': True,
+            'response_topic': 'watermeter/confirmation_response',
+        })
+        client = MagicMock()
 
-        # Collect all subscribed topics
-        subscribed_topics = [c[0][0] for c in mock_client.subscribe.call_args_list]
+        MqttPublisher.on_connect(publisher, client, None, None, 0, None)
+
+        subscribed_topics = [c[0][0] for c in client.subscribe.call_args_list]
         assert 'watermeter/confirmation_response' in subscribed_topics
 
-    def test_does_not_subscribe_when_disabled(self, service_disabled):
-        """on_mqtt_connect skips response topic subscription when disabled."""
-        mock_client = MagicMock()
-        service_disabled.config['mqtt'] = {
-            'trigger_topic': 'watermeter/status',
-            'reset_topic': 'watermeter/reset',
-        }
-        service_disabled.trigger_mode = 'mqtt'
+    def test_does_not_subscribe_when_disabled(self):
+        """MqttPublisher.on_connect skips response topic when confirmation is disabled."""
+        publisher = self._make_publisher({'enabled': False})
+        client = MagicMock()
 
-        service_disabled.on_mqtt_connect(mock_client, None, None, 0, None)
+        MqttPublisher.on_connect(publisher, client, None, None, 0, None)
 
-        subscribed_topics = [c[0][0] for c in mock_client.subscribe.call_args_list]
+        subscribed_topics = [c[0][0] for c in client.subscribe.call_args_list]
         assert 'watermeter/confirmation_response' not in subscribed_topics
 
 
