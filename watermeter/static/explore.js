@@ -160,3 +160,243 @@ function showMessage(text, type) {
     el.className = 'message ' + type;
     setTimeout(function() { el.className = 'message'; }, 5000);
 }
+
+// --- Mislabel Detection ---
+
+async function startMislabelScan() {
+    var type = document.getElementById('explore-type').value;
+    var btn = document.getElementById('mislabel-scan-btn');
+    var sectionEl = document.getElementById('mislabel-results-section');
+    var statusEl = document.getElementById('mislabel-status');
+    var resultsEl = document.getElementById('mislabel-results');
+
+    btn.disabled = true;
+    btn.textContent = 'Scanning...';
+    sectionEl.style.display = 'block';
+    resultsEl.style.display = 'none';
+
+    statusEl.className = 'tool-status scanning';
+    statusEl.textContent = 'Scanning ground truth against the active model...';
+
+    try {
+        var resp = await fetch('/api/training-data/mislabel/scan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: type })
+        });
+        var data = await resp.json();
+
+        if (!resp.ok || !data.success) {
+            statusEl.className = 'tool-status error';
+            statusEl.textContent = data.detail || data.message || 'Scan failed';
+            return;
+        }
+
+        statusEl.className = 'tool-status complete';
+        statusEl.textContent = 'Scanned ' + data.total_scanned + ' images. Found ' + data.total_suspects + ' suspect(s).';
+
+        if (data.suspects.length > 0) {
+            renderMislabelResults(data.suspects);
+        }
+    } catch (err) {
+        statusEl.className = 'tool-status error';
+        statusEl.textContent = 'Network error: ' + err.message;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Scan for Mislabels';
+    }
+}
+
+function renderMislabelResults(suspects) {
+    var grid = document.getElementById('mislabel-grid');
+    var resultsEl = document.getElementById('mislabel-results');
+    var countEl = document.getElementById('mislabel-count');
+
+    while (grid.firstChild) grid.removeChild(grid.firstChild);
+    countEl.textContent = suspects.length + ' suspect(s)';
+
+    suspects.forEach(function(s, i) {
+        var card = document.createElement('div');
+        card.className = 'mislabel-card selected';
+        card.dataset.path = s.path;
+        card.onclick = function() { card.classList.toggle('selected'); };
+
+        var img = document.createElement('img');
+        img.src = 'data:image/jpeg;base64,' + s.image_base64;
+        img.alt = s.filename;
+
+        var labels = document.createElement('div');
+        labels.className = 'mislabel-labels';
+
+        var cur = document.createElement('div');
+        cur.className = 'label-current';
+        cur.textContent = 'Was: ' + s.current_label;
+
+        var pred = document.createElement('div');
+        pred.className = 'label-predicted';
+        pred.textContent = 'Model: ' + s.predicted_label;
+
+        var conf = document.createElement('div');
+        conf.style.cssText = 'font-size:0.7rem;color:var(--text-light)';
+        conf.textContent = (s.confidence * 100).toFixed(1) + '%';
+
+        labels.appendChild(cur);
+        labels.appendChild(pred);
+        labels.appendChild(conf);
+        card.appendChild(img);
+        card.appendChild(labels);
+        grid.appendChild(card);
+    });
+
+    resultsEl.style.display = 'block';
+}
+
+function toggleAllMislabels(select) {
+    document.querySelectorAll('.mislabel-card').forEach(function(card) {
+        if (select) card.classList.add('selected');
+        else card.classList.remove('selected');
+    });
+}
+
+async function confirmMislabels() {
+    var type = document.getElementById('explore-type').value;
+    var selected = Array.from(document.querySelectorAll('.mislabel-card.selected'))
+        .map(function(card) { return card.dataset.path; });
+
+    if (selected.length === 0) { showMessage('No images selected', 'error'); return; }
+
+    var btn = document.getElementById('mislabel-confirm-btn');
+    btn.disabled = true;
+    btn.textContent = 'Moving...';
+
+    try {
+        var resp = await fetch('/api/training-data/mislabel/confirm', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: type, selected: selected })
+        });
+        var data = await resp.json();
+
+        if (!resp.ok || !data.success) {
+            showMessage(data.message || 'Confirm failed', 'error');
+            return;
+        }
+
+        showMessage('Moved ' + data.moved_count + ' image(s) to input queue.', 'success');
+        document.getElementById('mislabel-results-section').style.display = 'none';
+        loadStats();
+        if (currentClass) { imageOffset = 0; clearImageGrid(); loadImages(); }
+    } catch (err) {
+        showMessage('Network error: ' + err.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Move Selected to Input Queue';
+    }
+}
+
+// --- Data Pruning ---
+
+async function startPrunePreview() {
+    var type = document.getElementById('explore-type').value;
+    var btn = document.getElementById('prune-preview-btn');
+    var sectionEl = document.getElementById('prune-results-section');
+    var statusEl = document.getElementById('prune-status');
+    var resultsEl = document.getElementById('prune-results');
+
+    btn.disabled = true;
+    btn.textContent = 'Scanning...';
+    sectionEl.style.display = 'block';
+    resultsEl.style.display = 'none';
+
+    statusEl.className = 'tool-status scanning';
+    statusEl.textContent = 'Analyzing ground truth for near-duplicate clusters...';
+
+    try {
+        var resp = await fetch('/api/training-data/prune/preview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: type })
+        });
+        var data = await resp.json();
+
+        if (!resp.ok || !data.success) {
+            statusEl.className = 'tool-status error';
+            statusEl.textContent = data.message || 'Preview failed';
+            return;
+        }
+
+        if (data.total_removable === 0) {
+            statusEl.className = 'tool-status complete';
+            statusEl.textContent = 'Dataset balanced. No pruning needed (' + data.total_before + ' images).';
+            return;
+        }
+
+        statusEl.className = 'tool-status complete';
+        statusEl.textContent = 'Found ' + data.total_removable + ' removable out of ' + data.total_before + '.';
+        renderPrunePreview(data);
+    } catch (err) {
+        statusEl.className = 'tool-status error';
+        statusEl.textContent = 'Network error: ' + err.message;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Preview Pruning';
+    }
+}
+
+function renderPrunePreview(data) {
+    var summaryEl = document.getElementById('prune-summary');
+    var listEl = document.getElementById('prune-class-list');
+    var resultsEl = document.getElementById('prune-results');
+
+    summaryEl.textContent = data.total_before + ' \u2192 ' + data.total_after + ' (\u2212' + data.total_removable + ')';
+    while (listEl.firstChild) listEl.removeChild(listEl.firstChild);
+
+    var keys = Object.keys(data.classes).sort();
+    keys.forEach(function(cls) {
+        var info = data.classes[cls];
+        if (info.removable === 0) return;
+        var item = document.createElement('div');
+        item.className = 'prune-class-item';
+        var nameSpan = document.createElement('span');
+        nameSpan.textContent = cls + ': ' + info.before + ' \u2192 ' + info.after;
+        var removeSpan = document.createElement('span');
+        removeSpan.className = 'prune-removable';
+        removeSpan.textContent = '\u2212' + info.removable;
+        item.appendChild(nameSpan);
+        item.appendChild(removeSpan);
+        listEl.appendChild(item);
+    });
+
+    resultsEl.style.display = 'block';
+}
+
+async function confirmPrune() {
+    var type = document.getElementById('explore-type').value;
+    var btn = document.getElementById('prune-confirm-btn');
+    btn.disabled = true;
+    btn.textContent = 'Deleting...';
+
+    try {
+        var resp = await fetch('/api/training-data/prune/confirm', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: type })
+        });
+        var data = await resp.json();
+
+        if (!resp.ok || !data.success) {
+            showMessage(data.message || 'Prune failed', 'error');
+            return;
+        }
+
+        showMessage('Pruned ' + data.total_deleted + ' image(s).', 'success');
+        document.getElementById('prune-results-section').style.display = 'none';
+        loadStats();
+        if (currentClass) { imageOffset = 0; clearImageGrid(); loadImages(); }
+    } catch (err) {
+        showMessage('Network error: ' + err.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Confirm & Delete';
+    }
+}
