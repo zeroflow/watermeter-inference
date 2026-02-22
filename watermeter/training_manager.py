@@ -325,19 +325,7 @@ class TrainingManager:
 
                 # Run training (import and call train function)
                 try:
-                    result = self._execute_training(
-                        job=job,
-                        model_type=model_type,
-                        architecture=architecture,
-                        architecture_display=architecture_display,
-                        resolution=resolution,
-                        seed=seed,
-                        epochs=epochs,
-                        batch_size=batch_size,
-                        learning_rate=learning_rate,
-                        step_size=step_size,
-                        training_mode=training_mode,
-                    )
+                    result = self._execute_training(job=job, seed=seed)
                 except Exception as e:
                     result = None
                     last_error = str(e)
@@ -443,448 +431,567 @@ class TrainingManager:
         thread = threading.Thread(target=run_sequential, daemon=True)
         thread.start()
 
-    def _execute_training(
-        self,
-        job: TrainingJob,
-        model_type: str,
-        architecture: str,
-        architecture_display: str = "",
-        resolution: int = 128,
-        seed: int = 42,
-        epochs: int = 20,
-        batch_size: int = 16,
-        learning_rate: float = 3e-4,
-        step_size: Optional[float] = None,
-        training_mode: str = "discrete",
-    ) -> Optional[Dict]:
+    def _execute_training(self, job: TrainingJob, seed: int) -> Optional[Dict]:
         """
         Execute the actual training process using PyTorch and timm.
 
+        Reads all hyperparameters from job.config and delegates to focused sub-methods.
         Progress updates are sent via job.update_progress() during training.
         """
         import shutil
 
+        config = job.config
+        model_type = config["model_type"]
+        architecture = config["architecture"]
+        architecture_display = config.get("architecture_display", "")
+        resolution = config["resolution"]
+        epochs = config.get("epochs", 20)
+        batch_size = config.get("batch_size", 16)
+        learning_rate = config.get("learning_rate", 3e-4)
+        step_size = config.get("step_size", 1.0) if model_type == "arrows" else None
+        training_mode = config.get("training_mode", "discrete")
+
+        from .training_core import set_all_seeds
+
+        set_all_seeds(seed)
+        job.add_log(f"Random seed set to {seed}")
+
         import torch
-        import timm
-        from torchvision.datasets import ImageFolder
-        from torch.utils.data import DataLoader, Subset
 
-        from .training_core import (
-            set_all_seeds,
-            worker_init_fn,
-            create_transforms,
-            stratified_split,
-            compute_class_weights,
-            export_to_openvino,
-        )
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        job.add_log(f"Using device: {device}")
 
+        model_filename = None  # initialised before try so exception handler can reference it
         try:
-            # Initialize sample count trackers
-            train_sample_count = 0
-            val_sample_count = 0
-
-            # Set seeds for reproducibility
-            set_all_seeds(seed)
-            job.add_log(f"Random seed set to {seed}")
-
-            # Setup device
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            job.add_log(f"Using device: {device}")
-
-            # Determine paths and classes based on model type
-            short_id = uuid.uuid4().hex[:6]
-            if model_type == "digits":
-                dataset_dir = Path("/training/digits/ground_truth")
-                num_classes = 11  # 0-9 + NAN
-                model_filename = f"{architecture}_{short_id}"
-            elif model_type == "arrows":
-                ground_truth_dir = Path("/training/arrows/ground_truth")
-
-                if training_mode == "continuous":
-                    # Regression mode: use all ground truth classes directly
-                    dataset_dir = ground_truth_dir  # No temp dataset needed
-                    model_filename = f"{architecture}_{short_id}"
-                    job.add_log("Continuous (regression) mode — using all ground truth classes")
-                else:
-                    # Discrete (classification) mode: subsample to step_size
-                    dataset_dir = Path("/training/arrows/dataset_temp")
-                    step = step_size or 1.0
-                    num_classes = int(10 / step)
-                    model_filename = f"{architecture}_{short_id}"
-                    job.add_log(f"Discrete (classification) mode — step={step} ({num_classes} classes)")
-                    self._create_arrow_dataset(ground_truth_dir, dataset_dir, step, job)
-            else:
-                raise ValueError(f"Unknown model type: {model_type}")
-
-            job.add_log(f"Dataset directory: {dataset_dir}")
-
-            # Verify dataset exists
-            if not dataset_dir.exists():
-                raise ValueError(f"Dataset directory not found: {dataset_dir}")
-
-            # Create transforms
-            train_transform, val_transform = create_transforms(resolution)
-
-            # Load dataset and create stratified split — branch on regression vs classification
-            if model_type == "arrows" and training_mode == "continuous":
-                # Regression dataset
-                from .training_core import RegressionArrowDataset, stratified_split_regression
-
-                job.add_log("Loading regression dataset...")
-                train_dataset = RegressionArrowDataset(dataset_dir, transform=train_transform)
-                val_dataset = RegressionArrowDataset(dataset_dir, transform=val_transform)
-
-                train_idx, val_idx = stratified_split_regression(train_dataset)
-
-                train_ds = Subset(train_dataset, train_idx)
-                val_ds = Subset(val_dataset, val_idx)
-
-                num_classes_actual = 1  # regression
-                class_names = None
-
-                job.add_log(f"Train samples: {len(train_ds)}, Val samples: {len(val_ds)}")
-                train_sample_count = len(train_ds)
-                val_sample_count = len(val_ds)
-                job.add_log("Regression target range: 0.0 - 1.0 (dial position / 10)")
-            else:
-                # Classification dataset (existing code for both digits and discrete arrows)
-                job.add_log("Loading dataset and creating train/val split...")
-                dataset = ImageFolder(str(dataset_dir))
-                train_idx, val_idx = stratified_split(dataset)
-
-                train_dataset = ImageFolder(str(dataset_dir), transform=train_transform)
-                train_ds = Subset(train_dataset, train_idx)
-
-                val_dataset = ImageFolder(str(dataset_dir), transform=val_transform)
-                val_ds = Subset(val_dataset, val_idx)
-
-                num_classes_actual = len(dataset.classes)
-                class_names = dataset.classes
-
-                job.add_log(f"Train samples: {len(train_ds)}, Val samples: {len(val_ds)}")
-                train_sample_count = len(train_ds)
-                val_sample_count = len(val_ds)
-                job.add_log(f"Classes: {num_classes_actual}")
-
-                # Compute class weights (classification only)
-                class_weights_tensor = compute_class_weights(dataset, train_idx, device)
-                job.add_log("Class weights computed")
-
-            # DataLoaders
-            train_loader = DataLoader(
-                train_ds, batch_size=batch_size, shuffle=True, num_workers=2, worker_init_fn=worker_init_fn
-            )
-            val_loader = DataLoader(val_ds, batch_size=batch_size, num_workers=2, worker_init_fn=worker_init_fn)
-
-            # Create model
-            if model_type == "arrows" and training_mode == "continuous":
-                model = timm.create_model(architecture, pretrained=True, num_classes=1)
-                job.add_log(f"Creating regression model: {architecture} (1 output)")
-            else:
-                model = timm.create_model(architecture, pretrained=True, num_classes=num_classes_actual)
-                job.add_log(f"Creating classification model: {architecture} ({num_classes_actual} classes)")
-
-            model = model.to(device)
-
-            num_params = sum(p.numel() for p in model.parameters())
-            job.add_log(f"Model parameters: {num_params:,}")
-
-            # Optimizer: AdamW with weight decay (better for fine-tuning pretrained models)
-            lr = learning_rate
-            optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
-
-            # LR scheduler: cosine annealing (decays from lr to eta_min over all epochs)
-            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-                optimizer, T_max=epochs, eta_min=1e-6
+            dataset_dir, model_filename = self._prepare_dataset(
+                job, model_type, architecture, training_mode, step_size
             )
 
-            job.add_log(f"Optimizer: AdamW (lr={lr}, weight_decay=1e-4)")
-            job.add_log(f"LR scheduler: CosineAnnealingLR (T_max={epochs}, eta_min=1e-6)")
+            (
+                train_loader,
+                val_loader,
+                num_classes_actual,
+                class_names,
+                class_weights_tensor,
+                train_count,
+                val_count,
+            ) = self._load_training_data(
+                job, dataset_dir, model_type, training_mode, resolution, batch_size, device
+            )
 
-            if model_type == "arrows" and training_mode == "continuous":
-                criterion = torch.nn.MSELoss()
-            else:
-                criterion = torch.nn.CrossEntropyLoss(weight=class_weights_tensor)
+            model, optimizer, scheduler, criterion, num_params = self._build_model_and_optimizer(
+                job, model_type, training_mode, architecture, num_classes_actual,
+                device, class_weights_tensor, learning_rate, epochs,
+            )
 
-            # Training loop
-            job.add_log(f"Starting training for {epochs} epochs...")
-            train_losses = []
-            val_accs = []
-            best_val_acc = 0
-            best_val_loss = float("inf")
-            best_val_mae = float("inf")
-            best_val_rmse = float("inf")
-            best_epoch = 0
-            best_model_state = None
+            loop_result = self._run_epoch_loop(
+                job, model, train_loader, val_loader, optimizer, scheduler,
+                criterion, device, epochs, model_type, training_mode,
+            )
 
-            total_start = time.time()
-
-            for epoch in range(epochs):
-                if self._training_cancel_flag.is_set():
-                    job.add_log("Training cancelled by user")
-                    return None
-
-                epoch_start = time.time()
-
-                # Training phase
-                model.train()
-                epoch_loss = 0
-                for batch_idx, (imgs, labels) in enumerate(train_loader):
-                    if self._training_cancel_flag.is_set():
-                        return None
-
-                    imgs = imgs.to(device)
-                    optimizer.zero_grad()
-
-                    if model_type == "arrows" and training_mode == "continuous":
-                        labels = labels.to(device)  # float32 targets
-                        outputs = model(imgs).squeeze(-1)  # (batch,) — remove trailing dim
-                        loss = criterion(torch.sigmoid(outputs), labels)
-                    else:
-                        labels = labels.to(device)  # int64 class indices
-                        outputs = model(imgs)
-                        loss = criterion(outputs, labels)
-
-                    loss.backward()
-                    optimizer.step()
-                    epoch_loss += loss.item()
-
-                avg_loss = epoch_loss / len(train_loader)
-                train_losses.append(avg_loss)
-
-                # Validation phase
-                model.eval()
-                with torch.no_grad():
-                    if model_type == "arrows" and training_mode == "continuous":
-                        # Regression validation: compute MAE, RMSE, and "within-half" accuracy
-                        all_preds = []
-                        all_targets = []
-                        for imgs, labels in val_loader:
-                            imgs = imgs.to(device)
-                            labels = labels.to(device)
-                            outputs = model(imgs).squeeze(-1)
-                            preds = torch.sigmoid(outputs)
-                            all_preds.append(preds)
-                            all_targets.append(labels)
-
-                        all_preds = torch.cat(all_preds)
-                        all_targets = torch.cat(all_targets)
-
-                        mae = (all_preds - all_targets).abs().mean().item()
-                        rmse = ((all_preds - all_targets) ** 2).mean().sqrt().item()
-                        # "within-half": |pred - target| < 0.05 (= 0.5 dial position out of 10)
-                        within_half = ((all_preds - all_targets).abs() < 0.05).float().mean().item() * 100
-
-                    else:
-                        # Classification validation: compute accuracy
-                        correct = 0
-                        total = 0
-                        for imgs, labels in val_loader:
-                            imgs, labels = imgs.to(device), labels.to(device)
-                            outputs = model(imgs)
-                            _, predicted = torch.max(outputs, 1)
-                            total += labels.size(0)
-                            correct += (predicted == labels).sum().item()
-
-                        val_acc = 100 * correct / total
-
-                # Best model tracking
-                if model_type == "arrows" and training_mode == "continuous":
-                    val_accs.append(within_half)  # Reuse val_accs list for within-half %
-                    if within_half > best_val_acc or (within_half == best_val_acc and mae < best_val_mae):
-                        best_val_acc = within_half
-                        best_val_loss = avg_loss
-                        best_val_mae = mae
-                        best_val_rmse = rmse
-                        best_epoch = epoch
-                        best_model_state = model.state_dict().copy()
-                else:
-                    val_accs.append(val_acc)
-                    if val_acc > best_val_acc:
-                        best_val_acc = val_acc
-                        best_val_loss = avg_loss
-                        best_epoch = epoch
-                        best_model_state = model.state_dict().copy()
-
-                # Step LR scheduler
-                scheduler.step()
-
-                epoch_time = time.time() - epoch_start
-
-                # Update progress
-                if model_type == "arrows" and training_mode == "continuous":
-                    current_lr = scheduler.get_last_lr()[0]
-                    job.update_progress(
-                        current_epoch=epoch + 1,
-                        total_epochs=epochs,
-                        train_loss=round(avg_loss, 4),
-                        val_accuracy=round(within_half, 2),  # Repurpose val_accuracy for within-half %
-                        epoch_duration=round(epoch_time, 1),
-                        learning_rate=round(current_lr, 8),
-                        message=f"Epoch {epoch+1}/{epochs}: Loss={avg_loss:.4f}, MAE={mae:.4f}, Within-half={within_half:.1f}%",
-                    )
-                    job.add_log(
-                        f"Epoch {epoch+1}/{epochs} - Loss: {avg_loss:.4f} - MAE: {mae:.4f} "
-                        f"- RMSE: {rmse:.4f} - Within-half: {within_half:.1f}% - LR: {current_lr:.2e} - Time: {epoch_time:.1f}s"
-                    )
-                else:
-                    current_lr = scheduler.get_last_lr()[0]
-                    job.update_progress(
-                        current_epoch=epoch + 1,
-                        total_epochs=epochs,
-                        train_loss=round(avg_loss, 4),
-                        val_accuracy=round(val_acc, 2),
-                        epoch_duration=round(epoch_time, 1),
-                        learning_rate=round(current_lr, 8),
-                        message=f"Epoch {epoch+1}/{epochs}: Loss={avg_loss:.4f}, Val Acc={val_acc:.2f}%",
-                    )
-                    job.add_log(
-                        f"Epoch {epoch+1}/{epochs} - Loss: {avg_loss:.4f} - Val Acc: {val_acc:.2f}% - LR: {current_lr:.2e} - Time: {epoch_time:.1f}s"
-                    )
-
-            total_time = time.time() - total_start
-            job.add_log(f"Training completed in {total_time:.1f}s ({total_time/60:.1f}min)")
-
-            # Load best model
-            model.load_state_dict(best_model_state)
-            if model_type == "arrows" and training_mode == "continuous":
-                job.add_log(f"Best model from epoch {best_epoch+1} with {best_val_acc:.1f}% within-half accuracy")
-            else:
-                job.add_log(f"Best model from epoch {best_epoch+1} with {best_val_acc:.2f}% accuracy")
-
-            # Export to ONNX and OpenVINO
-            job.update_progress(message="Exporting model...")
-            job.add_log("Exporting to ONNX + OpenVINO...")
-
-            model.cpu()
-            model.eval()
-
-            output_dir = Path(f"/app/models/{model_type}/{model_filename}")
-            onnx_path, ov_path = export_to_openvino(model, resolution, output_dir, model_filename)
-            job.add_log(f"ONNX model saved: {onnx_path}")
-            job.add_log(f"OpenVINO model saved: {ov_path}")
-
-            # Save metadata
-            metadata = {
-                "model_type": model_type,
-                "architecture": architecture,
-                "architecture_display": architecture_display,
-                "resolution": resolution,
-                "seed": seed,
-                "epochs": epochs,
-                "batch_size": batch_size,
-                "learning_rate": lr,
-                "best_val_loss": best_val_loss,
-                "best_epoch": best_epoch + 1,
-                "training_time": total_time,
-                "training_samples": train_sample_count + val_sample_count,
-                "val_samples": val_sample_count,
-                "num_params": num_params,
-                "created_at": datetime.now().isoformat(),
-            }
-
-            if model_type == "arrows" and training_mode == "continuous":
-                metadata["training_mode"] = "continuous"
-                metadata["num_classes"] = 1
-                metadata["best_val_mae"] = best_val_mae
-                metadata["best_val_rmse"] = best_val_rmse
-                metadata["best_within_half"] = best_val_acc  # best_val_acc holds within-half for regression
-                metadata["classes"] = None
-            else:
-                metadata["training_mode"] = "discrete"
-                metadata["num_classes"] = num_classes_actual
-                metadata["best_val_acc"] = best_val_acc
-                metadata["classes"] = class_names
-                if model_type == "arrows" and step_size:
-                    metadata["step_size"] = step_size
-
-            import json
-
-            metadata_path = output_dir / "metadata.json"
-            with open(metadata_path, "w") as f:
-                json.dump(metadata, f, indent=2)
-            job.add_log(f"Metadata saved: {metadata_path}")
-
-            # Save training plot
-            try:
-                import matplotlib
-
-                matplotlib.use("Agg")  # Non-interactive backend
-                import matplotlib.pyplot as plt
-
-                fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
-                ax1.plot(train_losses)
-                ax1.set_title("Training Loss")
-                ax1.set_xlabel("Epoch")
-                ax1.set_ylabel("Loss")
-                ax1.grid(True)
-
-                ax2.plot(val_accs)
-                if model_type == "arrows" and training_mode == "continuous":
-                    ax2.set_title("Validation Within-Half Accuracy")
-                    ax2.set_ylabel("Within-Half (%)")
-                else:
-                    ax2.set_title("Validation Accuracy")
-                    ax2.set_ylabel("Accuracy (%)")
-                ax2.set_xlabel("Epoch")
-                ax2.grid(True)
-
-                plt.tight_layout()
-                plot_path = output_dir / f"{model_filename}_training.png"
-                plt.savefig(plot_path, dpi=150, bbox_inches="tight")
-                plt.close()
-                job.add_log(f"Training plot saved: {plot_path}")
-            except Exception as e:
-                job.add_log(f"Warning: Could not save training plot: {e}")
-
-            # Cleanup temp dataset for arrows
-            if model_type == "arrows" and dataset_dir.name == "dataset_temp":
-                try:
-                    shutil.rmtree(dataset_dir)
-                    job.add_log("Cleaned up temporary dataset")
-                except Exception as e:
-                    job.add_log(f"Warning: Could not clean up temp dataset: {e}")
-
-            # Refresh model manager to pick up new model
-            self.model_manager.refresh()
-            job.add_log("Model manager refreshed")
-
-            result = {
-                "model_name": architecture,
-                "model_id": model_filename,
-                "seed": seed,
-                "resolution": resolution,
-                "training_time": total_time,
-                "output_dir": str(output_dir),
-            }
-
-            if model_type == "arrows" and training_mode == "continuous":
-                result["best_val_acc"] = best_val_acc  # within-half %
-                result["best_val_mae"] = best_val_mae
-                result["num_classes"] = 1
-            else:
-                result["best_val_acc"] = best_val_acc
-                result["best_val_loss"] = best_val_loss
-                result["num_classes"] = num_classes_actual
-
-            return result
+            return self._export_and_finalize(
+                job, model, dataset_dir, model_type, model_filename,
+                architecture, architecture_display, resolution, seed,
+                epochs, batch_size, learning_rate, step_size, training_mode,
+                num_params, num_classes_actual, class_names,
+                train_count, val_count, loop_result,
+            )
 
         except Exception as e:
             job.add_log(f"Error in training execution: {str(e)}")
             logger.error(traceback.format_exc())
 
-            # Cleanup partial model directory if it was created
-            partial_dir = Path(f"/app/models/{model_type}/{model_filename}")
-            if partial_dir.exists():
-                try:
-                    import shutil
-
-                    shutil.rmtree(partial_dir)
-                    job.add_log(f"Cleaned up partial model directory: {partial_dir}")
-                except Exception as cleanup_err:
-                    job.add_log(f"Warning: Could not clean up partial directory: {cleanup_err}")
+            if model_filename:
+                partial_dir = Path(f"/app/models/{model_type}/{model_filename}")
+                if partial_dir.exists():
+                    try:
+                        shutil.rmtree(partial_dir)
+                        job.add_log(f"Cleaned up partial model directory: {partial_dir}")
+                    except Exception as cleanup_err:
+                        job.add_log(f"Warning: Could not clean up partial directory: {cleanup_err}")
 
             raise
+
+    def _prepare_dataset(
+        self,
+        job: TrainingJob,
+        model_type: str,
+        architecture: str,
+        training_mode: str,
+        step_size: Optional[float],
+    ):
+        """Determine dataset path and model filename; create temp arrow dataset if needed."""
+        short_id = uuid.uuid4().hex[:6]
+
+        if model_type == "digits":
+            dataset_dir = Path("/training/digits/ground_truth")
+            model_filename = f"{architecture}_{short_id}"
+
+        elif model_type == "arrows":
+            ground_truth_dir = Path("/training/arrows/ground_truth")
+
+            if training_mode == "continuous":
+                dataset_dir = ground_truth_dir
+                model_filename = f"{architecture}_{short_id}"
+                job.add_log("Continuous (regression) mode — using all ground truth classes")
+            else:
+                dataset_dir = Path("/training/arrows/dataset_temp")
+                step = step_size or 1.0
+                num_classes = int(10 / step)
+                model_filename = f"{architecture}_{short_id}"
+                job.add_log(f"Discrete (classification) mode — step={step} ({num_classes} classes)")
+                self._create_arrow_dataset(ground_truth_dir, dataset_dir, step, job)
+
+        else:
+            raise ValueError(f"Unknown model type: {model_type}")
+
+        job.add_log(f"Dataset directory: {dataset_dir}")
+
+        if not dataset_dir.exists():
+            raise ValueError(f"Dataset directory not found: {dataset_dir}")
+
+        return dataset_dir, model_filename
+
+    def _load_training_data(
+        self,
+        job: TrainingJob,
+        dataset_dir: Path,
+        model_type: str,
+        training_mode: str,
+        resolution: int,
+        batch_size: int,
+        device,
+    ):
+        """Load dataset and create train/val DataLoaders."""
+        import torch
+        from torchvision.datasets import ImageFolder
+        from torch.utils.data import DataLoader, Subset
+
+        from .training_core import (
+            worker_init_fn,
+            create_transforms,
+            stratified_split,
+            compute_class_weights,
+        )
+
+        train_transform, val_transform = create_transforms(resolution)
+
+        if model_type == "arrows" and training_mode == "continuous":
+            from .training_core import RegressionArrowDataset, stratified_split_regression
+
+            job.add_log("Loading regression dataset...")
+            train_dataset = RegressionArrowDataset(dataset_dir, transform=train_transform)
+            val_dataset = RegressionArrowDataset(dataset_dir, transform=val_transform)
+
+            train_idx, val_idx = stratified_split_regression(train_dataset)
+
+            train_ds = Subset(train_dataset, train_idx)
+            val_ds = Subset(val_dataset, val_idx)
+
+            num_classes_actual = 1
+            class_names = None
+            class_weights_tensor = None
+
+            job.add_log(f"Train samples: {len(train_ds)}, Val samples: {len(val_ds)}")
+            job.add_log("Regression target range: 0.0 - 1.0 (dial position / 10)")
+
+        else:
+            job.add_log("Loading dataset and creating train/val split...")
+            dataset = ImageFolder(str(dataset_dir))
+            train_idx, val_idx = stratified_split(dataset)
+
+            train_dataset = ImageFolder(str(dataset_dir), transform=train_transform)
+            train_ds = Subset(train_dataset, train_idx)
+
+            val_dataset = ImageFolder(str(dataset_dir), transform=val_transform)
+            val_ds = Subset(val_dataset, val_idx)
+
+            num_classes_actual = len(dataset.classes)
+            class_names = dataset.classes
+
+            job.add_log(f"Train samples: {len(train_ds)}, Val samples: {len(val_ds)}")
+            job.add_log(f"Classes: {num_classes_actual}")
+
+            class_weights_tensor = compute_class_weights(dataset, train_idx, device)
+            job.add_log("Class weights computed")
+
+        train_loader = DataLoader(
+            train_ds, batch_size=batch_size, shuffle=True, num_workers=2, worker_init_fn=worker_init_fn
+        )
+        val_loader = DataLoader(val_ds, batch_size=batch_size, num_workers=2, worker_init_fn=worker_init_fn)
+
+        return (
+            train_loader,
+            val_loader,
+            num_classes_actual,
+            class_names,
+            class_weights_tensor,
+            len(train_ds),
+            len(val_ds),
+        )
+
+    def _build_model_and_optimizer(
+        self,
+        job: TrainingJob,
+        model_type: str,
+        training_mode: str,
+        architecture: str,
+        num_classes_actual: int,
+        device,
+        class_weights_tensor,
+        learning_rate: float,
+        epochs: int,
+    ):
+        """Create timm model, AdamW optimizer, cosine scheduler, and loss criterion."""
+        import torch
+        import timm
+
+        if model_type == "arrows" and training_mode == "continuous":
+            model = timm.create_model(architecture, pretrained=True, num_classes=1)
+            job.add_log(f"Creating regression model: {architecture} (1 output)")
+        else:
+            model = timm.create_model(architecture, pretrained=True, num_classes=num_classes_actual)
+            job.add_log(f"Creating classification model: {architecture} ({num_classes_actual} classes)")
+
+        model = model.to(device)
+
+        num_params = sum(p.numel() for p in model.parameters())
+        job.add_log(f"Model parameters: {num_params:,}")
+
+        optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-4)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-6)
+        job.add_log(f"Optimizer: AdamW (lr={learning_rate}, weight_decay=1e-4)")
+        job.add_log(f"LR scheduler: CosineAnnealingLR (T_max={epochs}, eta_min=1e-6)")
+
+        if model_type == "arrows" and training_mode == "continuous":
+            criterion = torch.nn.MSELoss()
+        else:
+            criterion = torch.nn.CrossEntropyLoss(weight=class_weights_tensor)
+
+        return model, optimizer, scheduler, criterion, num_params
+
+    def _run_epoch_loop(
+        self,
+        job: TrainingJob,
+        model,
+        train_loader,
+        val_loader,
+        optimizer,
+        scheduler,
+        criterion,
+        device,
+        epochs: int,
+        model_type: str,
+        training_mode: str,
+    ) -> Optional[Dict]:
+        """Run the full training loop; returns best-model metrics dict, or None if cancelled."""
+        import torch
+
+        job.add_log(f"Starting training for {epochs} epochs...")
+        train_losses = []
+        val_accs = []
+        best_val_acc = 0
+        best_val_loss = float("inf")
+        best_val_mae = float("inf")
+        best_val_rmse = float("inf")
+        best_epoch = 0
+        best_model_state = None
+
+        total_start = time.time()
+
+        for epoch in range(epochs):
+            if self._training_cancel_flag.is_set():
+                job.add_log("Training cancelled by user")
+                return None
+
+            epoch_start = time.time()
+
+            # Training phase
+            model.train()
+            epoch_loss = 0
+            for batch_idx, (imgs, labels) in enumerate(train_loader):
+                if self._training_cancel_flag.is_set():
+                    return None
+
+                imgs = imgs.to(device)
+                optimizer.zero_grad()
+
+                if model_type == "arrows" and training_mode == "continuous":
+                    labels = labels.to(device)
+                    outputs = model(imgs).squeeze(-1)
+                    loss = criterion(torch.sigmoid(outputs), labels)
+                else:
+                    labels = labels.to(device)
+                    outputs = model(imgs)
+                    loss = criterion(outputs, labels)
+
+                loss.backward()
+                optimizer.step()
+                epoch_loss += loss.item()
+
+            avg_loss = epoch_loss / len(train_loader)
+            train_losses.append(avg_loss)
+
+            # Validation phase
+            model.eval()
+            with torch.no_grad():
+                if model_type == "arrows" and training_mode == "continuous":
+                    all_preds, all_targets = [], []
+                    for imgs, labels in val_loader:
+                        imgs = imgs.to(device)
+                        labels = labels.to(device)
+                        outputs = model(imgs).squeeze(-1)
+                        preds = torch.sigmoid(outputs)
+                        all_preds.append(preds)
+                        all_targets.append(labels)
+
+                    all_preds = torch.cat(all_preds)
+                    all_targets = torch.cat(all_targets)
+
+                    mae = (all_preds - all_targets).abs().mean().item()
+                    rmse = ((all_preds - all_targets) ** 2).mean().sqrt().item()
+                    within_half = ((all_preds - all_targets).abs() < 0.05).float().mean().item() * 100
+
+                else:
+                    correct = 0
+                    total = 0
+                    for imgs, labels in val_loader:
+                        imgs, labels = imgs.to(device), labels.to(device)
+                        outputs = model(imgs)
+                        _, predicted = torch.max(outputs, 1)
+                        total += labels.size(0)
+                        correct += (predicted == labels).sum().item()
+
+                    val_acc = 100 * correct / total
+
+            # Best model tracking
+            if model_type == "arrows" and training_mode == "continuous":
+                val_accs.append(within_half)
+                if within_half > best_val_acc or (within_half == best_val_acc and mae < best_val_mae):
+                    best_val_acc = within_half
+                    best_val_loss = avg_loss
+                    best_val_mae = mae
+                    best_val_rmse = rmse
+                    best_epoch = epoch
+                    best_model_state = model.state_dict().copy()
+            else:
+                val_accs.append(val_acc)
+                if val_acc > best_val_acc:
+                    best_val_acc = val_acc
+                    best_val_loss = avg_loss
+                    best_epoch = epoch
+                    best_model_state = model.state_dict().copy()
+
+            scheduler.step()
+            epoch_time = time.time() - epoch_start
+            current_lr = scheduler.get_last_lr()[0]
+
+            if model_type == "arrows" and training_mode == "continuous":
+                job.update_progress(
+                    current_epoch=epoch + 1,
+                    total_epochs=epochs,
+                    train_loss=round(avg_loss, 4),
+                    val_accuracy=round(within_half, 2),
+                    epoch_duration=round(epoch_time, 1),
+                    learning_rate=round(current_lr, 8),
+                    message=f"Epoch {epoch+1}/{epochs}: Loss={avg_loss:.4f}, MAE={mae:.4f}, Within-half={within_half:.1f}%",
+                )
+                job.add_log(
+                    f"Epoch {epoch+1}/{epochs} - Loss: {avg_loss:.4f} - MAE: {mae:.4f} "
+                    f"- RMSE: {rmse:.4f} - Within-half: {within_half:.1f}% - LR: {current_lr:.2e} - Time: {epoch_time:.1f}s"
+                )
+            else:
+                job.update_progress(
+                    current_epoch=epoch + 1,
+                    total_epochs=epochs,
+                    train_loss=round(avg_loss, 4),
+                    val_accuracy=round(val_acc, 2),
+                    epoch_duration=round(epoch_time, 1),
+                    learning_rate=round(current_lr, 8),
+                    message=f"Epoch {epoch+1}/{epochs}: Loss={avg_loss:.4f}, Val Acc={val_acc:.2f}%",
+                )
+                job.add_log(
+                    f"Epoch {epoch+1}/{epochs} - Loss: {avg_loss:.4f} - Val Acc: {val_acc:.2f}% - LR: {current_lr:.2e} - Time: {epoch_time:.1f}s"
+                )
+
+        total_time = time.time() - total_start
+        job.add_log(f"Training completed in {total_time:.1f}s ({total_time/60:.1f}min)")
+
+        return {
+            "best_val_acc": best_val_acc,
+            "best_val_loss": best_val_loss,
+            "best_val_mae": best_val_mae,
+            "best_val_rmse": best_val_rmse,
+            "best_epoch": best_epoch,
+            "best_model_state": best_model_state,
+            "train_losses": train_losses,
+            "val_accs": val_accs,
+            "total_time": total_time,
+        }
+
+    def _export_and_finalize(
+        self,
+        job: TrainingJob,
+        model,
+        dataset_dir: Path,
+        model_type: str,
+        model_filename: str,
+        architecture: str,
+        architecture_display: str,
+        resolution: int,
+        seed: int,
+        epochs: int,
+        batch_size: int,
+        learning_rate: float,
+        step_size: Optional[float],
+        training_mode: str,
+        num_params: int,
+        num_classes_actual: int,
+        class_names,
+        train_count: int,
+        val_count: int,
+        loop_result: Optional[Dict],
+    ) -> Optional[Dict]:
+        """Export trained model, save metadata and plot. Returns None if loop was cancelled."""
+        if loop_result is None:
+            return None
+
+        import shutil
+        import json
+        import torch
+
+        from .training_core import export_to_openvino
+
+        best_val_acc = loop_result["best_val_acc"]
+        best_val_loss = loop_result["best_val_loss"]
+        best_val_mae = loop_result["best_val_mae"]
+        best_val_rmse = loop_result["best_val_rmse"]
+        best_epoch = loop_result["best_epoch"]
+        best_model_state = loop_result["best_model_state"]
+        train_losses = loop_result["train_losses"]
+        val_accs = loop_result["val_accs"]
+        total_time = loop_result["total_time"]
+
+        # Load best model weights
+        model.load_state_dict(best_model_state)
+        if model_type == "arrows" and training_mode == "continuous":
+            job.add_log(f"Best model from epoch {best_epoch+1} with {best_val_acc:.1f}% within-half accuracy")
+        else:
+            job.add_log(f"Best model from epoch {best_epoch+1} with {best_val_acc:.2f}% accuracy")
+
+        # Export to ONNX and OpenVINO
+        job.update_progress(message="Exporting model...")
+        job.add_log("Exporting to ONNX + OpenVINO...")
+        model.cpu()
+        model.eval()
+
+        output_dir = Path(f"/app/models/{model_type}/{model_filename}")
+        onnx_path, ov_path = export_to_openvino(model, resolution, output_dir, model_filename)
+        job.add_log(f"ONNX model saved: {onnx_path}")
+        job.add_log(f"OpenVINO model saved: {ov_path}")
+
+        # Save metadata
+        metadata = {
+            "model_type": model_type,
+            "architecture": architecture,
+            "architecture_display": architecture_display,
+            "resolution": resolution,
+            "seed": seed,
+            "epochs": epochs,
+            "batch_size": batch_size,
+            "learning_rate": learning_rate,
+            "best_val_loss": best_val_loss,
+            "best_epoch": best_epoch + 1,
+            "training_time": total_time,
+            "training_samples": train_count + val_count,
+            "val_samples": val_count,
+            "num_params": num_params,
+            "created_at": datetime.now().isoformat(),
+        }
+
+        if model_type == "arrows" and training_mode == "continuous":
+            metadata["training_mode"] = "continuous"
+            metadata["num_classes"] = 1
+            metadata["best_val_mae"] = best_val_mae
+            metadata["best_val_rmse"] = best_val_rmse
+            metadata["best_within_half"] = best_val_acc
+            metadata["classes"] = None
+        else:
+            metadata["training_mode"] = "discrete"
+            metadata["num_classes"] = num_classes_actual
+            metadata["best_val_acc"] = best_val_acc
+            metadata["classes"] = class_names
+            if model_type == "arrows" and step_size:
+                metadata["step_size"] = step_size
+
+        metadata_path = output_dir / "metadata.json"
+        with open(metadata_path, "w") as f:
+            json.dump(metadata, f, indent=2)
+        job.add_log(f"Metadata saved: {metadata_path}")
+
+        # Save training plot
+        try:
+            import matplotlib
+
+            matplotlib.use("Agg")  # Non-interactive backend
+            import matplotlib.pyplot as plt
+
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+            ax1.plot(train_losses)
+            ax1.set_title("Training Loss")
+            ax1.set_xlabel("Epoch")
+            ax1.set_ylabel("Loss")
+            ax1.grid(True)
+
+            ax2.plot(val_accs)
+            if model_type == "arrows" and training_mode == "continuous":
+                ax2.set_title("Validation Within-Half Accuracy")
+                ax2.set_ylabel("Within-Half (%)")
+            else:
+                ax2.set_title("Validation Accuracy")
+                ax2.set_ylabel("Accuracy (%)")
+            ax2.set_xlabel("Epoch")
+            ax2.grid(True)
+
+            plt.tight_layout()
+            plot_path = output_dir / f"{model_filename}_training.png"
+            plt.savefig(plot_path, dpi=150, bbox_inches="tight")
+            plt.close()
+            job.add_log(f"Training plot saved: {plot_path}")
+        except Exception as e:
+            job.add_log(f"Warning: Could not save training plot: {e}")
+
+        # Cleanup temp dataset for arrows
+        if model_type == "arrows" and dataset_dir.name == "dataset_temp":
+            try:
+                shutil.rmtree(dataset_dir)
+                job.add_log("Cleaned up temporary dataset")
+            except Exception as e:
+                job.add_log(f"Warning: Could not clean up temp dataset: {e}")
+
+        # Refresh model manager to pick up new model
+        self.model_manager.refresh()
+        job.add_log("Model manager refreshed")
+
+        result = {
+            "model_name": architecture,
+            "model_id": model_filename,
+            "seed": seed,
+            "resolution": resolution,
+            "training_time": total_time,
+            "output_dir": str(output_dir),
+        }
+
+        if model_type == "arrows" and training_mode == "continuous":
+            result["best_val_acc"] = best_val_acc
+            result["best_val_mae"] = best_val_mae
+            result["num_classes"] = 1
+        else:
+            result["best_val_acc"] = best_val_acc
+            result["best_val_loss"] = best_val_loss
+            result["num_classes"] = num_classes_actual
+
+        return result
 
     def _persist_training_logs(self, job: TrainingJob):
         """Save training logs to disk for later viewing."""
