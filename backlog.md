@@ -30,7 +30,7 @@ See `backlog_archiv.md` for completed items (BL-01 through BL-25).
   - **Ref**: `persistence.py:26-28`, `watermeter_service.py:289`
   - **Effort**: S
 
-- **BL-29** `idea` — **Use label hint in labeling UI**: BL-03 mislabel rework encodes `_label=X` in filenames, but labeling UI never parses or pre-fills it
+- **BL-29** `done` — **Use label hint in labeling UI**: BL-03 mislabel rework encodes `_label=X` in filenames, labeling UI now parses and pre-fills it
   - Parse `_label=` pattern in `/api/label/next-image`, pass to frontend, pre-fill suggestion
   - **Ref**: `routes/models.py:558` (encoding), `routes/label.py:38-89` (no parsing)
   - **Effort**: S
