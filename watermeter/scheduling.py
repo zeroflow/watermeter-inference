@@ -75,7 +75,7 @@ class SchedulingManager:
             while True:
                 await asyncio.sleep(300)
                 try:
-                    self._stats_fn()
+                    await asyncio.get_running_loop().run_in_executor(None, self._stats_fn)
                 except Exception:
                     logger.exception("Error publishing training stats")
         except asyncio.CancelledError:
