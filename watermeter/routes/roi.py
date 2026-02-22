@@ -3,7 +3,6 @@
 import base64
 import logging
 from pathlib import Path
-import tempfile
 from urllib.parse import urlparse
 
 import cv2
@@ -659,16 +658,9 @@ async def preview_digit_inference(submission: RoiBounds):
             return JSONResponse({"success": True, "no_model": True, "image_base64": image_base64})
 
         # Run inference
-        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
-            temp_path = f.name
-            cv2.imwrite(temp_path, roi_img)
-
-        try:
-            inference_result = get_inference_service().predict("digits", temp_path)
-            prediction = inference_result["class"]
-            confidence = inference_result["confidence"]
-        finally:
-            Path(temp_path).unlink(missing_ok=True)
+        inference_result = get_inference_service().predict_from_bytes("digits", bytes(buffer))
+        prediction = inference_result["class"]
+        confidence = inference_result["confidence"]
 
         return JSONResponse(
             {"success": True, "prediction": prediction, "confidence": confidence, "image_base64": image_base64}
@@ -837,16 +829,9 @@ async def preview_analog_inference(submission: RoiBounds):
             return JSONResponse({"success": True, "no_model": True, "image_base64": image_base64})
 
         # Run inference
-        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
-            temp_path = f.name
-            cv2.imwrite(temp_path, roi_img)
-
-        try:
-            inference_result = get_inference_service().predict("arrows", temp_path)
-            prediction = inference_result["class"]
-            confidence = inference_result["confidence"]
-        finally:
-            Path(temp_path).unlink(missing_ok=True)
+        inference_result = get_inference_service().predict_from_bytes("arrows", bytes(buffer))
+        prediction = inference_result["class"]
+        confidence = inference_result["confidence"]
 
         return JSONResponse(
             {"success": True, "prediction": prediction, "confidence": confidence, "image_base64": image_base64}

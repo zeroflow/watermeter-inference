@@ -17,8 +17,6 @@ Entry points:
 
 import asyncio
 import logging
-import shutil
-import tempfile
 from pathlib import Path
 from typing import Dict, Tuple
 
@@ -87,33 +85,27 @@ async def run_one_shot(config_path: str) -> int:
 
     # Step 6: Run inference on each ROI
     predictions: Dict[str, Dict] = {}
-    temp_dir = Path(tempfile.mkdtemp())
-    try:
-        for image_id, (roi_bytes, model_type) in rois.items():
-            temp_path = temp_dir / f"{image_id}.jpg"
-            temp_path.write_bytes(roi_bytes)
-            try:
-                result = inference.predict(model_type, str(temp_path))
-                predictions[image_id] = {
-                    "id": image_id,
-                    "class": result["class"],
-                    "confidence": result["confidence"],
-                    "model": model_type,
-                    "image_bytes": roi_bytes,
-                }
-                logger.debug(f"{image_id}: {result['class']} ({result['confidence']:.3f})")
-            except Exception as e:
-                logger.error(f"Inference failed for {image_id}: {e}")
-                predictions[image_id] = {
-                    "id": image_id,
-                    "class": "ERROR",
-                    "confidence": 0.0,
-                    "model": model_type,
-                    "image_bytes": roi_bytes,
-                    "error": str(e),
-                }
-    finally:
-        shutil.rmtree(temp_dir, ignore_errors=True)
+    for image_id, (roi_bytes, model_type) in rois.items():
+        try:
+            result = inference.predict_from_bytes(model_type, roi_bytes)
+            predictions[image_id] = {
+                "id": image_id,
+                "class": result["class"],
+                "confidence": result["confidence"],
+                "model": model_type,
+                "image_bytes": roi_bytes,
+            }
+            logger.debug(f"{image_id}: {result['class']} ({result['confidence']:.3f})")
+        except Exception as e:
+            logger.error(f"Inference failed for {image_id}: {e}")
+            predictions[image_id] = {
+                "id": image_id,
+                "class": "ERROR",
+                "confidence": 0.0,
+                "model": model_type,
+                "image_bytes": roi_bytes,
+                "error": str(e),
+            }
 
     # Step 7: Calculate total
     total, raw_values = _calculate_total(config, predictions)

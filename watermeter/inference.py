@@ -30,6 +30,17 @@ class Classifier:
         img = (img - [0.485, 0.456, 0.406]) / [0.229, 0.224, 0.225]
         return img.transpose(2, 0, 1)[np.newaxis, ...]
 
+    def preprocess_bytes(self, image_bytes):
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            raise ValueError("Failed to decode image bytes")
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img = cv2.resize(img, (self.resolution, self.resolution))
+        img = img.astype(np.float32) / 255.0
+        img = (img - [0.485, 0.456, 0.406]) / [0.229, 0.224, 0.225]
+        return img.transpose(2, 0, 1)[np.newaxis, ...]
+
     def predict(self, image_path):
         img = self.preprocess(image_path)
         result = self.compiled([img])[self.compiled.output(0)][0]
@@ -40,9 +51,31 @@ class Classifier:
         idx = probs.argmax()
         return {"class": self.classes[idx], "confidence": float(probs[idx])}
 
+    def predict_from_bytes(self, image_bytes):
+        img = self.preprocess_bytes(image_bytes)
+        result = self.compiled([img])[self.compiled.output(0)][0]
+        result = result - result.max()
+        exp_result = np.exp(result)
+        probs = exp_result / exp_result.sum()
+        idx = probs.argmax()
+        return {"class": self.classes[idx], "confidence": float(probs[idx])}
+
     def predict_detailed(self, image_path, top_k=3):
         """Return top-K predictions with softmax probabilities."""
         img = self.preprocess(image_path)
+        result = self.compiled([img])[self.compiled.output(0)][0]
+        result = result - result.max()
+        exp_result = np.exp(result)
+        probs = exp_result / exp_result.sum()
+
+        k = min(top_k, len(self.classes))
+        top_indices = probs.argsort()[::-1][:k]
+
+        return [{"class": self.classes[idx], "confidence": float(probs[idx])} for idx in top_indices]
+
+    def predict_detailed_from_bytes(self, image_bytes, top_k=3):
+        """Return top-K predictions from bytes without a disk round-trip."""
+        img = self.preprocess_bytes(image_bytes)
         result = self.compiled([img])[self.compiled.output(0)][0]
         result = result - result.max()
         exp_result = np.exp(result)
@@ -80,6 +113,17 @@ class Regressor:
         img = (img - [0.485, 0.456, 0.406]) / [0.229, 0.224, 0.225]
         return img.transpose(2, 0, 1)[np.newaxis, ...]
 
+    def preprocess_bytes(self, image_bytes):
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            raise ValueError("Failed to decode image bytes")
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img = cv2.resize(img, (self.resolution, self.resolution))
+        img = img.astype(np.float32) / 255.0
+        img = (img - [0.485, 0.456, 0.406]) / [0.229, 0.224, 0.225]
+        return img.transpose(2, 0, 1)[np.newaxis, ...]
+
     def predict(self, image_path):
         """
         Run regression inference.
@@ -108,6 +152,15 @@ class Regressor:
 
         return {"class": class_str, "confidence": float(confidence)}
 
+    def predict_from_bytes(self, image_bytes):
+        img = self.preprocess_bytes(image_bytes)
+        raw_output = self.compiled([img])[self.compiled.output(0)][0]
+        sigmoid_val = 1.0 / (1.0 + np.exp(-float(raw_output[0])))
+        dial_position = max(0.0, min(9.9, sigmoid_val * 10.0))
+        class_str = f"{dial_position:.1f}"
+        confidence = abs(sigmoid_val - 0.5) * 2.0
+        return {"class": class_str, "confidence": float(confidence)}
+
     def predict_detailed(self, image_path, top_k=3):
         """
         For regression, return a single prediction (no top-K concept).
@@ -116,6 +169,10 @@ class Regressor:
         """
         result = self.predict(image_path)
         return [result]
+
+    def predict_detailed_from_bytes(self, image_bytes, top_k=3):
+        """For regression, return single prediction from bytes (no top-K concept)."""
+        return [self.predict_from_bytes(image_bytes)]
 
 
 def _detect_training_mode(model_path: str) -> str:
@@ -345,6 +402,34 @@ class InferenceService:
                 if self._arrows_classifier is None:
                     raise RuntimeError("No arrows model loaded")
                 return self._arrows_classifier.predict_detailed(image_path, top_k)
+            else:
+                raise ValueError(f"Unknown model type: {model_type}")
+
+    def predict_from_bytes(self, model_type: str, image_bytes: bytes) -> dict:
+        """Run inference from raw image bytes without a disk round-trip."""
+        with self._lock:
+            if model_type == "digits":
+                if self._digits_classifier is None:
+                    raise RuntimeError("No digits model loaded")
+                return self._digits_classifier.predict_from_bytes(image_bytes)
+            elif model_type == "arrows":
+                if self._arrows_classifier is None:
+                    raise RuntimeError("No arrows model loaded")
+                return self._arrows_classifier.predict_from_bytes(image_bytes)
+            else:
+                raise ValueError(f"Unknown model type: {model_type}")
+
+    def predict_detailed_from_bytes(self, model_type: str, image_bytes: bytes, top_k: int = 3) -> list:
+        """Run inference from raw image bytes and return top-K predictions."""
+        with self._lock:
+            if model_type == "digits":
+                if self._digits_classifier is None:
+                    raise RuntimeError("No digits model loaded")
+                return self._digits_classifier.predict_detailed_from_bytes(image_bytes, top_k)
+            elif model_type == "arrows":
+                if self._arrows_classifier is None:
+                    raise RuntimeError("No arrows model loaded")
+                return self._arrows_classifier.predict_detailed_from_bytes(image_bytes, top_k)
             else:
                 raise ValueError(f"Unknown model type: {model_type}")
 

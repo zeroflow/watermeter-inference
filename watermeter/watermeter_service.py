@@ -365,59 +365,44 @@ class WatermeterService:
 
         logger.info(f"Running inference on {len(images)} images")
 
-        # Create temporary directory for images
-        import tempfile
-
-        temp_dir = Path(tempfile.mkdtemp())
-
-        try:
-            for image_id, (image_bytes, image_class) in images.items():
-                # Save image temporarily
-                temp_path = temp_dir / f"{image_id}.jpg"
-                temp_path.write_bytes(image_bytes)
-
-                # Run prediction via inference service (supports hot-reload)
-                try:
-                    correction_config = self.config.get("correction", {})
-                    if correction_config.get("enabled", False):
-                        top_k_count = correction_config.get("top_k", 3)
-                        top_k_results = get_inference_service().predict_detailed(
-                            image_class, str(temp_path), top_k=top_k_count
-                        )
-                        result = top_k_results[0]
-                        predictions[image_id] = {
-                            "id": image_id,
-                            "class": result["class"],
-                            "confidence": result["confidence"],
-                            "model": image_class,
-                            "image_bytes": image_bytes,
-                            "top_k": top_k_results,
-                        }
-                    else:
-                        result = get_inference_service().predict(image_class, str(temp_path))
-                        predictions[image_id] = {
-                            "id": image_id,
-                            "class": result["class"],
-                            "confidence": result["confidence"],
-                            "model": image_class,
-                            "image_bytes": image_bytes,
-                        }
-                    logger.debug(f"{image_id}: {result['class']} ({result['confidence']:.3f})")
-                except Exception as e:
-                    logger.error(f"Inference failed for {image_id}: {e}")
+        for image_id, (image_bytes, image_class) in images.items():
+            # Run prediction via inference service (supports hot-reload)
+            try:
+                correction_config = self.config.get("correction", {})
+                if correction_config.get("enabled", False):
+                    top_k_count = correction_config.get("top_k", 3)
+                    top_k_results = get_inference_service().predict_detailed_from_bytes(
+                        image_class, image_bytes, top_k=top_k_count
+                    )
+                    result = top_k_results[0]
                     predictions[image_id] = {
                         "id": image_id,
-                        "class": "ERROR",
-                        "confidence": 0.0,
+                        "class": result["class"],
+                        "confidence": result["confidence"],
                         "model": image_class,
                         "image_bytes": image_bytes,
-                        "error": str(e),
+                        "top_k": top_k_results,
                     }
-        finally:
-            # Cleanup temp files
-            import shutil
-
-            shutil.rmtree(temp_dir, ignore_errors=True)
+                else:
+                    result = get_inference_service().predict_from_bytes(image_class, image_bytes)
+                    predictions[image_id] = {
+                        "id": image_id,
+                        "class": result["class"],
+                        "confidence": result["confidence"],
+                        "model": image_class,
+                        "image_bytes": image_bytes,
+                    }
+                logger.debug(f"{image_id}: {result['class']} ({result['confidence']:.3f})")
+            except Exception as e:
+                logger.error(f"Inference failed for {image_id}: {e}")
+                predictions[image_id] = {
+                    "id": image_id,
+                    "class": "ERROR",
+                    "confidence": 0.0,
+                    "model": image_class,
+                    "image_bytes": image_bytes,
+                    "error": str(e),
+                }
 
         logger.info(f"Inference completed for {len(predictions)} images")
         return predictions
