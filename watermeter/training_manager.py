@@ -136,6 +136,11 @@ class TrainingManager:
         self._auto_benchmark_pending: List[tuple] = []  # [(model_type, model_id), ...]
         self._queue_lock = threading.Lock()
 
+    @property
+    def auto_benchmark_pending(self) -> List[tuple]:
+        """Public accessor for pending auto-benchmark jobs."""
+        return self._auto_benchmark_pending
+
     def start_training(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """
         Start a training job, or queue it if one is already running.
@@ -304,7 +309,7 @@ class TrainingManager:
             job.update_progress(total_configs=total_configs)
 
             results = []
-            last_error = ""
+            last_error: Optional[str] = None
 
             # Train for each seed
             for config_idx, seed in enumerate(seeds, 1):
@@ -344,7 +349,7 @@ class TrainingManager:
                     metric_name = "within-half" if config.get("training_mode") == "continuous" else "accuracy"
                     results.append(result)
                     job.add_log(f"Completed training for seed {seed}: {result['best_val_acc']:.2f}% {metric_name}")
-                elif not last_error:
+                elif last_error is None:
                     job.add_log(f"Training failed for seed {seed} (no error details)")
 
             # Check if any training succeeded
@@ -354,7 +359,7 @@ class TrainingManager:
                 job.add_log(f"Training completed successfully: {len(results)}/{total_configs} models trained")
             else:
                 job.status = JobStatus.FAILED
-                job.error = f"All training configurations failed: {last_error}" if last_error else "All training configurations failed"
+                job.error = f"All training configurations failed: {last_error}" if last_error is not None else "All training configurations failed"
                 job.add_log(f"Training failed: 0/{total_configs} models trained successfully")
 
             job.completed_at = datetime.now()

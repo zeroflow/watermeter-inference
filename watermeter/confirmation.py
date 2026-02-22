@@ -40,7 +40,7 @@ class ConfirmationManager:
         self._rate_tracker = rate_tracker
         self._meter_state = meter_state
         self._state_store = state_store
-        self._logger = logger or globals()["logger"]
+        self._logger = logger or logging.getLogger(__name__)
 
         self._pending_confirmation: Optional[Dict] = None
         self._confirmation_timer: Optional[threading.Timer] = None
