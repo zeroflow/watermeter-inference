@@ -10,7 +10,7 @@ import re
 from typing import Optional
 
 from fastapi import APIRouter
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, field_validator
 
 from .. import watermeter_service
@@ -78,20 +78,20 @@ async def get_status():
 async def trigger_reading():
     """Manually trigger a new reading."""
     if not get_inference_service().models_loaded:
-        return JSONResponse(
-            {"message": "No inference models loaded. Train or import models first."},
+        return HTMLResponse(
+            '<span class="error">No inference models loaded. Train or import models first.</span>',
             status_code=503,
         )
 
     service = watermeter_service.get_service()
 
     if service.current_state["processing"]:
-        return JSONResponse({"message": "Processing already in progress"}, status_code=409)
+        return HTMLResponse('<span class="warning">Processing already in progress</span>', status_code=409)
 
     # Start processing in background
     _create_background_task(service.process_reading())
 
-    return JSONResponse({"message": "Reading triggered successfully"})
+    return HTMLResponse('<span class="success">Reading triggered</span>')
 
 
 @router.post(
