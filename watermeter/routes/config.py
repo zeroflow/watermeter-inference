@@ -3,6 +3,7 @@
 import logging
 from pathlib import Path
 
+import yaml
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -71,8 +72,6 @@ async def save_config(submission: ConfigSaveSubmission):
         logger.info(f"Config saved (option: {submission.save_option})")
 
         # Reload config into running service
-        import yaml
-
         with open(config_path, "r") as f:
             plain_config = yaml.safe_load(f)
 

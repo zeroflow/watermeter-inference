@@ -3,6 +3,7 @@
 import base64
 import logging
 from pathlib import Path
+import tempfile
 from urllib.parse import urlparse
 
 import cv2
@@ -668,8 +669,6 @@ async def get_digit_image(digit_id: int):
 async def preview_digit_inference(submission: SingleRoiSubmission):
     """Run inference on a single ROI and return the prediction."""
     try:
-        import tempfile
-
         result = _load_corrected_reference()
         if result is None:
             return JSONResponse(
@@ -848,8 +847,6 @@ async def get_analog_image(analog_id: int):
 async def preview_analog_inference(submission: SingleRoiSubmission):
     """Run inference on a single analog ROI and return the prediction."""
     try:
-        import tempfile
-
         result = _load_corrected_reference()
         if result is None:
             return JSONResponse(
