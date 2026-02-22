@@ -1,6 +1,7 @@
 """Model management routes and training data stats."""
 
 import logging
+import threading
 from pathlib import Path
 
 import timm
@@ -18,6 +19,38 @@ from ..training_manager import get_training_manager
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+class _SessionStore:
+    """Thread-safe dict-like store for per-model-type session state."""
+
+    def __init__(self):
+        self._data: dict = {}
+        self._lock = threading.Lock()
+
+    def __getitem__(self, key):
+        with self._lock:
+            return self._data[key]
+
+    def __setitem__(self, key, value):
+        with self._lock:
+            self._data[key] = value
+
+    def __contains__(self, key):
+        with self._lock:
+            return key in self._data
+
+    def get(self, key, default=None):
+        with self._lock:
+            return self._data.get(key, default)
+
+    def pop(self, key, default=None):
+        with self._lock:
+            return self._data.pop(key, default)
+
+    def clear(self):
+        with self._lock:
+            self._data.clear()
 
 
 @router.get(
@@ -302,7 +335,7 @@ async def dedup_training_data():
 
 
 # In-memory storage for prune previews (keyed by model type)
-_prune_previews: dict = {}
+_prune_previews = _SessionStore()
 
 
 @router.post(
@@ -415,7 +448,7 @@ async def prune_confirm(request: dict):
 # ---------------------------------------------------------------------------
 
 # In-memory storage for mislabel scan results (keyed by model type)
-_mislabel_scans: dict = {}
+_mislabel_scans = _SessionStore()
 
 
 @router.post(

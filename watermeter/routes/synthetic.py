@@ -15,16 +15,40 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+
+class _GenerationStatus:
+    """Thread-safe store for synthetic generation state."""
+
+    def __init__(self, initial: dict):
+        self._data = dict(initial)
+        self._lock = threading.Lock()
+
+    @property
+    def lock(self):
+        return self._lock
+
+    def __getitem__(self, key):
+        return self._data[key]
+
+    def __setitem__(self, key, value):
+        self._data[key] = value
+
+    def keys(self):
+        return self._data.keys()
+
+    def update(self, d: dict):
+        self._data.update(d)
+
+
 # Module-level state for background generation
-_generation_lock = threading.Lock()
-_generation_status = {
+_generation_status = _GenerationStatus({
     "running": False,
     "job_id": None,
     "progress": 0,
     "total": 0,
     "message": "Idle",
     "type": None,
-}
+})
 
 
 class SyntheticConfig(BaseModel):
@@ -53,7 +77,7 @@ def _run_generation(config: SyntheticConfig, job_id: str):
         gen = SyntheticGenerator(base_dir="/training")
 
         def on_progress(current, total, message):
-            with _generation_lock:
+            with _generation_status.lock:
                 _generation_status.update(
                     {
                         "progress": current,
@@ -68,7 +92,7 @@ def _run_generation(config: SyntheticConfig, job_id: str):
             seed=config.seed,
             progress_callback=on_progress,
         )
-        with _generation_lock:
+        with _generation_status.lock:
             _generation_status.update(
                 {
                     "running": False,
@@ -77,7 +101,7 @@ def _run_generation(config: SyntheticConfig, job_id: str):
             )
     except Exception as e:
         logger.exception("Synthetic generation failed")
-        with _generation_lock:
+        with _generation_status.lock:
             _generation_status.update(
                 {
                     "running": False,
@@ -93,7 +117,7 @@ def _run_generation(config: SyntheticConfig, job_id: str):
 )
 async def generate_synthetic(config: SyntheticConfig):
     """Start background synthetic data generation."""
-    with _generation_lock:
+    with _generation_status.lock:
         if _generation_status["running"]:
             return JSONResponse(
                 status_code=409,
@@ -133,7 +157,7 @@ async def generate_synthetic(config: SyntheticConfig):
 )
 async def get_synthetic_status():
     """Get the current status of synthetic data generation."""
-    with _generation_lock:
+    with _generation_status.lock:
         return JSONResponse(content=dict(_generation_status))
 
 
@@ -147,7 +171,7 @@ async def delete_synthetic(type: str):
     if type not in ("digits", "arrows", "both"):
         raise HTTPException(status_code=400, detail="type must be 'digits', 'arrows', or 'both'")
 
-    with _generation_lock:
+    with _generation_status.lock:
         if _generation_status["running"]:
             raise HTTPException(status_code=409, detail="Cannot delete while generation is running")
 
