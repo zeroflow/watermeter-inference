@@ -127,7 +127,7 @@ body {
     background: var(--bg-surface);
     border-radius: 16px;
     box-shadow: 0 20px 60px var(--shadow-color);
-    overflow: hidden;
+    overflow-x: auto;
     min-height: calc(100vh - 40px);
 }
 
