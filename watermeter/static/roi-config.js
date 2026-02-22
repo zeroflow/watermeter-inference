@@ -1426,7 +1426,7 @@
             btn.textContent = 'Saving...';
 
             try {
-                // Save fisheye if non-zero
+                // Save fisheye if non-zero, or delete any previously stored value
                 if (fisheye !== 0) {
                     const fisheyeResp = await fetch('/api/roi/fisheye', {
                         method: 'POST',
@@ -1438,6 +1438,9 @@
                         alert('Error saving fisheye: ' + fisheyeData.message);
                         return;
                     }
+                } else {
+                    // Remove any previously stored fisheye value
+                    await fetch('/api/roi/fisheye', { method: 'DELETE' });
                 }
 
                 // Save rotation
@@ -1477,9 +1480,10 @@
                     rotationFine.value = (total - Math.trunc(total)).toFixed(1);
                     updateTotalRotation();
 
-                    // Restore fisheye slider
-                    fisheyeSlider.value = savedFisheye || 0;
-                    updateFisheyeValue();
+                    // Reset fisheye slider to zero (clear stale savedFisheye state)
+                    savedFisheye = null;
+                    fisheyeSlider.value = 0;
+                    fisheyeValueDisplay.textContent = '0.00';
 
                     // Reload original image (no fisheye applied)
                     const origImg = new Image();
