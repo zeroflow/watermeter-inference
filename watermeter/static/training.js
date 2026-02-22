@@ -1671,6 +1671,45 @@ async function archiveModel(modelType, modelId) {
     }
 }
 
+// --- Deduplication ---
+
+async function runDedup() {
+    var btn = document.getElementById('dedup-btn');
+    var statusEl = document.getElementById('dedup-status');
+
+    btn.disabled = true;
+    btn.textContent = 'Deduplicating...';
+    statusEl.textContent = '';
+
+    try {
+        var resp = await fetch('/api/training-data/dedup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+        var data = await resp.json();
+
+        if (!resp.ok || !data.success) {
+            showMessage(data.message || 'Dedup failed', 'error');
+            return;
+        }
+
+        var d = data.results.digits || 0;
+        var a = data.results.arrows || 0;
+        var total = d + a;
+        if (total === 0) {
+            statusEl.textContent = 'No duplicates found.';
+        } else {
+            statusEl.textContent = 'Removed ' + total + ' duplicate(s) (' + d + ' digits, ' + a + ' arrows).';
+            loadTrainingStats();
+        }
+    } catch (err) {
+        showMessage('Network error: ' + err.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Deduplicate Input Queue';
+    }
+}
 // --- Mislabel Detection ---
 
 async function startMislabelScan() {
@@ -1820,3 +1859,120 @@ async function confirmMislabels() {
     }
 }
 
+// --- Data Pruning ---
+
+async function startPrunePreview() {
+    var type = document.getElementById('prune-type').value;
+    var btn = document.getElementById('prune-preview-btn');
+    var statusEl = document.getElementById('prune-status');
+    var resultsEl = document.getElementById('prune-results');
+
+    btn.disabled = true;
+    btn.textContent = 'Scanning...';
+    resultsEl.style.display = 'none';
+
+    statusEl.style.display = 'block';
+    statusEl.className = 'prune-status scanning';
+    statusEl.textContent = 'Analyzing ground truth for near-duplicate clusters...';
+
+    try {
+        var resp = await fetch('/api/training-data/prune/preview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: type })
+        });
+        var data = await resp.json();
+
+        if (!resp.ok || !data.success) {
+            statusEl.className = 'prune-status error';
+            statusEl.textContent = data.message || 'Preview failed';
+            return;
+        }
+
+        if (data.total_removable === 0) {
+            statusEl.className = 'prune-status complete';
+            statusEl.textContent = 'Dataset is balanced. No pruning needed (' + data.total_before + ' images).';
+            return;
+        }
+
+        statusEl.className = 'prune-status complete';
+        statusEl.textContent = 'Found ' + data.total_removable + ' removable image(s) out of ' + data.total_before + '.';
+
+        renderPrunePreview(data);
+    } catch (err) {
+        statusEl.className = 'prune-status error';
+        statusEl.textContent = 'Network error: ' + err.message;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Preview Pruning';
+    }
+}
+
+function renderPrunePreview(data) {
+    var summaryEl = document.getElementById('prune-summary');
+    var listEl = document.getElementById('prune-class-list');
+    var resultsEl = document.getElementById('prune-results');
+
+    summaryEl.textContent = data.total_before + ' images \u2192 ' + data.total_after + ' after pruning (\u2212' + data.total_removable + ')';
+
+    // Clear previous
+    while (listEl.firstChild) listEl.removeChild(listEl.firstChild);
+
+    var classes = data.classes;
+    var keys = Object.keys(classes).sort();
+    keys.forEach(function(cls) {
+        var info = classes[cls];
+        if (info.removable === 0) return;
+
+        var item = document.createElement('div');
+        item.className = 'prune-class-item';
+
+        var nameSpan = document.createElement('span');
+        nameSpan.textContent = cls + ': ' + info.before + ' \u2192 ' + info.after;
+
+        var removeSpan = document.createElement('span');
+        removeSpan.className = 'prune-removable';
+        removeSpan.textContent = '\u2212' + info.removable;
+
+        item.appendChild(nameSpan);
+        item.appendChild(removeSpan);
+        listEl.appendChild(item);
+    });
+
+    resultsEl.style.display = 'block';
+}
+
+async function confirmPrune() {
+    var type = document.getElementById('prune-type').value;
+    var btn = document.getElementById('prune-confirm-btn');
+
+    btn.disabled = true;
+    btn.textContent = 'Deleting...';
+
+    try {
+        var resp = await fetch('/api/training-data/prune/confirm', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: type })
+        });
+        var data = await resp.json();
+
+        if (!resp.ok || !data.success) {
+            showMessage(data.message || 'Prune failed', 'error');
+            return;
+        }
+
+        showMessage('Pruned ' + data.total_deleted + ' image(s) from ' + type + ' ground truth.', 'success');
+
+        document.getElementById('prune-results').style.display = 'none';
+        document.getElementById('prune-status').style.display = 'none';
+        if (typeof loadTrainingStats === 'function') {
+            loadTrainingStats();
+        }
+    } catch (err) {
+        showMessage('Network error: ' + err.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Confirm & Delete';
+    }
+}

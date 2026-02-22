@@ -1372,6 +1372,20 @@
             display: flex;
             justify-content: flex-end;
         }
+
+        .stats-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border, #e2e8f0);
+        }
+
+        .dedup-status {
+            font-size: 0.85rem;
+            color: var(--text-light);
+        }
     </style>
 </head>
 <body>
@@ -1520,6 +1534,12 @@
                         <span class="stat-label">Unlabeled:</span>
                         <span class="stat-value" id="total-unlabeled">-</span>
                     </div>
+                </div>
+                <div class="stats-actions">
+                    <button class="btn btn-sm" id="dedup-btn" onclick="runDedup()" title="Remove near-duplicate images from the input queue">
+                        Deduplicate Input Queue
+                    </button>
+                    <span id="dedup-status" class="dedup-status"></span>
                 </div>
             </section>
 
@@ -1860,6 +1880,6 @@
         </div>
     </div>
 
-    <script src="/static/training.js?v=2"></script>
+    <script src="/static/training.js?v=4"></script>
 </body>
 </html>
