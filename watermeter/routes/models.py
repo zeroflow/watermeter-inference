@@ -586,8 +586,10 @@ _VALID_MODEL_TYPES = {"digits", "arrows"}
 
 
 def _validate_path_component(component: str) -> bool:
-    """Return True if component is safe (no path separators or ..)."""
+    """Return True if component is safe (no path separators, .. or .)."""
     if ".." in component:
+        return False
+    if component == ".":
         return False
     if "/" in component or "\\" in component:
         return False
@@ -617,6 +619,17 @@ async def list_training_images(
         return JSONResponse(
             {"success": False, "message": "Invalid class_name"},
             status_code=400,
+        )
+
+    if offset < 0:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "message": "offset must be >= 0"},
+        )
+    if limit < 1 or limit > 200:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "message": "limit must be between 1 and 200"},
         )
 
     try:
@@ -652,16 +665,12 @@ async def serve_training_image(model_type: str, class_name: str, filename: str):
             status_code=400,
         )
 
-    if (
-        not _validate_path_component(class_name)
-        or not _validate_path_component(filename)
-        or "/" in filename
-        or "\\" in filename
-    ):
-        return JSONResponse(
-            {"success": False, "message": "Invalid path component"},
-            status_code=400,
-        )
+    for component in (class_name, filename):
+        if not _validate_path_component(component):
+            return JSONResponse(
+                {"success": False, "message": "Invalid path component"},
+                status_code=400,
+            )
 
     try:
         service = watermeter_service.get_service()

@@ -437,6 +437,31 @@ class TestTrainingDataImages:
 
         assert resp.status_code == 400
 
+    def test_serve_image_invalid_type(self, test_client):
+        """Invalid type returns 400 for serve endpoint."""
+        resp = test_client.get("/api/training-data/image/invalid/5/img.jpg")
+        assert resp.status_code == 400
+
+    def test_list_images_path_traversal_class(self, test_client, tmp_path):
+        """Path traversal in class_name returns 400."""
+        with patch("watermeter.routes.models.watermeter_service") as mock_svc:
+            mock_svc.get_service.return_value.config = {
+                "low_confidence": {"save_path": str(tmp_path)}
+            }
+            resp = test_client.get(
+                "/api/training-data/images",
+                params={"type": "digits", "class_name": ".."},
+            )
+        assert resp.status_code == 400
+
+    def test_list_images_negative_offset(self, test_client):
+        """Negative offset returns 400."""
+        resp = test_client.get(
+            "/api/training-data/images",
+            params={"type": "digits", "class_name": "5", "offset": "-1"},
+        )
+        assert resp.status_code == 400
+
 
 class TestDedupEndpoint:
     """Tests for POST /api/training-data/dedup."""
