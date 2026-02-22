@@ -1,5 +1,7 @@
 # Integrated Model Training
 
+> Note: File paths updated 2026-02-22 to reflect post-refactoring structure.
+
 ## Overview
 
 Integration of model training directly into the watermeter application. Enables training and benchmarking of custom models via a web UI, without having to manually execute Python scripts.
@@ -95,7 +97,7 @@ Each model has a `metadata.json` file with the following information:
 ## 3. Training UI
 
 ### 3.1 Layout (from top to bottom)
-**Route**: `/training`
+**Route**: `/training` (defined in `watermeter/routes/pages.py` L81)
 
 1. **Dataset Statistics** (compact) - Class distribution for digits and arrows
 2. **Training Form** - Configuration + Start/Queue button
@@ -236,43 +238,44 @@ class TrainingManager:
 
 ## 6. REST API Endpoints
 
-### Training
-- `GET /api/training/status` - Training/benchmark status + queue + auto-benchmark pending
-- `POST /api/training/start` - Start training or add to queue
-- `POST /api/training/cancel?clear_queue=true` - Cancel training (optionally clear queue)
-- `GET /api/training/logs/{job_id}` - Training logs
+### Training (`watermeter/routes/training.py`)
+- `GET /api/training/status` - Training/benchmark status + queue + auto-benchmark pending (L62)
+- `POST /api/training/start` - Start training or add to queue (L85)
+- `POST /api/training/cancel?clear_queue=true` - Cancel training (optionally clear queue) (L112)
+- `GET /api/training/logs/{job_id}` - Training logs (L200)
 
-### Training Queue
-- `DELETE /api/training/queue/{index}` - Remove individual queue entry
-- `DELETE /api/training/queue` - Clear entire queue
+### Training Queue (`watermeter/routes/training.py`)
+- `DELETE /api/training/queue/{index}` - Remove individual queue entry (L141)
+- `DELETE /api/training/queue` - Clear entire queue (L160)
 
-### Models
-- `GET /api/models?type={digits|arrows}` - List all models
-- `POST /api/models/{type}/{id}/activate` - Activate model
-- `DELETE /api/models/{type}/{id}` - Delete model
-- `POST /api/models/{type}/{id}/benchmark` - Start benchmark
+### Models (`watermeter/routes/models.py`)
+- `GET /api/models?type={digits|arrows}` - List all models (L39)
+- `POST /api/models/{type}/{id}/activate` - Activate model (L98)
+- `DELETE /api/models/{type}/{id}` - Delete model (L159)
+- `POST /api/models/{type}/{id}/benchmark` - Start benchmark (L205)
 
-### Benchmark
-- `POST /api/benchmark/cancel` - Cancel benchmark
+### Benchmark (`watermeter/routes/training.py`)
+- `POST /api/benchmark/cancel` - Cancel benchmark (L176)
 
-### Data
-- `GET /api/training-data/stats` - Training data statistics
+### Data (`watermeter/routes/models.py`)
+- `GET /api/training-data/stats` - Training data statistics (L226)
 
 ---
 
 ## 7. Implementation Roadmap
 
 ### ✅ Phase 1: Backend Foundation (Completed)
-- `training_manager.py` - Training orchestration with queue + auto-benchmark
-- `model_manager.py` - Model metadata & file management
-- API endpoints in `app.py`
+- `watermeter/training_manager.py` - Training orchestration with queue + auto-benchmark
+- `watermeter/model_manager.py` - Model metadata & file management
+- API endpoints in `watermeter/routes/training.py` and `watermeter/routes/models.py`
 - Updated `docker-entrypoint.sh` - Default model copy with metadata.json generation
 - Updated `Dockerfile` & `docker-compose.yml` - Volume mounts
 
 ### ✅ Phase 2: Training UI (Completed)
-- `templates/training.html` - Complete training UI (~1700 lines)
-- Route `/training` in `app.py`
-- JavaScript for polling, form handling, model management
+- `watermeter/templates/training.html` - Training UI shell (~1568 lines); loads `training.js`
+- `watermeter/static/training.js` - All training JS (~1647 lines; extracted from template)
+- Route `/training` in `watermeter/routes/pages.py` L81
+- JavaScript for polling, form handling, model management (now in `watermeter/static/training.js`)
 
 ### ✅ Phase 3: Benchmark Integration (Completed)
 - `_execute_benchmark()` - Real benchmark logic with OpenVINO
@@ -340,6 +343,7 @@ class TrainingManager:
 - **Progress Updates**: REST API polling (every 2 seconds)
 - **Log Filtering**: Epoch/loss/accuracy lines are filtered from logs (redundant with progress bars)
 - **Layout**: Compact stats at top, form + queue in middle, models + benchmark below, logs at bottom
+- **Template split**: `watermeter/templates/training.html` (~1568 lines) is the Jinja2 shell; all JavaScript logic lives in `watermeter/static/training.js` (~1647 lines) and is loaded via `<script src>` at the bottom of the template
 
 ### Not Implemented
 - ❌ Rollback to previous model

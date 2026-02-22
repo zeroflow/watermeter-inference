@@ -2,7 +2,7 @@
 
 Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
 
-Next ID: BL-47
+Next ID: BL-48
 
 See `backlog_archiv.md` for completed items (BL-01 through BL-25).
 
@@ -116,3 +116,7 @@ See `backlog_archiv.md` for completed items (BL-01 through BL-25).
 
 - **BL-46** `idea` — **Configurable data augmentation**: training transforms hardcoded in `training_core.py:53-80`, users can't adjust intensity via UI
   - **Effort**: M
+
+- **BL-47** `idea` — **Comprehensive API documentation**: README lists only key endpoints; full reference (45+ endpoints) exists only in Swagger `/docs`. Write dedicated API docs or improve endpoint docstrings for auto-generated docs
+  - Covers: labeling, config editor, ROI config, training queue, benchmark control, model archive/logs, synthetic data, MQTT config
+  - **Effort**: L
