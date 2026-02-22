@@ -264,3 +264,51 @@ class TestLabelValidation:
             "label": "5"
         })
         assert resp.status_code == 404
+
+
+class TestNextImageLabelHint:
+    """Tests for _label=X hint parsing in GET /api/label/next-image."""
+
+    def test_returns_label_hint_from_filename(self, test_client, tmp_path):
+        """When filename contains _label=X, response includes label_hint."""
+        digits_input = tmp_path / "digits" / "input"
+        digits_input.mkdir(parents=True)
+        (digits_input / "img001_label=5.jpg").write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 100)
+
+        with patch("watermeter.routes.label.watermeter_service") as mock_svc:
+            mock_svc.get_service.return_value.config = {"training": {"path": str(tmp_path)}}
+            resp = test_client.get("/api/label/next-image")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["has_images"] is True
+        assert data["label_hint"] == "5"
+
+    def test_no_label_hint_when_absent(self, test_client, tmp_path):
+        """When filename has no _label=X pattern, label_hint is null."""
+        digits_input = tmp_path / "digits" / "input"
+        digits_input.mkdir(parents=True)
+        (digits_input / "img001.jpg").write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 100)
+
+        with patch("watermeter.routes.label.watermeter_service") as mock_svc:
+            mock_svc.get_service.return_value.config = {"training": {"path": str(tmp_path)}}
+            resp = test_client.get("/api/label/next-image")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["has_images"] is True
+        assert data["label_hint"] is None
+
+    def test_label_hint_decimal_for_arrows(self, test_client, tmp_path):
+        """Arrow images with _label=4.5 return decimal hint."""
+        arrows_input = tmp_path / "arrows" / "input"
+        arrows_input.mkdir(parents=True)
+        (arrows_input / "dial_label=4.5.jpg").write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 100)
+
+        with patch("watermeter.routes.label.watermeter_service") as mock_svc:
+            mock_svc.get_service.return_value.config = {"training": {"path": str(tmp_path)}}
+            resp = test_client.get("/api/label/next-image")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["label_hint"] == "4.5"
