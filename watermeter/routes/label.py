@@ -4,6 +4,7 @@ import base64
 import logging
 from pathlib import Path
 import random
+import re
 import shutil
 
 from fastapi import APIRouter
@@ -71,11 +72,16 @@ async def get_next_unlabeled_image():
     remaining_digits = len(digits_images)
     remaining_arrows = len(arrows_images)
 
+    # Parse _label=X hint from filename stem (e.g. img001_label=5.jpg -> "5", dial_label=4.5.jpg -> "4.5")
+    label_hint_match = re.search(r'_label=([^_.]+(?:\.\d+)?)', image_path.stem)
+    label_hint = label_hint_match.group(1) if label_hint_match else None
+
     response_data = {
         "has_images": True,
         "filename": image_path.name,
         "model_type": model_type,
         "image_base64": image_base64,
+        "label_hint": label_hint,
         "remaining": {
             "digits": remaining_digits,
             "arrows": remaining_arrows,

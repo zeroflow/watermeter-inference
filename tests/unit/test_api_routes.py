@@ -276,7 +276,7 @@ class TestNextImageLabelHint:
         (digits_input / "img001_label=5.jpg").write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 100)
 
         with patch("watermeter.routes.label.watermeter_service") as mock_svc:
-            mock_svc.get_service.return_value.config = {"training": {"path": str(tmp_path)}}
+            mock_svc.get_service.return_value.config = {"low_confidence": {"save_path": str(tmp_path)}}
             resp = test_client.get("/api/label/next-image")
 
         assert resp.status_code == 200
@@ -291,7 +291,7 @@ class TestNextImageLabelHint:
         (digits_input / "img001.jpg").write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 100)
 
         with patch("watermeter.routes.label.watermeter_service") as mock_svc:
-            mock_svc.get_service.return_value.config = {"training": {"path": str(tmp_path)}}
+            mock_svc.get_service.return_value.config = {"low_confidence": {"save_path": str(tmp_path)}}
             resp = test_client.get("/api/label/next-image")
 
         assert resp.status_code == 200
@@ -306,7 +306,7 @@ class TestNextImageLabelHint:
         (arrows_input / "dial_label=4.5.jpg").write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 100)
 
         with patch("watermeter.routes.label.watermeter_service") as mock_svc:
-            mock_svc.get_service.return_value.config = {"training": {"path": str(tmp_path)}}
+            mock_svc.get_service.return_value.config = {"low_confidence": {"save_path": str(tmp_path)}}
             resp = test_client.get("/api/label/next-image")
 
         assert resp.status_code == 200
