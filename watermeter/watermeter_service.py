@@ -138,9 +138,7 @@ class WatermeterService:
             meter_state=self._state,
             rate_tracker=self._rate_tracker,
             confirmation_manager=self._confirmation_manager,
-            on_trigger=lambda: asyncio.run_coroutine_threadsafe(
-                self.process_reading(), self._mqtt.loop
-            ) if self._mqtt.loop else None,
+            on_trigger=self.process_reading,
             on_reset=self.reset_previous_value,
         )
 
