@@ -63,7 +63,9 @@ async def list_architectures(q: str = ""):
     """Search available timm model architectures."""
     if len(q) < 2:
         return JSONResponse([])
-    models = timm.list_models(f"*{q}*")
+    words = q.lower().split()
+    pattern = "*" + "*".join(words) + "*"
+    models = timm.list_models(pattern)
     return JSONResponse(models[:50])
 
 

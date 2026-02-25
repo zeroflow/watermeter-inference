@@ -50,10 +50,18 @@ function showMessage(text, type) {
 // Model type change handler
 function onModelTypeChange() {
     const modelType = document.getElementById('model-type').value;
-    const stepSizeGroup = document.getElementById('step-size-group');
     const trainingModeGroup = document.getElementById('training-mode-group');
-    stepSizeGroup.style.display = modelType === 'arrows' ? '' : 'none';
     trainingModeGroup.style.display = modelType === 'arrows' ? '' : 'none';
+    if (modelType !== 'arrows') {
+        document.getElementById('step-size-group').style.display = 'none';
+    } else {
+        onTrainingModeChange();
+    }
+}
+
+function onTrainingModeChange() {
+    const trainingMode = document.getElementById('training-mode').value;
+    document.getElementById('step-size-group').style.display = trainingMode === 'discrete' ? '' : 'none';
 }
 
 // Architecture combobox
@@ -266,12 +274,15 @@ function onTrainingModeToggle(mode) {
 
 function onMatrixModelTypeChange() {
     const arrowsChecked = document.querySelector('#matrix-model-types input[value="arrows"]').checked;
-    const stepSizeGroup = document.getElementById('step-size-group');
     const trainingModeGroup = document.getElementById('training-mode-group');
     const mode = document.querySelector('input[name="training-mode-select"]:checked').value;
     if (mode === 'matrix') {
-        stepSizeGroup.style.display = arrowsChecked ? '' : 'none';
         trainingModeGroup.style.display = arrowsChecked ? '' : 'none';
+        if (!arrowsChecked) {
+            document.getElementById('step-size-group').style.display = 'none';
+        } else {
+            onTrainingModeChange();
+        }
     }
 }
 
