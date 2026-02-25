@@ -206,6 +206,32 @@ class TrainingManager:
         job.add_log("Benchmark job started")
         return job_id
 
+    def start_benchmark_all(self) -> int:
+        """Start benchmarking all local models sequentially.
+
+        Returns:
+            Number of models queued for benchmarking
+
+        Raises:
+            RuntimeError: If a benchmark is already running or no models found
+        """
+        if self.active_benchmark_job is not None and self.active_benchmark_job.status == JobStatus.RUNNING:
+            raise RuntimeError("A benchmark is already running")
+
+        # Collect all local models via model_manager
+        pending = []
+        for model_type in ["digits", "arrows"]:
+            models = self.model_manager.list_models(model_type)
+            for model in models:
+                pending.append((model_type, model["id"]))
+
+        if not pending:
+            raise RuntimeError("No models found to benchmark")
+
+        self._auto_benchmark_pending = pending
+        self._run_auto_benchmarks()
+        return len(pending)
+
     def cancel_training(self, job_id: str, clear_queue: bool = True) -> bool:
         """
         Cancel a running training job and optionally clear the queue.

@@ -237,6 +237,25 @@ async def get_model_logs(model_type: str, model_id: str):
 
 
 @router.post(
+    "/api/models/benchmark-all",
+    tags=["Benchmarking"],
+    summary="Start benchmark all",
+    description="Start benchmarking all local models sequentially using the backend queue",
+)
+async def start_benchmark_all():
+    """Start benchmarking all local models sequentially."""
+    try:
+        training_mgr = get_training_manager()
+        count = training_mgr.start_benchmark_all()
+        return JSONResponse({"success": True, "message": f"Benchmarking {count} models", "count": count})
+    except RuntimeError as e:
+        return JSONResponse({"success": False, "message": str(e)}, status_code=409)
+    except Exception as e:
+        logger.error(f"Error starting benchmark-all: {e}")
+        return JSONResponse({"success": False, "message": f"Error: {str(e)}"}, status_code=500)
+
+
+@router.post(
     "/api/models/{model_type}/{model_id}/benchmark",
     tags=["Benchmarking"],
     summary="Start benchmark",

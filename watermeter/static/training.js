@@ -15,9 +15,6 @@ let currentFilter = 'all';
 let sortColumn = localStorage.getItem('modelSortCol') || 'accuracy';
 let sortAsc = localStorage.getItem('modelSortAsc') === 'true';
 let cachedTrainingStats = null;
-let benchmarkQueue = [];
-let benchmarkAllTotal = 0;
-let benchmarkAllRunning = false;
 
 // Initialize
 window.addEventListener('load', function() {
@@ -731,37 +728,34 @@ async function pollTrainingStatus() {
             loadBenchmarkLogs(benchmarkStatus.job_id);
             // Disable benchmark buttons
             document.querySelectorAll('.btn-benchmark').forEach(btn => btn.disabled = true);
+            const benchAllBtn = document.getElementById('benchmark-all-btn');
+            if (benchAllBtn) benchAllBtn.disabled = true;
 
         } else if (benchmarkStatus && (benchmarkStatus.status === 'completed' || benchmarkStatus.status === 'failed' || benchmarkStatus.status === 'cancelled')) {
             if (currentBenchmarkJobId) {
                 const status = benchmarkStatus.status;
                 if (status === 'completed') {
-                    if (!benchmarkAllRunning) showMessage('Benchmark completed!', 'success');
-                    if (!benchmarkAllRunning) loadModels();
+                    showMessage('Benchmark completed!', 'success');
+                    loadModels();
                 } else if (status === 'cancelled') {
                     showMessage('Benchmark was cancelled.', 'error');
-                    benchmarkAllRunning = false;
-                    benchmarkQueue = [];
-                    updateBenchmarkAllButton();
                 } else {
-                    if (!benchmarkAllRunning) showMessage('Benchmark failed: ' + (benchmarkStatus.error || 'Unknown error'), 'error');
+                    showMessage('Benchmark failed: ' + (benchmarkStatus.error || 'Unknown error'), 'error');
                 }
                 currentBenchmarkJobId = null;
-                if (benchmarkAllRunning) {
-                    runNextBenchmark();
-                } else {
-                    const benchAllBtn = document.getElementById('benchmark-all-btn');
-                    if (benchAllBtn) benchAllBtn.disabled = false;
-                }
             }
             benchmarkSection.classList.remove('visible');
             hideLogSectionIfIdle();
             document.querySelectorAll('.btn-benchmark').forEach(btn => btn.disabled = false);
+            const benchAllBtn = document.getElementById('benchmark-all-btn');
+            if (benchAllBtn) benchAllBtn.disabled = false;
 
         } else {
             benchmarkSection.classList.remove('visible');
             hideLogSectionIfIdle();
             document.querySelectorAll('.btn-benchmark').forEach(btn => btn.disabled = false);
+            const benchAllBtn = document.getElementById('benchmark-all-btn');
+            if (benchAllBtn) benchAllBtn.disabled = false;
         }
 
     } catch (error) {
@@ -814,8 +808,6 @@ async function loadBenchmarkLogs(jobId) {
 
 // Start benchmark
 async function startBenchmark(modelType, modelId) {
-    const benchAllBtn = document.getElementById('benchmark-all-btn');
-    if (benchAllBtn && !benchmarkAllRunning) benchAllBtn.disabled = true;
     try {
         const response = await fetch(`/api/models/${modelType}/${modelId}/benchmark`, {
             method: 'POST'
@@ -861,48 +853,22 @@ async function cancelBenchmark() {
     }
 }
 
-// Benchmark All queue functions
-function startBenchmarkAll() {
-    const candidates = [
-        ...allModels.digits.filter(m => m.status !== 'failed').map(m => ({ type: 'digits', id: m.id })),
-        ...allModels.arrows.filter(m => m.status !== 'failed').map(m => ({ type: 'arrows', id: m.id }))
-    ];
-
-    if (candidates.length === 0) {
-        showMessage('No models to benchmark', 'error');
-        return;
-    }
-
-    benchmarkQueue = candidates;
-    benchmarkAllTotal = candidates.length;
-    benchmarkAllRunning = true;
-    updateBenchmarkAllButton();
-    runNextBenchmark();
-}
-
-function runNextBenchmark() {
-    if (benchmarkQueue.length === 0) {
-        benchmarkAllRunning = false;
-        updateBenchmarkAllButton();
-        loadModels();
-        showMessage('All benchmarks completed!', 'success');
-        return;
-    }
-    const next = benchmarkQueue.shift();
-    updateBenchmarkAllButton();
-    startBenchmark(next.type, next.id);
-}
-
-function updateBenchmarkAllButton() {
+// Benchmark All — delegates to backend queue
+async function startBenchmarkAll() {
     const btn = document.getElementById('benchmark-all-btn');
-    if (!btn) return;
-    if (benchmarkAllRunning) {
-        const current = benchmarkAllTotal - benchmarkQueue.length;
-        btn.textContent = `Benchmarking ${current}/${benchmarkAllTotal}...`;
-        btn.disabled = true;
-    } else {
-        btn.textContent = 'Benchmark All';
-        btn.disabled = false;
+    if (btn) btn.disabled = true;
+    try {
+        const response = await fetch('/api/models/benchmark-all', { method: 'POST' });
+        const data = await response.json();
+        if (data.success) {
+            showMessage(data.message, 'success');
+        } else {
+            showMessage('Failed: ' + data.message, 'error');
+            if (btn) btn.disabled = false;
+        }
+    } catch (error) {
+        showMessage('Error: ' + error.message, 'error');
+        if (btn) btn.disabled = false;
     }
 }
 
