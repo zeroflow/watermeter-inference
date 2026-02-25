@@ -5,6 +5,7 @@ var imageOffset = 0;
 var imageLimit = 50;
 var imageTotal = 0;
 var classStats = null;
+var selectedImages = new Set();
 
 // --- Init ---
 window.addEventListener('load', function() {
@@ -20,6 +21,9 @@ function onTypeChange() {
     document.getElementById('image-panel-page').textContent = '';
     document.getElementById('image-empty').style.display = 'block';
     document.getElementById('load-more-row').style.display = 'none';
+    selectedImages.clear();
+    updateBulkButtons();
+    document.getElementById('bulk-actions').style.display = 'none';
     // Hide any tool results
     document.getElementById('mislabel-results-section').style.display = 'none';
     document.getElementById('prune-results-section').style.display = 'none';
@@ -75,6 +79,9 @@ function renderClassSidebar(classCounts) {
 function selectClass(cls) {
     currentClass = cls;
     imageOffset = 0;
+    selectedImages.clear();
+    updateBulkButtons();
+    document.getElementById('bulk-actions').style.display = 'flex';
     clearImageGrid();
     document.getElementById('image-empty').style.display = 'none';
 
@@ -117,13 +124,24 @@ async function loadImages() {
 
         var grid = document.getElementById('image-grid');
         data.filenames.forEach(function(filename) {
+            var wrapper = document.createElement('div');
+            wrapper.className = 'img-wrapper';
+            wrapper.dataset.filename = filename;
+            wrapper.onclick = function() { toggleImageSelection(wrapper, filename); };
+
             var img = document.createElement('img');
             img.src = '/api/training-data/image/' + encodeURIComponent(currentType) + '/' +
                       encodeURIComponent(currentClass) + '/' + encodeURIComponent(filename);
             img.alt = filename;
             img.title = filename;
             img.loading = 'lazy';
-            grid.appendChild(img);
+
+            if (selectedImages.has(filename)) {
+                wrapper.classList.add('selected');
+            }
+
+            wrapper.appendChild(img);
+            grid.appendChild(wrapper);
         });
 
         // Show/hide Load More
@@ -159,6 +177,158 @@ function showMessage(text, type) {
     el.textContent = text;
     el.className = 'message ' + type;
     setTimeout(function() { el.className = 'message'; }, 5000);
+}
+
+// --- Image Selection & Bulk Actions ---
+
+function toggleImageSelection(wrapper, filename) {
+    if (selectedImages.has(filename)) {
+        selectedImages.delete(filename);
+        wrapper.classList.remove('selected');
+    } else {
+        selectedImages.add(filename);
+        wrapper.classList.add('selected');
+    }
+    updateBulkButtons();
+}
+
+function updateBulkButtons() {
+    var count = selectedImages.size;
+    var moveBtn = document.getElementById('btn-bulk-move');
+    var deleteBtn = document.getElementById('btn-bulk-delete');
+    if (!moveBtn || !deleteBtn) return;
+
+    moveBtn.disabled = count === 0;
+    deleteBtn.disabled = count === 0;
+    moveBtn.textContent = count > 0 ? 'Send to Labeling (' + count + ')' : 'Send to Labeling';
+    deleteBtn.textContent = count > 0 ? 'Delete (' + count + ')' : 'Delete';
+}
+
+function bulkSelectAll() {
+    document.querySelectorAll('.image-grid .img-wrapper').forEach(function(wrapper) {
+        var filename = wrapper.dataset.filename;
+        selectedImages.add(filename);
+        wrapper.classList.add('selected');
+    });
+    updateBulkButtons();
+}
+
+function bulkDeselectAll() {
+    selectedImages.clear();
+    document.querySelectorAll('.image-grid .img-wrapper.selected').forEach(function(wrapper) {
+        wrapper.classList.remove('selected');
+    });
+    updateBulkButtons();
+}
+
+async function bulkMoveToInput() {
+    var btn = document.getElementById('btn-bulk-move');
+    if (btn.disabled || selectedImages.size === 0) return;
+    btn.disabled = true;
+
+    var filenames = Array.from(selectedImages);
+    btn.textContent = 'Moving...';
+
+    try {
+        var resp = await fetch('/api/training-data/bulk-move-to-input', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                type: currentType,
+                class_name: currentClass,
+                filenames: filenames
+            })
+        });
+        var data = await resp.json();
+
+        if (!resp.ok || !data.success) {
+            showMessage(data.message || 'Move failed', 'error');
+            return;
+        }
+
+        showMessage('Moved ' + data.moved_count + ' image(s) to input queue.', 'success');
+        removeSelectedFromDom(filenames);
+        selectedImages.clear();
+        updateBulkButtons();
+        updateSidebarCount(-data.moved_count);
+        loadStats();
+    } catch (err) {
+        showMessage('Network error: ' + err.message, 'error');
+    } finally {
+        btn.disabled = selectedImages.size === 0;
+        btn.textContent = 'Send to Labeling';
+    }
+}
+
+async function bulkDelete() {
+    var btn = document.getElementById('btn-bulk-delete');
+    if (btn.disabled || selectedImages.size === 0) return;
+
+    var count = selectedImages.size;
+    if (!confirm('Permanently delete ' + count + ' image(s)? This cannot be undone.')) return;
+
+    var filenames = Array.from(selectedImages);
+    btn.disabled = true;
+    btn.textContent = 'Deleting...';
+
+    try {
+        var resp = await fetch('/api/training-data/bulk-delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                type: currentType,
+                class_name: currentClass,
+                filenames: filenames
+            })
+        });
+        var data = await resp.json();
+
+        if (!resp.ok || !data.success) {
+            showMessage(data.message || 'Delete failed', 'error');
+            return;
+        }
+
+        showMessage('Deleted ' + data.deleted_count + ' image(s).', 'success');
+        removeSelectedFromDom(filenames);
+        selectedImages.clear();
+        updateBulkButtons();
+        updateSidebarCount(-data.deleted_count);
+        loadStats();
+    } catch (err) {
+        showMessage('Network error: ' + err.message, 'error');
+    } finally {
+        btn.disabled = selectedImages.size === 0;
+        btn.textContent = 'Delete';
+    }
+}
+
+function removeSelectedFromDom(filenames) {
+    var filenameSet = new Set(filenames);
+    document.querySelectorAll('.image-grid .img-wrapper').forEach(function(wrapper) {
+        if (filenameSet.has(wrapper.dataset.filename)) {
+            wrapper.remove();
+        }
+    });
+    var remaining = document.querySelectorAll('.image-grid .img-wrapper').length;
+    imageTotal -= filenames.length;
+    if (imageTotal < 0) imageTotal = 0;
+    document.getElementById('image-panel-title').textContent =
+        'Class "' + currentClass + '" (' + imageTotal + ' images)';
+    document.getElementById('image-panel-page').textContent =
+        'Showing ' + remaining + ' of ' + imageTotal;
+}
+
+function updateSidebarCount(delta) {
+    if (!currentClass) return;
+    var items = document.querySelectorAll('.class-item');
+    items.forEach(function(item) {
+        var name = item.querySelector('span').textContent;
+        if (name === currentClass) {
+            var countSpan = item.querySelector('.class-count');
+            var current = parseInt(countSpan.textContent, 10) || 0;
+            countSpan.textContent = Math.max(0, current + delta);
+        }
+    });
 }
 
 // --- Mislabel Detection ---
