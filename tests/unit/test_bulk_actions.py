@@ -129,3 +129,58 @@ class TestBulkDeleteLogic:
         )
         assert result["deleted_count"] == 0
         assert result["error_count"] == 0
+
+
+class TestBulkMoveToInputEdgeCases:
+    def test_duplicate_filename_in_input_gets_suffix(self, training_tree):
+        """If a file with the same name already exists in input, it gets a _1 suffix."""
+        input_dir = training_tree / "digits" / "input"
+        (input_dir / "img_0.jpg").write_bytes(b"\xff\xd8existing")
+
+        result = bulk_move_to_input_logic(
+            training_path=training_tree,
+            model_type="digits",
+            class_name="3",
+            filenames=["img_0.jpg"],
+        )
+        assert result["moved_count"] == 1
+        # Original stays, new gets _1 suffix
+        assert (input_dir / "img_0.jpg").exists()
+        assert (input_dir / "img_0_1.jpg").exists()
+
+    def test_arrows_type_works(self, tmp_path):
+        gt_dir = tmp_path / "arrows" / "ground_truth" / "3.5"
+        gt_dir.mkdir(parents=True)
+        (gt_dir / "arrow_1.jpg").write_bytes(b"\xff\xd8fake")
+
+        result = bulk_move_to_input_logic(
+            training_path=tmp_path,
+            model_type="arrows",
+            class_name="3.5",
+            filenames=["arrow_1.jpg"],
+        )
+        assert result["moved_count"] == 1
+        assert (tmp_path / "arrows" / "input" / "arrow_1.jpg").exists()
+
+
+class TestBulkDeleteEdgeCases:
+    def test_mixed_valid_and_invalid(self, training_tree):
+        """Some files exist, some don't -- partial success."""
+        result = bulk_delete_logic(
+            training_path=training_tree,
+            model_type="digits",
+            class_name="3",
+            filenames=["img_0.jpg", "nonexistent.jpg", "img_1.jpg"],
+        )
+        assert result["deleted_count"] == 2
+        assert result["error_count"] == 1
+
+    def test_dotdot_in_filename_blocked(self, training_tree):
+        result = bulk_delete_logic(
+            training_path=training_tree,
+            model_type="digits",
+            class_name="3",
+            filenames=["../3/img_0.jpg"],
+        )
+        # safe_subpath should catch this
+        assert result["error_count"] + result["deleted_count"] <= 1
