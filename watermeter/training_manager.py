@@ -751,6 +751,7 @@ class TrainingManager:
                     mae = (all_preds - all_targets).abs().mean().item()
                     rmse = ((all_preds - all_targets) ** 2).mean().sqrt().item()
                     within_half = ((all_preds - all_targets).abs() < 0.05).float().mean().item() * 100
+                    within_quarter = ((all_preds - all_targets).abs() < 0.025).float().mean().item() * 100
 
                 else:
                     correct = 0
@@ -767,7 +768,7 @@ class TrainingManager:
             # Best model tracking
             if model_type == "arrows" and training_mode == "continuous":
                 val_accs.append(within_half)
-                if within_half > best_val_acc or (within_half == best_val_acc and mae < best_val_mae):
+                if mae < best_val_mae or (mae == best_val_mae and within_half > best_val_acc):
                     best_val_acc = within_half
                     best_val_loss = avg_loss
                     best_val_mae = mae
@@ -794,11 +795,11 @@ class TrainingManager:
                     val_accuracy=round(within_half, 2),
                     epoch_duration=round(epoch_time, 1),
                     learning_rate=round(current_lr, 8),
-                    message=f"Epoch {epoch+1}/{epochs}: Loss={avg_loss:.4f}, MAE={mae:.4f}, Within-half={within_half:.1f}%",
+                    message=f"Epoch {epoch+1}/{epochs}: Loss={avg_loss:.4f}, MAE={mae:.4f}, Within-half={within_half:.1f}%, Within-quarter={within_quarter:.1f}%",
                 )
                 job.add_log(
                     f"Epoch {epoch+1}/{epochs} - Loss: {avg_loss:.4f} - MAE: {mae:.4f} "
-                    f"- RMSE: {rmse:.4f} - Within-half: {within_half:.1f}% - LR: {current_lr:.2e} - Time: {epoch_time:.1f}s"
+                    f"- RMSE: {rmse:.4f} - Within-half: {within_half:.1f}% - Within-quarter: {within_quarter:.1f}% - LR: {current_lr:.2e} - Time: {epoch_time:.1f}s"
                 )
             else:
                 job.update_progress(
@@ -875,7 +876,7 @@ class TrainingManager:
         # Load best model weights
         model.load_state_dict(best_model_state)
         if model_type == "arrows" and training_mode == "continuous":
-            job.add_log(f"Best model from epoch {best_epoch+1} with {best_val_acc:.1f}% within-half accuracy")
+            job.add_log(f"Best model from epoch {best_epoch+1} with MAE={best_val_mae:.4f}, Within-half={best_val_acc:.1f}%")
         else:
             job.add_log(f"Best model from epoch {best_epoch+1} with {best_val_acc:.2f}% accuracy")
 
