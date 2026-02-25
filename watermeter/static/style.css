@@ -618,9 +618,9 @@ main {
 
 .rotation-controls {
     display: flex;
-    gap: 24px;
-    align-items: center;
-    flex-wrap: wrap;
+    flex-direction: column;
+    gap: 0;
+    width: 100%;
 }
 
 .control-group {
