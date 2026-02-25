@@ -1,6 +1,7 @@
 """Model management routes and training data stats."""
 
 import logging
+import shutil
 import threading
 from pathlib import Path
 
@@ -10,10 +11,10 @@ from fastapi import APIRouter
 from fastapi.responses import FileResponse, JSONResponse
 
 from .. import watermeter_service
+from ..image_hash import compute_prune_preview, confirm_prune, purge_duplicates
 from ..inference import get_inference_service
-from ..mislabel_detector import scan_mislabeled, confirm_mislabeled
+from ..mislabel_detector import confirm_mislabeled, scan_mislabeled
 from ..model_manager import get_model_manager
-from ..image_hash import purge_duplicates, compute_prune_preview, confirm_prune
 from ..training_manager import get_training_manager
 
 logger = logging.getLogger(__name__)
@@ -663,7 +664,7 @@ async def list_training_images(
 
         all_files = sorted(p.name for p in class_dir.glob("*.jpg"))
         total = len(all_files)
-        page = all_files[offset: offset + limit]
+        page = all_files[offset : offset + limit]
 
         return JSONResponse({"success": True, "filenames": page, "total": total})
 
@@ -716,4 +717,192 @@ async def serve_training_image(model_type: str, class_name: str, filename: str):
 
     except Exception as e:
         logger.error(f"Error serving training image: {e}")
+        return JSONResponse({"success": False, "message": f"Error: {str(e)}"}, status_code=500)
+
+
+# ---------------------------------------------------------------------------
+# Bulk training data operations
+# ---------------------------------------------------------------------------
+
+
+def bulk_move_to_input_logic(training_path: Path, model_type: str, class_name: str, filenames: list[str]) -> dict:
+    """Move files from ground_truth/{model_type}/{class_name}/ to input/.
+
+    Pure logic function (no request/response handling) for testability.
+    """
+    from ..app import safe_subpath  # deferred to avoid circular import
+
+    gt_dir = training_path / model_type / "ground_truth" / class_name
+    input_dir = training_path / model_type / "input"
+    input_dir.mkdir(parents=True, exist_ok=True)
+
+    moved = 0
+    errors = []
+
+    for filename in filenames:
+        try:
+            src = safe_subpath(gt_dir, filename)
+        except ValueError:
+            errors.append(f"Invalid filename (path traversal): {filename}")
+            continue
+
+        if not src.exists():
+            errors.append(f"File not found: {filename}")
+            continue
+
+        dest = input_dir / src.name
+        if dest.exists():
+            counter = 1
+            stem, suffix = src.stem, src.suffix
+            while dest.exists():
+                dest = input_dir / f"{stem}_{counter}{suffix}"
+                counter += 1
+
+        try:
+            shutil.move(str(src), str(dest))
+            moved += 1
+        except Exception as e:
+            errors.append(f"Failed to move {filename}: {e}")
+
+    return {"moved_count": moved, "error_count": len(errors), "errors": errors}
+
+
+def bulk_delete_logic(training_path: Path, model_type: str, class_name: str, filenames: list[str]) -> dict:
+    """Delete files from ground_truth/{model_type}/{class_name}/.
+
+    Pure logic function (no request/response handling) for testability.
+    """
+    from ..app import safe_subpath  # deferred to avoid circular import
+
+    gt_dir = training_path / model_type / "ground_truth" / class_name
+    deleted = 0
+    errors = []
+
+    for filename in filenames:
+        try:
+            target = safe_subpath(gt_dir, filename)
+        except ValueError:
+            errors.append(f"Invalid filename (path traversal): {filename}")
+            continue
+
+        if not target.exists():
+            errors.append(f"File not found: {filename}")
+            continue
+
+        try:
+            target.unlink()
+            deleted += 1
+        except Exception as e:
+            errors.append(f"Failed to delete {filename}: {e}")
+
+    return {"deleted_count": deleted, "error_count": len(errors), "errors": errors}
+
+
+@router.post(
+    "/api/training-data/bulk-move-to-input",
+    tags=["Training Data"],
+    summary="Bulk move images to input queue",
+)
+async def bulk_move_to_input(request: dict):
+    """Move selected training images back to the input queue for re-labeling."""
+    try:
+        model_type = request.get("type")
+        if model_type not in _VALID_MODEL_TYPES:
+            return JSONResponse(
+                {"success": False, "message": "type must be 'digits' or 'arrows'"},
+                status_code=400,
+            )
+
+        class_name = request.get("class_name")
+        if not class_name or not _validate_path_component(class_name):
+            return JSONResponse(
+                {"success": False, "message": "Invalid or missing class_name"},
+                status_code=400,
+            )
+
+        filenames = request.get("filenames")
+        if not isinstance(filenames, list):
+            return JSONResponse(
+                {"success": False, "message": "'filenames' must be a list"},
+                status_code=400,
+            )
+
+        if not all(isinstance(f, str) and f for f in filenames):
+            return JSONResponse(
+                {"success": False, "message": "All filenames must be non-empty strings"},
+                status_code=400,
+            )
+
+        service = watermeter_service.get_service()
+        training_path = Path(service.config.get("low_confidence", {}).get("save_path", "/training"))
+
+        result = bulk_move_to_input_logic(training_path, model_type, class_name, filenames)
+
+        return JSONResponse(
+            {
+                "success": True,
+                "type": model_type,
+                "moved_count": result["moved_count"],
+                "error_count": result["error_count"],
+                "errors": result["errors"],
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error in bulk move to input: {e}")
+        return JSONResponse({"success": False, "message": f"Error: {str(e)}"}, status_code=500)
+
+
+@router.post(
+    "/api/training-data/bulk-delete",
+    tags=["Training Data"],
+    summary="Bulk delete training images",
+)
+async def bulk_delete(request: dict):
+    """Permanently delete selected training images."""
+    try:
+        model_type = request.get("type")
+        if model_type not in _VALID_MODEL_TYPES:
+            return JSONResponse(
+                {"success": False, "message": "type must be 'digits' or 'arrows'"},
+                status_code=400,
+            )
+
+        class_name = request.get("class_name")
+        if not class_name or not _validate_path_component(class_name):
+            return JSONResponse(
+                {"success": False, "message": "Invalid or missing class_name"},
+                status_code=400,
+            )
+
+        filenames = request.get("filenames")
+        if not isinstance(filenames, list):
+            return JSONResponse(
+                {"success": False, "message": "'filenames' must be a list"},
+                status_code=400,
+            )
+
+        if not all(isinstance(f, str) and f for f in filenames):
+            return JSONResponse(
+                {"success": False, "message": "All filenames must be non-empty strings"},
+                status_code=400,
+            )
+
+        service = watermeter_service.get_service()
+        training_path = Path(service.config.get("low_confidence", {}).get("save_path", "/training"))
+
+        result = bulk_delete_logic(training_path, model_type, class_name, filenames)
+
+        return JSONResponse(
+            {
+                "success": True,
+                "type": model_type,
+                "deleted_count": result["deleted_count"],
+                "error_count": result["error_count"],
+                "errors": result["errors"],
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error in bulk delete: {e}")
         return JSONResponse({"success": False, "message": f"Error: {str(e)}"}, status_code=500)
