@@ -315,11 +315,20 @@
 
             const rotation = getActiveRotation() * Math.PI / 180;
 
+            // Expand canvas to fit full rotated image (no corner clipping)
+            const cos_a = Math.abs(Math.cos(rotation));
+            const sin_a = Math.abs(Math.sin(rotation));
+            const new_w = Math.ceil(image.width * cos_a + image.height * sin_a);
+            const new_h = Math.ceil(image.height * cos_a + image.width * sin_a);
+
+            canvas.width = new_w;
+            canvas.height = new_h;
+
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.save();
             ctx.translate(canvas.width / 2, canvas.height / 2);
             ctx.rotate(rotation);
-            ctx.translate(-canvas.width / 2, -canvas.height / 2);
+            ctx.translate(-image.width / 2, -image.height / 2);
             ctx.drawImage(image, 0, 0);
             ctx.restore();
 
@@ -470,19 +479,24 @@
 
             const rotation = getActiveRotation() * Math.PI / 180;
 
-            // Draw rotated image
-            tempCanvas.width = canvas.width;
-            tempCanvas.height = canvas.height;
-            tempCtx.translate(canvas.width / 2, canvas.height / 2);
+            // Draw rotated image with expanded canvas (same logic as render())
+            const cos_a = Math.abs(Math.cos(rotation));
+            const sin_a = Math.abs(Math.sin(rotation));
+            const new_w = Math.ceil(image.width * cos_a + image.height * sin_a);
+            const new_h = Math.ceil(image.height * cos_a + image.width * sin_a);
+
+            tempCanvas.width = new_w;
+            tempCanvas.height = new_h;
+            tempCtx.translate(new_w / 2, new_h / 2);
             tempCtx.rotate(rotation);
-            tempCtx.translate(-canvas.width / 2, -canvas.height / 2);
+            tempCtx.translate(-image.width / 2, -image.height / 2);
             tempCtx.drawImage(image, 0, 0);
 
-            // Extract crop
-            const px = m.x * canvas.width;
-            const py = m.y * canvas.height;
-            const pw = m.width * canvas.width;
-            const ph = m.height * canvas.height;
+            // Extract crop using expanded canvas dimensions
+            const px = m.x * new_w;
+            const py = m.y * new_h;
+            const pw = m.width * new_w;
+            const ph = m.height * new_h;
 
             const cropCanvas = document.createElement('canvas');
             cropCanvas.width = pw;

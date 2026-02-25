@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 from .. import config_utils, watermeter_service
-from ..image_pipeline import apply_fisheye_correction
+from ..image_pipeline import apply_fisheye_correction, rotate_image_full
 from ..inference import get_inference_service
 
 logger = logging.getLogger(__name__)
@@ -80,12 +80,11 @@ def _load_corrected_reference():
     if fisheye_k1 != 0:
         img = apply_fisheye_correction(img, fisheye_k1)
 
-    # 2. Rotation
+    # 2. Rotation (expand canvas to avoid cropping corners)
     rotation = detection.get("rotation", 0)
     if rotation != 0:
-        center = (width / 2, height / 2)
-        matrix = cv2.getRotationMatrix2D(center, rotation, 1.0)
-        img = cv2.warpAffine(img, matrix, (width, height))
+        img = rotate_image_full(img, rotation)
+        height, width = img.shape[:2]
 
     return img, height, width
 
@@ -346,7 +345,10 @@ async def delete_fisheye():
 
 @router.post("/api/roi/fisheye-preview", tags=["ROI Setup"], summary="Preview fisheye correction")
 async def fisheye_preview(submission: FisheyeSubmission):
-    """Return the reference image with fisheye correction applied as JPEG."""
+    """Return the reference image with fisheye correction applied as JPEG.
+
+    Only applies fisheye correction — rotation is handled by the frontend via canvas transform.
+    """
     try:
         reference_path = Path("/data/reference_raw.jpg")
         if not reference_path.exists():
@@ -356,6 +358,7 @@ async def fisheye_preview(submission: FisheyeSubmission):
         if img is None:
             return JSONResponse({"success": False, "message": "Cannot read reference image"}, status_code=500)
 
+        # Apply fisheye correction only (rotation is applied by frontend canvas transform)
         if submission.fisheye_correction != 0:
             img = apply_fisheye_correction(img, submission.fisheye_correction)
 

@@ -25,7 +25,7 @@ def apply_fisheye_correction(image, k1):
         k1: radial distortion coefficient. Positive=barrel, negative=pincushion, 0=no change.
 
     Returns:
-        Corrected image (same shape).
+        Corrected image. Uses alpha=1 to preserve all source pixels (black borders may appear).
     """
     if k1 == 0:
         return image
@@ -34,7 +34,42 @@ def apply_fisheye_correction(image, k1):
     cx, cy = w / 2.0, h / 2.0
     camera_matrix = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], dtype=np.float64)
     dist_coeffs = np.array([k1, 0, 0, 0, 0], dtype=np.float64)
-    return cv2.undistort(image, camera_matrix, dist_coeffs)
+
+    # alpha=1 preserves all source pixels; no content is lost (black borders may appear at edges)
+    new_camera_matrix, _ = cv2.getOptimalNewCameraMatrix(
+        camera_matrix, dist_coeffs, (w, h), alpha=1, newImgSize=(w, h)
+    )
+
+    return cv2.undistort(image, camera_matrix, dist_coeffs, None, new_camera_matrix)
+
+
+def rotate_image_full(img, rotation_degrees):
+    """Rotate image by given degrees, expanding canvas to fit full rotated image.
+
+    Args:
+        img: BGR image as numpy array
+        rotation_degrees: Rotation angle in degrees (positive = counter-clockwise in OpenCV convention)
+
+    Returns:
+        Rotated image with expanded canvas (no corners clipped).
+    """
+    if rotation_degrees == 0:
+        return img
+    h, w = img.shape[:2]
+    center = (w / 2, h / 2)
+    matrix = cv2.getRotationMatrix2D(center, rotation_degrees, 1.0)
+
+    # Compute expanded bounding box to fit the full rotated image
+    cos_a = abs(np.cos(np.radians(rotation_degrees)))
+    sin_a = abs(np.sin(np.radians(rotation_degrees)))
+    new_w = int(np.ceil(w * cos_a + h * sin_a))
+    new_h = int(np.ceil(h * cos_a + w * sin_a))
+
+    # Adjust rotation matrix translation for the new (larger) canvas center
+    matrix[0, 2] += (new_w - w) / 2
+    matrix[1, 2] += (new_h - h) / 2
+
+    return cv2.warpAffine(img, matrix, (new_w, new_h))
 
 
 class ImagePipeline:
@@ -134,13 +169,12 @@ class ImagePipeline:
             img = apply_fisheye_correction(img, fisheye_k1)
             logger.debug(f"Applied fisheye correction: k1={fisheye_k1}")
 
-        # 2. Apply rotation if configured
+        # 2. Apply rotation if configured (expand canvas to avoid cropping corners)
         rotation = detection.get("rotation", 0)
         if rotation != 0:
-            center = (width / 2, height / 2)
-            matrix = cv2.getRotationMatrix2D(center, rotation, 1.0)
-            img = cv2.warpAffine(img, matrix, (width, height))
-            logger.debug(f"Applied rotation: {rotation}°")
+            img = rotate_image_full(img, rotation)
+            height, width = img.shape[:2]
+            logger.debug(f"Applied rotation: {rotation}° (expanded canvas to {width}x{height})")
 
         # 3. Marker-based alignment if markers are configured
         markers = detection.get("markers", [])
