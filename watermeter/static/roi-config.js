@@ -54,13 +54,12 @@
 
         let image = null;
         let imageLoaded = false;
-        let imageIsCorrected = true;  // true when image is the corrected version from backend (fisheye + rotation applied)
 
         // ============================================================
         // Overlay System
         // ============================================================
         const overlays = {
-            mode: null,  // 'rotation', 'marker_select', 'digit_select', 'analog_select', null
+            mode: null,  // 'marker_select', 'digit_select', 'analog_select', null
             mouse: { x: null, y: null, active: false },
             crosshair: { x: null, y: null },
 
@@ -233,14 +232,6 @@
             setOverlayMode(null);
         });
 
-        canvas.addEventListener('click', function(event) {
-            if (overlays.mode !== 'rotation') return;
-            const coords = getCanvasCoordinates(event);
-            overlays.crosshair.x = coords.x;
-            overlays.crosshair.y = coords.y;
-            render();
-        });
-
         // ============================================================
         // Drawing Functions
         // ============================================================
@@ -314,44 +305,12 @@
         function render() {
             if (!imageLoaded) return;
 
-            if (!imageIsCorrected) {
-                // Raw/fisheye-only image: apply canvas rotation transform for live preview
-                const rotation = getActiveRotation() * Math.PI / 180;
+            // Image is always the corrected version — display directly
+            canvas.width = image.width;
+            canvas.height = image.height;
 
-                // Expand canvas to fit full rotated image (no corner clipping)
-                const cos_a = Math.abs(Math.cos(rotation));
-                const sin_a = Math.abs(Math.sin(rotation));
-                const new_w = Math.ceil(image.width * cos_a + image.height * sin_a);
-                const new_h = Math.ceil(image.height * cos_a + image.width * sin_a);
-
-                canvas.width = new_w;
-                canvas.height = new_h;
-
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.save();
-                ctx.translate(canvas.width / 2, canvas.height / 2);
-                ctx.rotate(rotation);
-                ctx.translate(-image.width / 2, -image.height / 2);
-                ctx.drawImage(image, 0, 0);
-                ctx.restore();
-            } else {
-                // Corrected image (fisheye + rotation already applied by backend): display directly
-                canvas.width = image.width;
-                canvas.height = image.height;
-
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.drawImage(image, 0, 0);
-            }
-
-            // Draw rotation overlays
-            if (overlays.mode === 'rotation') {
-                if (overlays.crosshair.x !== null && overlays.crosshair.y !== null) {
-                    drawCrosshair(overlays.crosshair.x, overlays.crosshair.y, '#00ff00', 2, false);
-                }
-                if (overlays.mouse.active) {
-                    drawCrosshair(overlays.mouse.x, overlays.mouse.y, 'rgba(0, 255, 0, 0.5)', 1, true);
-                }
-            }
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(image, 0, 0);
 
             // Draw crosshair on mouseover in selection modes (no circle)
             if ((overlays.mode === 'marker_select' || overlays.mode === 'digit_select' || overlays.mode === 'analog_select') && overlays.mouse.active && !overlays.dragStart) {
@@ -479,12 +438,12 @@
             const m = overlays.markers[index];
             const preview = document.getElementById(`marker-${index + 1}-preview`);
 
-            if (!m.defined || !imageLoaded || !imageIsCorrected) {
+            if (!m.defined || !imageLoaded) {
                 preview.innerHTML = '<span class="no-selection">No selection</span>';
                 return;
             }
 
-            // Image is already corrected (fisheye + rotation applied by backend)
+            // Image is always corrected (fisheye + rotation applied by backend)
             // Crop directly from canvas dimensions (which match the corrected image)
             const px = m.x * canvas.width;
             const py = m.y * canvas.height;
@@ -710,13 +669,13 @@
             const preview = document.getElementById(`digit-${index + 1}-preview`);
             const result = document.getElementById(`digit-${index + 1}-result`);
 
-            if (!d.defined || !imageLoaded || !imageIsCorrected) {
+            if (!d.defined || !imageLoaded) {
                 preview.innerHTML = '<span class="no-selection">No selection</span>';
                 result.style.display = 'none';
                 return;
             }
 
-            // Image is already corrected (fisheye + rotation applied by backend)
+            // Image is always corrected (fisheye + rotation applied by backend)
             // Crop directly from canvas dimensions
             const px = d.x * canvas.width;
             const py = d.y * canvas.height;
@@ -1104,13 +1063,13 @@
             const preview = document.getElementById(`analog-${index + 1}-preview`);
             const result = document.getElementById(`analog-${index + 1}-result`);
 
-            if (!a.defined || !imageLoaded || !imageIsCorrected) {
+            if (!a.defined || !imageLoaded) {
                 preview.innerHTML = '<span class="no-selection">No selection</span>';
                 result.style.display = 'none';
                 return;
             }
 
-            // Image is already corrected (fisheye + rotation applied by backend)
+            // Image is always corrected (fisheye + rotation applied by backend)
             // Crop directly from canvas dimensions
             const px = a.x * canvas.width;
             const py = a.y * canvas.height;
@@ -1317,7 +1276,6 @@
         const savedFisheyeDisplay = document.getElementById('saved-fisheye-value');
 
         let savedFisheye = null;
-        let fisheyeDebounceTimer = null;
 
         function getTotalRotation() {
             const coarse = parseFloat(rotationCoarse.value) || 0;
@@ -1325,33 +1283,29 @@
             return coarse + fine;
         }
 
-        function getActiveRotation() {
-            if (savedRotation !== null) return savedRotation;
-            return getTotalRotation();
-        }
+        let correctionDebounceTimer = null;
 
-        function getActiveFisheye() {
-            if (savedFisheye !== null) return savedFisheye;
-            return parseFloat(fisheyeSlider.value) || 0;
-        }
+        async function fetchCorrectionPreview() {
+            const fisheye = parseFloat(fisheyeSlider.value) || 0;
+            const rotation = getTotalRotation();
 
-        function updateFisheyeValue() {
-            const val = parseFloat(fisheyeSlider.value) || 0;
-            fisheyeValueDisplay.textContent = val.toFixed(2);
+            // Skip server call if both are zero — load raw image directly
+            if (fisheye === 0 && rotation === 0) {
+                const rawImg = new Image();
+                rawImg.onload = () => {
+                    image = rawImg;
+                    imageLoaded = true;
+                    render();
+                };
+                rawImg.src = '/api/roi/reference-image?t=' + Date.now();
+                return;
+            }
 
-            // Debounced server-side preview
-            clearTimeout(fisheyeDebounceTimer);
-            fisheyeDebounceTimer = setTimeout(() => fetchFisheyePreview(val), 300);
-        }
-
-        async function fetchFisheyePreview(k1) {
             try {
-                // During rotation mode, skip rotation in preview (frontend applies it as canvas transform)
-                const includeRotation = overlays.mode !== 'rotation';
-                const response = await fetch('/api/roi/fisheye-preview', {
+                const response = await fetch('/api/roi/correction-preview', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ fisheye_correction: k1, include_rotation: includeRotation })
+                    body: JSON.stringify({ fisheye_correction: fisheye, rotation: rotation })
                 });
                 const data = await response.json();
                 if (data.success && data.image) {
@@ -1359,16 +1313,24 @@
                     newImg.onload = () => {
                         image = newImg;
                         imageLoaded = true;
-                        // In rotation mode the canvas transform still applies; outside rotation mode
-                        // the fisheye preview includes the saved rotation from the backend.
-                        imageIsCorrected = overlays.mode !== 'rotation';
                         render();
                     };
                     newImg.src = data.image;
                 }
             } catch (error) {
-                console.error('Fisheye preview error:', error);
+                console.error('Correction preview error:', error);
             }
+        }
+
+        function debouncedCorrectionPreview() {
+            clearTimeout(correctionDebounceTimer);
+            correctionDebounceTimer = setTimeout(fetchCorrectionPreview, 300);
+        }
+
+        function updateFisheyeValue() {
+            const val = parseFloat(fisheyeSlider.value) || 0;
+            fisheyeValueDisplay.textContent = val.toFixed(2);
+            debouncedCorrectionPreview();
         }
 
         function resetFisheyeSlider() {
@@ -1379,7 +1341,7 @@
         function updateTotalRotation() {
             const total = getTotalRotation();
             totalRotationDisplay.textContent = total.toFixed(1);
-            render();
+            debouncedCorrectionPreview();
         }
 
         function showRotationEditMode() {
@@ -1387,24 +1349,11 @@
             rotationSaved.style.display = 'none';
             document.getElementById('step-rotation').style.display = 'block';
             savedRotation = null;
-            setOverlayMode('rotation');
+            setOverlayMode(null);  // No rotation overlay mode needed — slider-based
             showMarkersDisabledMode();
             updateCompletedSteps();
-            // Switch to raw image for live rotation preview
-            const rawImg = new Image();
-            rawImg.onload = () => {
-                image = rawImg;
-                imageLoaded = true;
-                imageIsCorrected = false;  // Set after image swap to avoid race with stale render()
-                // Apply fisheye on top if configured (without rotation — canvas handles that)
-                const activeFisheye = getActiveFisheye();
-                if (activeFisheye !== 0) {
-                    fetchFisheyePreview(activeFisheye);
-                } else {
-                    render();
-                }
-            };
-            rawImg.src = '/api/roi/reference-image?t=' + Date.now();
+            // Fetch correction preview with current slider values
+            fetchCorrectionPreview();
         }
 
         function showRotationSavedMode() {
@@ -1472,26 +1421,21 @@
 
         async function restartRotation() {
             try {
-                // Delete both fisheye and rotation
                 await fetch('/api/roi/fisheye', { method: 'DELETE' });
                 const response = await fetch('/api/roi/rotation', { method: 'DELETE' });
                 const data = await response.json();
 
                 if (data.success) {
-                    const total = savedRotation || 0;
-                    rotationCoarse.value = Math.trunc(total);
-                    rotationFine.value = (total - Math.trunc(total)).toFixed(1);
-                    updateTotalRotation();
-
-                    // Reset fisheye slider to zero (clear stale savedFisheye state)
-                    savedFisheye = null;
+                    rotationCoarse.value = 0;
+                    rotationFine.value = 0;
                     fisheyeSlider.value = 0;
                     fisheyeValueDisplay.textContent = '0.00';
+                    savedFisheye = null;
 
-                    // showRotationEditMode() will load the raw image for live rotation preview
                     showRotationEditMode();
                 }
             } catch (error) {
+                console.error('Error restarting rotation:', error);
                 alert('Error: ' + error.message);
             }
         }
@@ -1500,37 +1444,20 @@
         function changeRotation() {
             const total = savedRotation || 0;
             rotationCoarse.value = Math.trunc(total);
-            rotationFine.value = (total - Math.trunc(total)).toFixed(1);
+            rotationFine.value = ((total - Math.trunc(total)) * 10).toFixed(0) / 10;
             savedRotation = null;
             updateTotalRotation();
 
-            // Restore fisheye slider (updateFisheyeValue will debounce-fetch fisheye preview)
             fisheyeSlider.value = savedFisheye || 0;
             savedFisheye = null;
+            fisheyeValueDisplay.textContent = (parseFloat(fisheyeSlider.value) || 0).toFixed(2);
 
             rotationEdit.style.display = 'block';
             rotationSaved.style.display = 'none';
             document.getElementById('step-rotation').style.display = 'block';
-            setOverlayMode('rotation');
-            // Switch to raw image for live rotation preview
-            const rawImg = new Image();
-            rawImg.onload = () => {
-                image = rawImg;
-                imageLoaded = true;
-                imageIsCorrected = false;  // Set after image swap to avoid race with stale render()
-                // Apply fisheye on top if needed (fetches fisheye preview without rotation)
-                const fisheyeVal = parseFloat(fisheyeSlider.value) || 0;
-                if (fisheyeVal !== 0) {
-                    fetchFisheyePreview(fisheyeVal);
-                } else {
-                    render();
-                }
-                // Update fisheye display value
-                fisheyeValueDisplay.textContent = (parseFloat(fisheyeSlider.value) || 0).toFixed(2);
-            };
-            rawImg.src = '/api/roi/reference-image?t=' + Date.now();
-            // Keep markers/digits/analogs visible but will need to re-save rotation first
+            setOverlayMode(null);
             updateCompletedSteps();
+            // Preview is already triggered by updateTotalRotation() above
         }
 
         rotationCoarse.addEventListener('input', updateTotalRotation);
@@ -1572,7 +1499,6 @@
             loadingIndicator.style.color = 'white';
 
             image = new Image();
-            imageIsCorrected = true;
 
             image.onload = function() {
                 imageLoaded = true;

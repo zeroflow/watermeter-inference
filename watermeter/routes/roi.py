@@ -33,6 +33,11 @@ class FisheyeSubmission(BaseModel):
     include_rotation: bool = True
 
 
+class CorrectionPreviewSubmission(BaseModel):
+    fisheye_correction: float = 0
+    rotation: float = 0
+
+
 class RoiBounds(BaseModel):
     x: float
     y: float
@@ -397,6 +402,39 @@ async def fisheye_preview(submission: FisheyeSubmission):
 
     except Exception as e:
         logger.error(f"Error generating fisheye preview: {e}")
+        return JSONResponse({"success": False, "message": f"Error: {str(e)}"}, status_code=500)
+
+
+@router.post("/api/roi/correction-preview", tags=["ROI Setup"], summary="Preview image corrections")
+async def correction_preview(submission: CorrectionPreviewSubmission):
+    """Return the reference image with fisheye and rotation applied as preview.
+
+    Uses the provided values directly (not from config) so the frontend can
+    preview adjustments before saving.
+    """
+    try:
+        reference_path = Path("/data/reference_raw.jpg")
+        if not reference_path.exists():
+            return JSONResponse({"success": False, "message": "No reference image"}, status_code=404)
+
+        img = cv2.imread(str(reference_path))
+        if img is None:
+            return JSONResponse({"success": False, "message": "Cannot read reference image"}, status_code=500)
+
+        # Apply fisheye correction
+        if submission.fisheye_correction != 0:
+            img = apply_fisheye_correction(img, submission.fisheye_correction)
+
+        # Apply rotation with expanded canvas
+        if submission.rotation != 0:
+            img = rotate_image_full(img, submission.rotation)
+
+        _, buffer = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        encoded = base64.b64encode(buffer).decode('utf-8')
+        return JSONResponse({"success": True, "image": f"data:image/jpeg;base64,{encoded}"})
+
+    except Exception as e:
+        logger.error(f"Error generating correction preview: {e}")
         return JSONResponse({"success": False, "message": f"Error: {str(e)}"}, status_code=500)
 
 
