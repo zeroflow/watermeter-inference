@@ -264,9 +264,6 @@ async function bulkDelete() {
     var btn = document.getElementById('btn-bulk-delete');
     if (btn.disabled || selectedImages.size === 0) return;
 
-    var count = selectedImages.size;
-    if (!confirm('Permanently delete ' + count + ' image(s)? This cannot be undone.')) return;
-
     var filenames = Array.from(selectedImages);
     btn.disabled = true;
     btn.textContent = 'Deleting...';
