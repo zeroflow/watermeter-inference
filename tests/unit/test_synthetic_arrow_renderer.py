@@ -21,7 +21,7 @@ class TestArrowRenderer:
         from watermeter.synthetic_generator import ArrowRenderer
         renderer = ArrowRenderer()
         img = renderer.render("0.0")
-        assert img.size == (80, 80)
+        assert img.size == (224, 224)
 
     def test_render_rgb_mode(self):
         from watermeter.synthetic_generator import ArrowRenderer
@@ -36,7 +36,7 @@ class TestArrowRenderer:
             for j in range(10):
                 cls = f"{i}.{j}"
                 img = renderer.render(cls)
-                assert img.size == (80, 80)
+                assert img.size == (224, 224)
 
     def test_render_has_red_pixels(self):
         from watermeter.synthetic_generator import ArrowRenderer

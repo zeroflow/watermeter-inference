@@ -115,7 +115,7 @@ class ArrowCompositor:
 
 
 def build_arrow_compositor(
-    photo_path: str, arrow_class: str, target_size: int = 80
+    photo_path: str, arrow_class: str, target_size: int = 224
 ) -> ArrowCompositor:
     """Build an ArrowCompositor from a real arrow photo.
 

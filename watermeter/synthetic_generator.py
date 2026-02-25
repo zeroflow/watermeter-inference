@@ -172,7 +172,7 @@ class DigitCompositor:
 
 
 class ArrowRenderer:
-    SIZE = 80
+    SIZE = 224
 
     def __init__(self):
         self._num_font = _load_font(max(8, int(self.SIZE * 0.12)))
@@ -258,8 +258,8 @@ class TransformPipeline:
 
         # --- Geometric transforms (OpenCV) ---
         # X/Y offset
-        if self._rng.random() < 0.8:
-            max_shift = 3 if mode == "digit" else 5
+        if self._rng.random() < (0.8 if mode == "digit" else 0.6):
+            max_shift = 3 if mode == "digit" else 3
             dx = self._rng.randint(-max_shift, max_shift)
             dy = self._rng.randint(-max_shift, max_shift)
             M = np.float32([[1, 0, dx], [0, 1, dy]])
@@ -267,8 +267,8 @@ class TransformPipeline:
                                  borderMode=cv2.BORDER_REPLICATE)
 
         # Perspective warp
-        if self._rng.random() < 0.7:
-            strength = 3 if mode == "digit" else 8
+        if self._rng.random() < (0.7 if mode == "digit" else 0.5):
+            strength = 3 if mode == "digit" else 4
             h, w = arr.shape[:2]
             pts1 = np.float32([[0, 0], [w, 0], [0, h], [w, h]])
             pts2 = np.float32([
@@ -281,9 +281,9 @@ class TransformPipeline:
             arr = cv2.warpPerspective(arr, M, (w, h), borderMode=cv2.BORDER_REPLICATE)
 
         # Fisheye / barrel distortion (arrows only)
-        if mode == "arrow" and self._rng.random() < 0.8:
+        if mode == "arrow" and self._rng.random() < 0.3:
             h, w = arr.shape[:2]
-            k1 = self._rng.uniform(0.1, 0.4)
+            k1 = self._rng.uniform(0.0, 0.1)
             cx, cy = w / 2, h / 2
             Y, X = np.mgrid[0:h, 0:w]
             nx = (X.astype(np.float32) - cx) / cx
@@ -356,8 +356,8 @@ class TransformPipeline:
             arr = np.clip(arr.astype(np.float32) + noise, 0, 255).astype(np.uint8)
 
         # Blur
-        if self._rng.random() < 0.5:
-            sigma = self._rng.uniform(0.3, 1.5)
+        if self._rng.random() < 0.4:
+            sigma = self._rng.uniform(0.2, 0.8)
             ksize = int(sigma * 4) | 1
             if ksize >= 3:
                 arr = cv2.GaussianBlur(arr, (ksize, ksize), sigma)

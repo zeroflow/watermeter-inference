@@ -17,7 +17,7 @@ if 'watermeter.photo_master' in sys.modules:
 
 def _make_fake_arrow():
     """Create a fake arrow image: gray background + red triangle."""
-    img = Image.new("RGB", (80, 80), (200, 200, 200))
+    img = Image.new("RGB", (224, 224), (200, 200, 200))
     arr = np.array(img)
     # Red triangle-like region in center-top area
     for y in range(15, 45):
@@ -31,7 +31,7 @@ class TestPointerExtractor:
         from watermeter.photo_master import extract_pointer_mask
         img = _make_fake_arrow()
         mask = extract_pointer_mask(img)
-        assert mask.shape == (80, 80)
+        assert mask.shape == (224, 224)
         assert mask.dtype == np.uint8
         assert set(np.unique(mask)).issubset({0, 255})
 
@@ -47,7 +47,7 @@ class TestPointerExtractor:
         mask = extract_pointer_mask(img)
         bg = inpaint_background(img, mask)
         assert isinstance(bg, Image.Image)
-        assert bg.size == (80, 80)
+        assert bg.size == (224, 224)
         arr = np.array(bg)
         red_pixels = (arr[:, :, 0] > 150) & (arr[:, :, 1] < 80) & (arr[:, :, 2] < 80)
         assert red_pixels.sum() < 10
@@ -59,14 +59,14 @@ class TestPointerExtractor:
         template = extract_pointer_template(img, mask)
         assert isinstance(template, Image.Image)
         assert template.mode == "RGBA"
-        assert template.size == (80, 80)
+        assert template.size == (224, 224)
 
 
 class TestArrowCompositor:
     def _make_compositor(self):
         from watermeter.photo_master import ArrowCompositor
-        bg = Image.new("RGB", (80, 80), (200, 200, 200))
-        template = Image.new("RGBA", (80, 80), (0, 0, 0, 0))
+        bg = Image.new("RGB", (224, 224), (200, 200, 200))
+        template = Image.new("RGBA", (224, 224), (0, 0, 0, 0))
         t_arr = np.array(template)
         t_arr[10:40, 38:42, :] = [200, 40, 40, 255]
         template = Image.fromarray(t_arr, "RGBA")
@@ -77,7 +77,7 @@ class TestArrowCompositor:
         result = compositor.render("5.0")
         assert isinstance(result, Image.Image)
         assert result.mode == "RGB"
-        assert result.size == (80, 80)
+        assert result.size == (224, 224)
 
     def test_composite_all_classes(self):
         compositor = self._make_compositor()
@@ -85,7 +85,7 @@ class TestArrowCompositor:
             for j in range(10):
                 cls = f"{i}.{j}"
                 result = compositor.render(cls)
-                assert result.size == (80, 80)
+                assert result.size == (224, 224)
 
     def test_different_angles_produce_different_images(self):
         compositor = self._make_compositor()
@@ -97,7 +97,7 @@ class TestArrowCompositor:
 class TestBuildArrowCompositor:
     def test_build_from_photo_path(self, tmp_path):
         from watermeter.photo_master import build_arrow_compositor
-        img = Image.new("RGB", (80, 80), (200, 200, 200))
+        img = Image.new("RGB", (224, 224), (200, 200, 200))
         arr = np.array(img)
         arr[15:45, 35:45] = [200, 40, 40]
         Image.fromarray(arr).save(tmp_path / "test_arrow.jpg")
@@ -105,5 +105,5 @@ class TestBuildArrowCompositor:
         compositor = build_arrow_compositor(str(tmp_path / "test_arrow.jpg"), "9.0")
         assert hasattr(compositor, "render")
         result = compositor.render("5.0")
-        assert result.size == (80, 80)
+        assert result.size == (224, 224)
         assert result.mode == "RGB"
