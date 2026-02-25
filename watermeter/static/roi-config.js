@@ -1333,9 +1333,13 @@
             debouncedCorrectionPreview();
         }
 
-        function resetFisheyeSlider() {
+        function resetStep1() {
+            rotationCoarse.value = 0;
+            rotationFine.value = 0;
             fisheyeSlider.value = 0;
-            updateFisheyeValue();
+            fisheyeValueDisplay.textContent = '0.00';
+            totalRotationDisplay.textContent = '0.0';
+            debouncedCorrectionPreview();
         }
 
         function updateTotalRotation() {
@@ -1460,7 +1464,10 @@
             // Preview is already triggered by updateTotalRotation() above
         }
 
-        rotationCoarse.addEventListener('input', updateTotalRotation);
+        rotationCoarse.addEventListener('input', () => {
+            rotationFine.value = 0;
+            updateTotalRotation();
+        });
         rotationFine.addEventListener('input', updateTotalRotation);
         fisheyeSlider.addEventListener('input', updateFisheyeValue);
 

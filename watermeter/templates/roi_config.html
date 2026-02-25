@@ -54,23 +54,6 @@
             <section id="step-rotation" class="roi-step">
                 <div id="rotation-edit" class="step-content">
                     <h2>Step 1: Image Correction</h2>
-                    <div class="fisheye-controls" style="margin-bottom: 1rem;">
-                        <label for="fisheye-slider">Lens Correction</label>
-                        <div style="display: flex; align-items: center; gap: 0.5rem;">
-                            <span class="unit" style="font-size: 0.8rem;">Barrel</span>
-                            <input type="range" id="fisheye-slider" min="-1" max="1" step="0.01" value="0"
-                                   style="flex: 1;">
-                            <span class="unit" style="font-size: 0.8rem;">Pincushion</span>
-                        </div>
-                        <div style="text-align: center; margin-top: 0.25rem;">
-                            Value: <span id="fisheye-value">0.00</span>
-                            <button class="btn btn-small btn-secondary" id="fisheye-reset-btn"
-                                    onclick="resetFisheyeSlider()" style="margin-left: 0.5rem; font-size: 0.75rem;">
-                                Reset
-                            </button>
-                        </div>
-                    </div>
-                    <hr style="margin: 0.75rem 0; border-color: rgba(255,255,255,0.1);">
                     <div class="rotation-controls" style="margin-bottom: 1rem;">
                         <label>Rotation</label>
                         <div style="margin-bottom: 0.5rem;">
@@ -92,6 +75,21 @@
                         <div style="text-align: center; margin-top: 0.25rem;">
                             Total: <span id="total-rotation">0.0</span>&deg;
                         </div>
+                    </div>
+                    <div class="fisheye-controls" style="margin-top: 1.25rem; margin-bottom: 1rem;">
+                        <label for="fisheye-slider">Lens Correction</label>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <span class="unit" style="font-size: 0.8rem;">Barrel</span>
+                            <input type="range" id="fisheye-slider" min="-1" max="1" step="0.01" value="0"
+                                   style="flex: 1;">
+                            <span class="unit" style="font-size: 0.8rem;">Pincushion</span>
+                        </div>
+                        <div style="text-align: center; margin-top: 0.25rem;">
+                            Value: <span id="fisheye-value">0.00</span>
+                        </div>
+                    </div>
+                    <div class="step-actions" style="margin-top: 1rem;">
+                        <button class="btn btn-secondary" onclick="resetStep1()">Reset</button>
                         <button id="save-rotation-btn" class="btn btn-primary" onclick="saveRotation()">Save</button>
                     </div>
                 </div>

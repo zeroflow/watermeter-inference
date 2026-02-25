@@ -48,7 +48,7 @@ def rotate_image_full(img, rotation_degrees):
 
     Args:
         img: BGR image as numpy array
-        rotation_degrees: Rotation angle in degrees (positive = counter-clockwise in OpenCV convention)
+        rotation_degrees: Rotation angle in degrees (positive = clockwise, negative = counter-clockwise)
 
     Returns:
         Rotated image with expanded canvas (no corners clipped).
@@ -57,7 +57,9 @@ def rotate_image_full(img, rotation_degrees):
         return img
     h, w = img.shape[:2]
     center = (w / 2, h / 2)
-    matrix = cv2.getRotationMatrix2D(center, rotation_degrees, 1.0)
+    # Negate angle: OpenCV treats positive as CCW, but user expects positive = CW
+    angle_cv = -rotation_degrees
+    matrix = cv2.getRotationMatrix2D(center, angle_cv, 1.0)
 
     # Compute expanded bounding box to fit the full rotated image
     cos_a = abs(np.cos(np.radians(rotation_degrees)))
