@@ -1593,7 +1593,10 @@
 
             <!-- Model List -->
             <section class="section" id="models-section">
-                <h2>Models</h2>
+                <div class="training-header">
+                    <h2>Models</h2>
+                    <button class="btn btn-benchmark" id="benchmark-all-btn" onclick="startBenchmarkAll()">Benchmark All</button>
+                </div>
                 <div class="tabs">
                     <button class="tab active" data-type="all" onclick="filterModels('all')">All</button>
                     <button class="tab" data-type="digits" onclick="filterModels('digits')">Digits</button>
