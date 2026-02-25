@@ -1338,12 +1338,16 @@ function renderModels() {
         if (bm && bm.accuracy !== undefined) {
             const accVal = bm.accuracy;
             const accClass = accVal >= 90 ? 'good' : accVal >= 70 ? 'warning' : 'bad';
-            const tooltip = bm.mae !== undefined ? ` title="MAE: ${bm.mae}, RMSE: ${bm.rmse}"` : '';
+            const tooltip = bm.mae !== undefined
+                ? ` title="RMSE: ${bm.rmse}"`
+                : '';
             accuracyHtml = `<span class="accuracy-cell ${accClass}"${tooltip}>${accVal}%</span>`;
-        } else if (bm && bm.within_half_pct !== undefined) {
-            const accVal = bm.within_half_pct;
-            const accClass = accVal >= 90 ? 'good' : accVal >= 70 ? 'warning' : 'bad';
-            accuracyHtml = `<span class="accuracy-cell ${accClass}" title="MAE: ${bm.mae}, RMSE: ${bm.rmse}">${accVal}%</span>`;
+
+            // For continuous mode: show MAE + StdDev on second line
+            if (bm.mae !== undefined) {
+                const stdPart = bm.error_std !== undefined ? ` · σ${bm.error_std}` : '';
+                accuracyHtml += `<br><span class="accuracy-detail">MAE ${bm.mae}${stdPart}</span>`;
+            }
         }
 
         // Inference time cell

@@ -1150,6 +1150,7 @@ class TrainingManager:
                             "training_mode": "continuous",
                             "mae": result["mae"],
                             "rmse": result["rmse"],
+                            "error_std": result["error_std"],
                             "within_half_pct": result["within_half_pct"],
                             "within_one_pct": result["within_one_pct"],
                             "accuracy": result["within_half_pct"],  # Alias for UI compatibility
@@ -1330,6 +1331,7 @@ class TrainingManager:
 
             mae = np.mean(errors) if errors else 0
             rmse = np.sqrt(np.mean([e**2 for e in errors])) if errors else 0
+            error_std = np.std(errors) if errors else 0
             within_half = sum(1 for e in errors if e < 0.5) / len(errors) * 100 if errors else 0
             within_one = sum(1 for e in errors if e < 1.0) / len(errors) * 100 if errors else 0
 
@@ -1354,6 +1356,7 @@ class TrainingManager:
                 "training_mode": "continuous",
                 "mae": round(float(mae), 4),
                 "rmse": round(float(rmse), 4),
+                "error_std": round(float(error_std), 4),
                 "within_half_pct": round(within_half, 2),
                 "within_one_pct": round(within_one, 2),
                 "accuracy": round(within_half, 2),  # Alias for UI compatibility
