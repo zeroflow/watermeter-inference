@@ -9,7 +9,7 @@ import cv2
 import httpx
 import numpy as np
 from fastapi import APIRouter, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel
 
 from .. import config_utils, watermeter_service
@@ -30,6 +30,7 @@ class RotationSubmission(BaseModel):
 
 class FisheyeSubmission(BaseModel):
     fisheye_correction: float
+    include_rotation: bool = True
 
 
 class RoiBounds(BaseModel):
@@ -60,15 +61,16 @@ class AnalogsSubmission(BaseModel):
 def _load_corrected_reference():
     """Load reference image with fisheye correction and rotation applied.
 
-    Returns (img, height, width) or None.
+    Returns (img, height, width).
+    Raises FileNotFoundError if the reference image does not exist or cannot be read.
     """
     reference_path = Path("/data/reference_raw.jpg")
     if not reference_path.exists():
-        return None
+        raise FileNotFoundError(f"Reference image not found: {reference_path}")
 
     img = cv2.imread(str(reference_path))
     if img is None:
-        return None
+        raise FileNotFoundError(f"Reference image could not be read: {reference_path}")
 
     height, width = img.shape[:2]
 
@@ -193,6 +195,25 @@ async def set_image_source(request: Request):
     except Exception as e:
         logger.error(f"Error setting image source: {e}")
         return JSONResponse({"success": False, "message": f"Error: {str(e)}"}, status_code=500)
+
+
+@router.get("/api/roi/corrected-reference-image", tags=["ROI Setup"], summary="Get corrected reference image")
+async def corrected_reference_image():
+    """Return the reference image with all corrections applied (fisheye + rotation with expanded canvas).
+
+    This is the authoritative corrected image that the frontend displays for ROI selection.
+    Coordinates captured on this image match the backend's _load_corrected_reference() output.
+    """
+    try:
+        img, height, width = _load_corrected_reference()
+
+        _, buffer = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 92])
+        return Response(content=buffer.tobytes(), media_type="image/jpeg")
+    except FileNotFoundError:
+        return JSONResponse({"error": "No reference image found"}, status_code=404)
+    except Exception as e:
+        logger.error(f"Error generating corrected reference image: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @router.get(
@@ -345,9 +366,9 @@ async def delete_fisheye():
 
 @router.post("/api/roi/fisheye-preview", tags=["ROI Setup"], summary="Preview fisheye correction")
 async def fisheye_preview(submission: FisheyeSubmission):
-    """Return the reference image with fisheye correction applied as JPEG.
+    """Return the reference image with fisheye correction and rotation applied as JPEG.
 
-    Only applies fisheye correction — rotation is handled by the frontend via canvas transform.
+    Applies both fisheye correction and rotation so the preview matches the actual pipeline output.
     """
     try:
         reference_path = Path("/data/reference_raw.jpg")
@@ -358,9 +379,17 @@ async def fisheye_preview(submission: FisheyeSubmission):
         if img is None:
             return JSONResponse({"success": False, "message": "Cannot read reference image"}, status_code=500)
 
-        # Apply fisheye correction only (rotation is applied by frontend canvas transform)
+        # Apply fisheye correction
         if submission.fisheye_correction != 0:
             img = apply_fisheye_correction(img, submission.fisheye_correction)
+
+        # Apply rotation if requested (skip during live rotation adjustment to avoid double-rotation)
+        if submission.include_rotation:
+            service = watermeter_service.get_service()
+            detection = service.config.get("detection", {})
+            rotation = detection.get("rotation", 0)
+            if rotation != 0:
+                img = rotate_image_full(img, rotation)
 
         _, buffer = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 85])
         encoded = base64.b64encode(buffer).decode('utf-8')
@@ -380,13 +409,7 @@ async def fisheye_preview(submission: FisheyeSubmission):
 async def save_markers(submission: MarkersSubmission):
     """Save marker boxes to config and extract marker images."""
     try:
-        result = _load_corrected_reference()
-        if result is None:
-            return JSONResponse(
-                {"success": False, "message": "Reference image not found or failed to load"}, status_code=400
-            )
-
-        img, height, width = result
+        img, height, width = _load_corrected_reference()
 
         # Extract and save marker images
         data_path = Path("/data")
@@ -510,13 +533,7 @@ async def get_marker_image(marker_id: int):
 async def save_digits(submission: DigitsSubmission):
     """Save digit ROIs to config and extract digit images."""
     try:
-        result = _load_corrected_reference()
-        if result is None:
-            return JSONResponse(
-                {"success": False, "message": "Reference image not found or failed to load"}, status_code=400
-            )
-
-        img, height, width = result
+        img, height, width = _load_corrected_reference()
 
         # Extract and save digit images
         data_path = Path("/data")
@@ -632,13 +649,7 @@ async def get_digit_image(digit_id: int):
 async def preview_digit_inference(submission: RoiBounds):
     """Run inference on a single ROI and return the prediction."""
     try:
-        result = _load_corrected_reference()
-        if result is None:
-            return JSONResponse(
-                {"success": False, "message": "Reference image not found or failed to load"}, status_code=400
-            )
-
-        img, height, width = result
+        img, height, width = _load_corrected_reference()
 
         px_x = int(submission.x * width)
         px_y = int(submission.y * height)
@@ -683,13 +694,7 @@ async def preview_digit_inference(submission: RoiBounds):
 async def save_analogs(submission: AnalogsSubmission):
     """Save analog ROIs to config and extract analog images."""
     try:
-        result = _load_corrected_reference()
-        if result is None:
-            return JSONResponse(
-                {"success": False, "message": "Reference image not found or failed to load"}, status_code=400
-            )
-
-        img, height, width = result
+        img, height, width = _load_corrected_reference()
 
         data_path = Path("/data")
         rois_data = []
@@ -803,13 +808,7 @@ async def get_analog_image(analog_id: int):
 async def preview_analog_inference(submission: RoiBounds):
     """Run inference on a single analog ROI and return the prediction."""
     try:
-        result = _load_corrected_reference()
-        if result is None:
-            return JSONResponse(
-                {"success": False, "message": "Reference image not found or failed to load"}, status_code=400
-            )
-
-        img, height, width = result
+        img, height, width = _load_corrected_reference()
 
         px_x = int(submission.x * width)
         px_y = int(submission.y * height)
