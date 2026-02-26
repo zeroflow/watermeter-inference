@@ -1,6 +1,6 @@
 # Codebase Map
 
-> Auto-generated reference. Line numbers as of 2026-02-18. Updated with one-shot CLI mode files.
+> Auto-generated reference. Line numbers as of 2026-02-18. Updated with one-shot CLI mode files. Updated 2026-02-26 with DataCollector module.
 
 ## Python Package: `watermeter/`
 
@@ -243,7 +243,7 @@
 | Line | Type | Name | Description |
 |------|------|------|-------------|
 | 243 | class | `WatermeterService` | Main service orchestrating all subsystems |
-| 246 | func | `__init__(config_path)` | Loads config, delegates to component classes (MeterState, MqttPublisher, ConfirmationManager, CorrectionEngine, etc.) |
+| 246 | func | `__init__(config_path)` | Loads config, delegates to component classes (MeterState, MqttPublisher, ConfirmationManager, CorrectionEngine, DataCollector, etc.); initializes `self._data_collector` from `inference.data_collection` config (L90-97) |
 | 405 | func | `fetch_images()` | Delegates to ImagePipeline |
 | 410 | func | `fetch_whole_image()` | Delegates to ImagePipeline |
 | 415 | func | `process_whole_image(img_bytes)` | Delegates to ImagePipeline |
@@ -256,7 +256,7 @@
 | 566 | func | `get_confirmation_status()` | Delegation wrapper → ConfirmationManager.get_status() |
 | 572 | func | `correct_predictions(predictions, ...)` | Delegation wrapper → CorrectionEngine.correct_predictions() |
 | 578 | func | `save_low_confidence(predictions, images)` | Delegates to LowConfidenceCapture |
-| 584 | func | `process_reading()` | Main pipeline: fetch, infer, validate, correct, publish |
+| 584 | func | `process_reading()` | Main pipeline: fetch, infer, validate, correct, publish; calls `self._data_collector.collect()` per prediction if data collection enabled (L562-569) |
 | 836 | func | `publish_to_mqtt(value, warnings, predictions, ...)` | Delegation wrapper → MqttPublisher.publish_to_mqtt() |
 | 842 | func | `reset_previous_value()` | Clear previous value from state |
 | 867 | func | `set_manual_value(value)` | Override meter value manually |
@@ -361,7 +361,7 @@
 
 ---
 
-### `watermeter/config_utils.py` (508 lines) -- YAML config with comment preservation
+### `watermeter/config_utils.py` (572 lines) -- YAML config with comment preservation
 
 | Line | Type | Name | Description |
 |------|------|------|-------------|
@@ -374,9 +374,31 @@
 | 94 | func | `dump_config_string(config)` | Serialize config dict to YAML string |
 | 109 | func | `update_config(path, updater)` | Load, apply updater function, save |
 | 129 | func | `validate_config(yaml_string)` | Validate YAML string against schema |
-| 156 | var | `CONFIG_SCHEMA` | Full JSON schema for config.yaml (L156-498); detection section includes `fisheye_correction` (number, k1 coefficient) |
-| 501 | func | `get_config_schema()` | Return CONFIG_SCHEMA dict |
-| 506 | func | `get_config_schema_json()` | Return CONFIG_SCHEMA as JSON string |
+| 156 | var | `CONFIG_SCHEMA` | Full JSON schema for config.yaml (L156-524); `inference.data_collection` sub-schema added (enabled, quota_per_class, dedup_enabled, dedup_threshold, counters_file); detection section includes `fisheye_correction` |
+| 527 | func | `get_config_schema()` | Return CONFIG_SCHEMA dict |
+| 532 | func | `get_config_schema_json()` | Return CONFIG_SCHEMA as JSON string |
+| 539 | var | `DATA_COLLECTION_DEFAULTS` | Default values for `inference.data_collection` (enabled=False, quota_per_class=10, dedup_enabled=True, dedup_threshold=10, counters_file=".collection_counts.json") |
+| 548 | func | `get_data_collection_config(config)` | Return `inference.data_collection` config with defaults merged in |
+| 559 | func | `validate_config_schema(config)` | Validate config dict against full JSON Schema using jsonschema; returns `{valid, error}` |
+
+---
+
+### `watermeter/data_collector.py` (235 lines) -- Quota-based training data collection
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 22 | func | `_nested_defaultdict()` | Create three-level nested defaultdict: model_type → roi_id → class_name → count |
+| 27 | func | `_defaultdict_from_dict(data)` | Convert regular nested dict into three-level nested defaultdict |
+| 37 | func | `_defaultdict_to_dict(dd)` | Recursively convert nested defaultdict to regular dicts for JSON serialization |
+| 44 | class | `DataCollector` | Pure counter logic with quota enforcement; tracks images collected per (model_type, roi_id, class_name); persists counters to disk |
+| 52 | func | `__init__(config, save_path)` | Initialize from config dict (enabled, quota_per_class, dedup_enabled, dedup_threshold, counters_file) and base save path; calls `_load_counters()` |
+| 75 | prop | `_counters_path` | Full path to the JSON counters persistence file |
+| 80 | func | `should_collect(model_type, roi_id, predicted_class)` | Returns True if enabled and count < quota_per_class; uses `.get()` to avoid defaultdict auto-vivification |
+| 101 | func | `collect(model_type, roi_id, predicted_class, image_bytes)` | Save image to `{save_path}/{model_type}/input/`, optionally dedup via HashCache, increment counter, persist; returns True if saved |
+| 165 | func | `get_counts()` | Return deep copy of counters as regular dict (not defaultdict) |
+| 173 | func | `reset()` | Clear all counters and delete persistence file |
+| 183 | func | `_load_counters()` | Load counters from JSON file; handles missing file (fresh start) and corrupt JSON (warn + fresh start) |
+| 213 | func | `_save_counters()` | Atomic write: dump counters to temp file then `os.replace()` to avoid corruption |
 
 ---
 
@@ -819,6 +841,11 @@ Runs a full end-to-end one-shot reading in Docker using an nginx sidecar to serv
 #### `tests/unit/test_cross_arrow_consistency.py` (379 lines)
 - Tests `CorrectionEngine._check_cross_arrow_consistency()` directly (post Phase 4 extraction)
 - `TestCheckCrossArrowConsistency` L64, `TestCrossArrowIntegration` L247
+
+#### `tests/unit/test_data_collector.py` (338 lines)
+- `TestQuotaEnforcement` L23: should_collect under/at/above quota, per-class/roi/model-type independence, disabled mode, get_counts copy isolation, reset
+- `TestCounterPersistence` L107: persist across instances, valid JSON output, corrupt file graceful recovery, missing file fresh start, reset removes file, atomic write leaves no .tmp files, loaded counters are defaultdicts
+- `TestCollect` L206: saves image and increments counter, respects quota, dedup blocks identical image, dedup allows different images, persists counter on save, creates directory structure, invalid image still saves (dedup skipped), dedup disabled saves identical images
 
 #### `tests/unit/test_env_var_substitution.py` (74 lines) -- NEW
 - `TestResolveEnvVars` L6: string, dict, list, nested substitution; missing vars kept; non-string passthrough
