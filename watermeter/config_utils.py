@@ -326,7 +326,7 @@ CONFIG_SCHEMA = {
                 "arrows_mode": {
                     "type": "string",
                     "enum": ["model", "opencv"],
-                    "description": "Arrow inference backend: 'model' (ML/OpenVINO) or 'opencv' (color threshold + bisection)",
+                    "description": "Arrow inference backend: 'model' (ML/OpenVINO) or 'opencv' (color threshold + circular mean)",
                     "default": "model",
                 },
                 "opencv_arrows": {
@@ -357,13 +357,6 @@ CONFIG_SCHEMA = {
                             "maximum": 255,
                             "description": "Minimum HSV value (brightness) for arrow pixels",
                             "default": 50,
-                        },
-                        "bisection_iterations": {
-                            "type": "integer",
-                            "minimum": 1,
-                            "maximum": 20,
-                            "description": "Number of bisection refinement steps (4 = ~±0.04 precision)",
-                            "default": 4,
                         },
                     },
                     "additionalProperties": False,

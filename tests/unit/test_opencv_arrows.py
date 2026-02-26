@@ -283,7 +283,6 @@ class TestOpenCVArrowsConfig:
         assert "hue_ranges" in opencv_props
         assert "saturation_min" in opencv_props
         assert "value_min" in opencv_props
-        assert "bisection_iterations" in opencv_props
 
     def test_default_config_validates(self):
         """Config with arrows_mode should pass schema validation."""
@@ -299,7 +298,6 @@ class TestOpenCVArrowsConfig:
                     "hue_ranges": [[0, 15], [165, 180]],
                     "saturation_min": 50,
                     "value_min": 50,
-                    "bisection_iterations": 4,
                 },
             },
         }
