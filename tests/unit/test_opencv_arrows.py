@@ -252,3 +252,46 @@ class TestOpenCVArrowDetector:
         assert r8["class"] != "NaN"
         # 8 iterations should have higher confidence (tighter precision)
         assert r8["confidence"] >= r2["confidence"]
+
+
+class TestOpenCVArrowsConfig:
+    """Test config schema includes opencv_arrows settings."""
+
+    def test_schema_has_arrows_mode(self):
+        from watermeter.config_utils import CONFIG_SCHEMA
+
+        inference_props = CONFIG_SCHEMA["properties"]["inference"]["properties"]
+        assert "arrows_mode" in inference_props
+        assert inference_props["arrows_mode"]["enum"] == ["model", "opencv"]
+
+    def test_schema_has_opencv_arrows(self):
+        from watermeter.config_utils import CONFIG_SCHEMA
+
+        inference_props = CONFIG_SCHEMA["properties"]["inference"]["properties"]
+        assert "opencv_arrows" in inference_props
+        opencv_props = inference_props["opencv_arrows"]["properties"]
+        assert "hue_ranges" in opencv_props
+        assert "saturation_min" in opencv_props
+        assert "value_min" in opencv_props
+        assert "bisection_iterations" in opencv_props
+
+    def test_default_config_validates(self):
+        """Config with arrows_mode should pass validation."""
+        from watermeter.config_utils import validate_config
+
+        config = {
+            "images": {"digits": ["d1"], "arrows": ["a1"]},
+            "mqtt": {"broker": "localhost"},
+            "inference": {
+                "arrows_mode": "opencv",
+                "opencv_arrows": {
+                    "hue_ranges": [[0, 15], [165, 180]],
+                    "saturation_min": 50,
+                    "value_min": 50,
+                    "bisection_iterations": 4,
+                },
+            },
+        }
+        errors = validate_config(config)
+        arrows_errors = [e for e in errors if "arrows_mode" in e or "opencv_arrows" in e]
+        assert arrows_errors == []
