@@ -221,7 +221,6 @@ def _create_arrows_backend(config: dict) -> OpenCVArrowDetector | None:
         hue_ranges=opencv_cfg.get("hue_ranges"),
         saturation_min=opencv_cfg.get("saturation_min", 50),
         value_min=opencv_cfg.get("value_min", 50),
-        bisection_iterations=opencv_cfg.get("bisection_iterations", 4),
     )
 
 

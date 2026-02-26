@@ -3,8 +3,11 @@
 Detects the arrow/needle position (0.0-9.9) by:
 1. HSV thresholding to isolate colored arrow pixels
 2. 85th-percentile distance cutoff to isolate the arrow tip
-3. 8-slice initial scan to find the arrow's sector
-4. Recursive bisection within that sector to refine the value
+3. Distance-weighted circular mean of tip pixel angles
+
+The circular mean naturally handles 360-degree wrap-around and produces
+both a direction (the gauge value) and a concentration metric R (confidence).
+No iterative refinement needed — all tip pixels vote simultaneously.
 
 This module provides `OpenCVArrowDetector`, which implements the same
 predict interface as `Classifier` and `Regressor` in `inference.py`.
@@ -20,7 +23,6 @@ logger = logging.getLogger(__name__)
 # Gauge geometry: full 360 degree circular dial, 0 at 12 o'clock, clockwise
 _GAUGE_START_DEG = -90.0
 _GAUGE_ARC_DEG = 360.0
-_INITIAL_SLICES = 8
 _TIP_PERCENTILE = 85
 
 # Default HSV thresholds for red arrow detection
@@ -62,7 +64,7 @@ def detect_color_mask(
 
 
 class OpenCVArrowDetector:
-    """Detects gauge arrow position using OpenCV color thresholding + bisection.
+    """Detects gauge arrow position using distance-weighted circular mean.
 
     Implements the same predict interface as Classifier/Regressor so it can
     be used as a drop-in replacement for InferenceService._arrows_classifier.
@@ -73,21 +75,20 @@ class OpenCVArrowDetector:
         hue_ranges: list[list[int]] | None = None,
         saturation_min: int = _DEFAULT_SATURATION_MIN,
         value_min: int = _DEFAULT_VALUE_MIN,
-        bisection_iterations: int = 4,
     ):
         self.hue_ranges = hue_ranges if hue_ranges is not None else _DEFAULT_HUE_RANGES
         self.saturation_min = saturation_min
         self.value_min = value_min
-        self.bisection_iterations = bisection_iterations
 
     def _detect(self, image_bgr: np.ndarray) -> tuple[float | None, float]:
-        """Run the detection algorithm on a BGR image.
+        """Run detection via distance-weighted circular mean of tip pixels.
 
         Returns:
-            (value, precision) where value is 0.0-9.9 or None on failure.
+            (value, confidence) where value is 0.0-9.9 or None on failure.
+            confidence is the resultant length R (0.0-1.0).
         """
-        h, w = image_bgr.shape[:2]
-        cx, cy = w // 2, h // 2
+        img_h, img_w = image_bgr.shape[:2]
+        cx, cy = img_w // 2, img_h // 2
 
         # Color mask
         color_mask = detect_color_mask(
@@ -97,13 +98,13 @@ class OpenCVArrowDetector:
             return None, 0.0
 
         # Gauge angles for every pixel (0-360, 0 = top/12 o'clock)
-        ys, xs = np.mgrid[0:h, 0:w]
+        ys, xs = np.mgrid[0:img_h, 0:img_w]
         dx = (xs - cx).astype(np.float64)
         dy = (ys - cy).astype(np.float64)
         image_angles = np.degrees(np.arctan2(dy, dx))
         gauge_angles = (image_angles - _GAUGE_START_DEG) % 360.0
 
-        # Distance from center (for tip isolation and bisection weighting)
+        # Distance from center
         dist = np.sqrt(dx**2 + dy**2)
 
         # Isolate tip pixels (outermost by distance)
@@ -112,46 +113,26 @@ class OpenCVArrowDetector:
         tip_cutoff = np.percentile(colored_dists, _TIP_PERCENTILE)
         tip_mask = colored_pixels & (dist >= tip_cutoff)
 
-        # 8-slice initial scan: count tip pixels per sector
-        slice_size = _GAUGE_ARC_DEG / _INITIAL_SLICES
-        slice_counts = []
-        for i in range(_INITIAL_SLICES):
-            lo = i * slice_size
-            hi = (i + 1) * slice_size
-            sector = (gauge_angles >= lo) & (gauge_angles < hi)
-            slice_counts.append(np.count_nonzero(tip_mask & sector))
+        # Distance-weighted circular mean of tip pixel angles
+        tip_angles_rad = np.radians(gauge_angles[tip_mask])
+        weights = dist[tip_mask]
 
-        winner = int(np.argmax(slice_counts))
-        angle_lo = winner * slice_size
-        angle_hi = (winner + 1) * slice_size
+        wx = np.sum(weights * np.cos(tip_angles_rad))
+        wy = np.sum(weights * np.sin(tip_angles_rad))
 
-        # Distance-weighted colored pixel map for bisection
-        red_weights = np.where(colored_pixels, dist, 0.0)
+        mean_angle_deg = np.degrees(np.arctan2(wy, wx)) % 360.0
 
-        # Bisection refinement
-        for _ in range(self.bisection_iterations):
-            angle_mid = (angle_lo + angle_hi) / 2.0
-            left_mask = (gauge_angles >= angle_lo) & (gauge_angles < angle_mid)
-            right_mask = (gauge_angles >= angle_mid) & (gauge_angles < angle_hi)
-            left_w = red_weights[left_mask].sum()
-            right_w = red_weights[right_mask].sum()
+        # Resultant length R as confidence (0-1)
+        resultant = np.sqrt(wx**2 + wy**2)
+        weight_sum = np.sum(weights)
+        confidence = float(resultant / weight_sum) if weight_sum > 0 else 0.0
 
-            if left_w == 0 and right_w == 0:
-                break
-
-            if left_w >= right_w:
-                angle_hi = angle_mid
-            else:
-                angle_lo = angle_mid
-
-        # Final value
-        final_angle = (angle_lo + angle_hi) / 2.0
-        value = final_angle / _GAUGE_ARC_DEG * 10.0
+        # Convert angle to gauge value
+        value = mean_angle_deg / _GAUGE_ARC_DEG * 10.0
         value = round(value, 1)
         value = max(0.0, min(9.9, value))
 
-        precision = (angle_hi - angle_lo) / _GAUGE_ARC_DEG * 10.0 / 2.0
-        return value, precision
+        return value, confidence
 
     def predict(self, image_path) -> dict:
         """Predict gauge value from an image file path.
@@ -184,17 +165,12 @@ class OpenCVArrowDetector:
             logger.warning("OpenCV arrow detector: failed to decode image")
             return {"class": "NaN", "confidence": 0.0}
 
-        value, precision = self._detect(image)
+        value, confidence = self._detect(image)
         if value is None:
             logger.warning("OpenCV arrow detector: no colored pixels found")
             return {"class": "NaN", "confidence": 0.0}
 
-        # Map precision to confidence: tighter precision = higher confidence
-        # With 4 bisections: precision ~0.04, confidence ~0.99
-        # With 0 bisections: precision ~0.63, confidence ~0.87
-        confidence = max(0.0, min(1.0, 1.0 - precision / 5.0))
-
-        return {"class": str(value), "confidence": float(confidence)}
+        return {"class": str(value), "confidence": confidence}
 
     def predict_detailed_from_bytes(
         self, image_bytes: bytes, top_k: int = 3

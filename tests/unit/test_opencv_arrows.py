@@ -153,7 +153,7 @@ class TestOpenCVArrowDetector:
 
         from watermeter.opencv_arrows import OpenCVArrowDetector
 
-        detector = OpenCVArrowDetector(bisection_iterations=6)
+        detector = OpenCVArrowDetector()
         img = self._make_arrow_image(3.0)
         _, buf = cv2.imencode(".jpg", img)
         result = detector.predict_from_bytes(buf.tobytes())
@@ -166,7 +166,7 @@ class TestOpenCVArrowDetector:
 
         from watermeter.opencv_arrows import OpenCVArrowDetector
 
-        detector = OpenCVArrowDetector(bisection_iterations=6)
+        detector = OpenCVArrowDetector()
         img = self._make_arrow_image(7.0)
         _, buf = cv2.imencode(".jpg", img)
         result = detector.predict_from_bytes(buf.tobytes())
@@ -223,7 +223,6 @@ class TestOpenCVArrowDetector:
 
         detector = OpenCVArrowDetector(
             hue_ranges=[[35, 85]], saturation_min=50, value_min=50,
-            bisection_iterations=4,
         )
         _, buf = cv2.imencode(".jpg", img)
         result = detector.predict_from_bytes(buf.tobytes())
@@ -239,7 +238,7 @@ class TestOpenCVArrowDetector:
 
         from watermeter.opencv_arrows import OpenCVArrowDetector
 
-        detector = OpenCVArrowDetector(bisection_iterations=4)
+        detector = OpenCVArrowDetector()
         img = self._make_arrow_image(6.0)
 
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
@@ -251,27 +250,18 @@ class TestOpenCVArrowDetector:
         detected = float(result["class"])
         assert abs(detected - 6.0) <= 0.5, f"Expected ~6.0, got {detected}"
 
-    def test_bisection_iterations_affects_precision(self):
-        """More iterations should give equal or better precision."""
+    def test_confidence_reflects_angular_concentration(self):
+        """A clean arrow should have high confidence (R close to 1.0)."""
         import cv2
-
         from watermeter.opencv_arrows import OpenCVArrowDetector
 
-        img = self._make_arrow_image(4.5)
+        detector = OpenCVArrowDetector()
+        img = self._make_arrow_image(3.0)
         _, buf = cv2.imencode(".jpg", img)
-        image_bytes = buf.tobytes()
-
-        det_2 = OpenCVArrowDetector(bisection_iterations=2)
-        det_8 = OpenCVArrowDetector(bisection_iterations=8)
-
-        r2 = det_2.predict_from_bytes(image_bytes)
-        r8 = det_8.predict_from_bytes(image_bytes)
-
-        # Both should detect something
-        assert r2["class"] != "NaN"
-        assert r8["class"] != "NaN"
-        # 8 iterations should have higher confidence (tighter precision)
-        assert r8["confidence"] >= r2["confidence"]
+        result = detector.predict_from_bytes(buf.tobytes())
+        assert result["class"] != "NaN"
+        # A clean synthetic arrow should have high concentration
+        assert result["confidence"] >= 0.8, f"Expected high confidence, got {result['confidence']}"
 
 
 class TestOpenCVArrowsConfig:
@@ -393,14 +383,12 @@ class TestInferenceServiceOpenCVMode:
                     "hue_ranges": [[0, 15], [165, 180]],
                     "saturation_min": 50,
                     "value_min": 50,
-                    "bisection_iterations": 6,
                 },
             }
         }
         backend = _create_arrows_backend(config)
         # The isolated module load creates a distinct class object, so check by name
         assert type(backend).__name__ == "OpenCVArrowDetector"
-        assert backend.bisection_iterations == 6
         assert backend.hue_ranges == [[0, 15], [165, 180]]
 
     def test_model_mode_returns_none(self):
@@ -418,6 +406,5 @@ class TestInferenceServiceOpenCVMode:
         backend = _create_arrows_backend(config)
         # The isolated module load creates a distinct class object, so check by name
         assert type(backend).__name__ == "OpenCVArrowDetector"
-        assert backend.bisection_iterations == 4
         assert backend.saturation_min == 50
         assert backend.value_min == 50
