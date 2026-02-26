@@ -76,7 +76,6 @@ inference:
     quota_per_class: 10
     dedup_enabled: true
     dedup_threshold: 10
-    counters_file: ".collection_counts.json"
 
   # Digits model settings
   digits_model: "/app/models/digits/model_digits_resnext50_32x4d_r128/model_digits_resnext50_32x4d_r128.xml"

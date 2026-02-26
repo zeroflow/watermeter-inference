@@ -10,14 +10,13 @@ DEFAULT_CONFIG = {
     "quota_per_class": 10,
     "dedup_enabled": False,
     "dedup_threshold": 0.95,
-    "counters_file": ".collection_counts.json",
 }
 
 
 def _make_collector(tmp_path, config=None):
     """Helper to create a DataCollector with sensible defaults."""
     cfg = config or DEFAULT_CONFIG.copy()
-    return DataCollector(config=cfg, save_path=str(tmp_path))
+    return DataCollector(config=cfg, save_path=str(tmp_path), data_dir=str(tmp_path))
 
 
 class TestQuotaEnforcement:
@@ -129,7 +128,7 @@ class TestCounterPersistence:
         dc._counters["digits"]["digit_1"]["0"] = 8
         dc._save_counters()
 
-        counters_path = tmp_path / ".collection_counts.json"
+        counters_path = tmp_path / "collection_counts.json"
         assert counters_path.exists()
 
         with open(counters_path) as f:
@@ -141,7 +140,7 @@ class TestCounterPersistence:
 
     def test_corrupted_counters_file_handled(self, tmp_path):
         """Invalid JSON in counters file should result in fresh start."""
-        counters_path = tmp_path / ".collection_counts.json"
+        counters_path = tmp_path / "collection_counts.json"
         counters_path.write_text("{invalid json!!!")
 
         dc = _make_collector(tmp_path)
@@ -160,7 +159,7 @@ class TestCounterPersistence:
         dc._counters["arrows"]["analog_1"]["0.0"] = 5
         dc._save_counters()
 
-        counters_path = tmp_path / ".collection_counts.json"
+        counters_path = tmp_path / "collection_counts.json"
         assert counters_path.exists()
 
         dc.reset()
@@ -186,7 +185,7 @@ class TestCounterPersistence:
         dc._counters["arrows"]["analog_1"]["0.0"] = 3
         dc._save_counters()
 
-        counters_path = tmp_path / ".collection_counts.json"
+        counters_path = tmp_path / "collection_counts.json"
         raw_content = counters_path.read_text()
         # defaultdict would serialize as "defaultdict(<class 'int'>, ...)" if not converted
         assert "defaultdict" not in raw_content
@@ -233,7 +232,7 @@ class TestCollect:
         """quota=2, save 3 images, third returns False, counter stays at 2."""
         cfg = DEFAULT_CONFIG.copy()
         cfg["quota_per_class"] = 2
-        dc = DataCollector(config=cfg, save_path=str(tmp_path))
+        dc = DataCollector(config=cfg, save_path=str(tmp_path), data_dir=str(tmp_path))
 
         assert dc.collect("arrows", "analog_1", "0.0", b"img1") is True
         assert dc.collect("arrows", "analog_1", "0.0", b"img2") is True
@@ -249,7 +248,7 @@ class TestCollect:
         cfg = DEFAULT_CONFIG.copy()
         cfg["dedup_enabled"] = True
         cfg["dedup_threshold"] = 10
-        dc = DataCollector(config=cfg, save_path=str(tmp_path))
+        dc = DataCollector(config=cfg, save_path=str(tmp_path), data_dir=str(tmp_path))
 
         # Both calls return the same hash
         mock_dhash.return_value = 0xABCD1234
@@ -271,7 +270,7 @@ class TestCollect:
         cfg = DEFAULT_CONFIG.copy()
         cfg["dedup_enabled"] = True
         cfg["dedup_threshold"] = 0
-        dc = DataCollector(config=cfg, save_path=str(tmp_path))
+        dc = DataCollector(config=cfg, save_path=str(tmp_path), data_dir=str(tmp_path))
 
         # Return different hashes for different images
         mock_dhash.side_effect = [0x1111, 0x2222]
@@ -289,12 +288,12 @@ class TestCollect:
     def test_collect_persists_counter_on_save(self, tmp_path):
         """Save image, create new DataCollector instance, counter survives."""
         cfg = DEFAULT_CONFIG.copy()
-        dc1 = DataCollector(config=cfg, save_path=str(tmp_path))
+        dc1 = DataCollector(config=cfg, save_path=str(tmp_path), data_dir=str(tmp_path))
 
         dc1.collect("arrows", "analog_1", "0.0", b"image data")
 
         # New instance should load persisted counter
-        dc2 = DataCollector(config=cfg, save_path=str(tmp_path))
+        dc2 = DataCollector(config=cfg, save_path=str(tmp_path), data_dir=str(tmp_path))
         counts = dc2.get_counts()
         assert counts["arrows"]["analog_1"]["0.0"] == 1
 
@@ -312,7 +311,7 @@ class TestCollect:
         cfg = DEFAULT_CONFIG.copy()
         cfg["dedup_enabled"] = True
         cfg["dedup_threshold"] = 10
-        dc = DataCollector(config=cfg, save_path=str(tmp_path))
+        dc = DataCollector(config=cfg, save_path=str(tmp_path), data_dir=str(tmp_path))
 
         result = dc.collect("arrows", "analog_1", "0.0", b"not a jpeg")
 
@@ -328,7 +327,7 @@ class TestCollect:
         """dedup_enabled=False, same bytes twice, both save (counter=2)."""
         cfg = DEFAULT_CONFIG.copy()
         cfg["dedup_enabled"] = False
-        dc = DataCollector(config=cfg, save_path=str(tmp_path))
+        dc = DataCollector(config=cfg, save_path=str(tmp_path), data_dir=str(tmp_path))
 
         assert dc.collect("arrows", "analog_1", "0.0", b"same_image") is True
         assert dc.collect("arrows", "analog_1", "0.0", b"same_image") is True

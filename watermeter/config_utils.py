@@ -379,10 +379,6 @@ CONFIG_SCHEMA = {
                             "maximum": 64,
                             "default": 10,
                         },
-                        "counters_file": {
-                            "type": "string",
-                            "default": ".collection_counts.json",
-                        },
                     },
                     "additionalProperties": False,
                 },
@@ -579,7 +575,6 @@ DATA_COLLECTION_DEFAULTS: Dict[str, Any] = {
     "quota_per_class": 10,
     "dedup_enabled": True,
     "dedup_threshold": 10,
-    "counters_file": ".collection_counts.json",
 }
 
 

@@ -47,7 +47,9 @@ class DataCollector:
     as JSON for survival across restarts.
     """
 
-    def __init__(self, config: dict, save_path: str):
+    COUNTERS_FILENAME = "collection_counts.json"
+
+    def __init__(self, config: dict, save_path: str, data_dir: str):
         """Initialize the DataCollector.
 
         Args:
@@ -56,16 +58,17 @@ class DataCollector:
                 - quota_per_class: Max images to collect per class
                 - dedup_enabled: Whether deduplication is enabled (used in Task 4)
                 - dedup_threshold: Similarity threshold for dedup (used in Task 4)
-                - counters_file: Filename for persisted counters
             save_path: Base directory for training data storage.
+            data_dir: Persistent data directory for counters file.
         """
         self._enabled = config.get("enabled", False)
         self._quota_per_class = config.get("quota_per_class", 10)
         self._dedup_enabled = config.get("dedup_enabled", False)
         self._dedup_threshold = config.get("dedup_threshold", 10)
-        self._counters_file = config.get("counters_file", ".collection_counts.json")
         self._save_path = Path(save_path)
         self._save_path.mkdir(parents=True, exist_ok=True)
+        self._data_dir = Path(data_dir)
+        self._data_dir.mkdir(parents=True, exist_ok=True)
 
         self._counters = _nested_defaultdict()
         self._load_counters()
@@ -73,7 +76,7 @@ class DataCollector:
     @property
     def _counters_path(self) -> Path:
         """Full path to the counters persistence file."""
-        return self._save_path / self._counters_file
+        return self._data_dir / self.COUNTERS_FILENAME
 
     def should_collect(self, model_type: str, roi_id: str, predicted_class: str) -> bool:
         """Check whether an image should be collected for the given class.

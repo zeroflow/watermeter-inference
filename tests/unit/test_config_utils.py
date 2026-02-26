@@ -187,7 +187,7 @@ class TestDataCollectionDefaults:
         assert result["quota_per_class"] == 10
         assert result["dedup_enabled"] is True
         assert result["dedup_threshold"] == 10
-        assert result["counters_file"] == ".collection_counts.json"
+        assert "counters_file" not in result
 
     def test_defaults_applied_when_inference_absent(self):
         """Config without inference section still returns defaults."""
@@ -250,7 +250,6 @@ class TestDataCollectionDefaults:
                     "quota_per_class": 20,
                     "dedup_enabled": False,
                     "dedup_threshold": 5,
-                    "counters_file": "/tmp/counts.json",
                 },
             },
         }

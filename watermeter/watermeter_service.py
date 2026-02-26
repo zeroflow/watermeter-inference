@@ -91,7 +91,9 @@ class WatermeterService:
         dc_config = self.config.get("inference", {}).get("data_collection", {})
         if dc_config.get("enabled", False):
             save_path = self.config["low_confidence"]["save_path"]
-            self._data_collector = DataCollector(dc_config, save_path=save_path)
+            state_file = persistence_config.get("state_file", "/data/state.json")
+            data_dir = str(Path(state_file).parent)
+            self._data_collector = DataCollector(dc_config, save_path=save_path, data_dir=data_dir)
             logger.info("Data collection mode enabled (quota: %d per class)", dc_config["quota_per_class"])
         else:
             self._data_collector = None
