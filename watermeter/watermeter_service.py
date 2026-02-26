@@ -150,6 +150,9 @@ class WatermeterService:
             confirmation_manager=self._confirmation_manager,
             on_trigger=self.process_reading,
             on_reset=self.reset_previous_value,
+            get_active_model_fn=self._get_active_model_name,
+            get_inference_duration_fn=lambda: self._last_inference_duration_ms,
+            get_processing_duration_fn=lambda: self._last_processing_duration_s,
         )
 
         # Correction engine (BL-04)

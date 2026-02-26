@@ -180,13 +180,6 @@ _HA_ENTITIES = [
         "device_class": "running",
         "entity_category": "diagnostic",
     },
-    {
-        "object_id": "confirmation_pending",
-        "name": "Confirmation Pending",
-        "component": "binary_sensor",
-        "icon": "mdi:human-greeting-proximity",
-        "entity_category": "diagnostic",
-    },
     # ── Timing entities ────────────────────────────────────────────────────
     {
         "object_id": "inference_duration",
@@ -334,7 +327,6 @@ class MqttPublisher:
             "last_update": datetime.now().isoformat(),
             "mqtt_connected": True,
             "processing": False,
-            "confirmation_pending": self._confirmation_manager._pending_confirmation is not None,
             "inference_duration": inference_dur,
             "processing_duration": processing_dur,
             "active_digits_model": digits_model,
