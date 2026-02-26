@@ -11,7 +11,10 @@ import logging
 import os
 import tempfile
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
+
+from watermeter.image_hash import HashCache, compute_dhash
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +63,8 @@ class DataCollector:
         """
         self._enabled = config.get("enabled", False)
         self._quota_per_class = config.get("quota_per_class", 10)
+        self._dedup_enabled = config.get("dedup_enabled", False)
+        self._dedup_threshold = config.get("dedup_threshold", 10)
         self._counters_file = config.get("counters_file", ".collection_counts.json")
         self._save_path = Path(save_path)
         self._save_path.mkdir(parents=True, exist_ok=True)
@@ -92,6 +97,70 @@ class DataCollector:
             return True
         current = roi_counts.get(predicted_class, 0)
         return current < self._quota_per_class
+
+    def collect(
+        self,
+        model_type: str,
+        roi_id: str,
+        predicted_class: str,
+        image_bytes: bytes,
+    ) -> bool:
+        """Collect an image if quota allows and it's not a duplicate.
+
+        Saves the image to {save_path}/{model_type}/input/ with a timestamped
+        filename, performs optional deduplication via perceptual hashing, and
+        increments the per-class counter.
+
+        Args:
+            model_type: Model type (e.g. "arrows", "digits").
+            roi_id: ROI identifier (e.g. "analog_1").
+            predicted_class: Predicted class label (e.g. "0.0", "5").
+            image_bytes: Raw image bytes (typically JPEG).
+
+        Returns:
+            True if image was saved, False if skipped (quota or duplicate).
+        """
+        # 1. Quota check
+        if not self.should_collect(model_type, roi_id, predicted_class):
+            return False
+
+        # 2. Dedup check
+        img_hash = None
+        if self._dedup_enabled:
+            img_hash = compute_dhash(image_bytes)
+            if img_hash is not None:
+                input_dir = self._save_path / model_type / "input"
+                input_dir.mkdir(parents=True, exist_ok=True)
+                cache = HashCache(input_dir)
+                match = cache.find_near_duplicate(img_hash, self._dedup_threshold)
+                if match is not None:
+                    logger.debug(
+                        "Dedup: skipping %s/%s/%s — near-duplicate of %s",
+                        model_type, roi_id, predicted_class, match,
+                    )
+                    return False
+
+        # 3. Save image
+        input_dir = self._save_path / model_type / "input"
+        input_dir.mkdir(parents=True, exist_ok=True)
+
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
+        filename = f"{roi_id}_{timestamp}_label={predicted_class}.jpg"
+        filepath = input_dir / filename
+        filepath.write_bytes(image_bytes)
+        logger.debug("Saved collection image: %s", filepath)
+
+        # 4. Update hash cache
+        if self._dedup_enabled and img_hash is not None:
+            cache.add(filename, img_hash)
+
+        # 5. Increment counter
+        self._counters[model_type][roi_id][predicted_class] += 1
+
+        # 6. Persist counters
+        self._save_counters()
+
+        return True
 
     def get_counts(self) -> dict:
         """Return a deep copy of the current counters.
