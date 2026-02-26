@@ -1370,6 +1370,7 @@
         }
 
         function showRotationEditMode() {
+            overlays.correctionStep = true;
             rotationEdit.style.display = 'block';
             rotationSaved.style.display = 'none';
             document.getElementById('step-rotation').style.display = 'block';
@@ -1382,6 +1383,7 @@
         }
 
         function showRotationSavedMode() {
+            overlays.correctionStep = false;
             rotationEdit.style.display = 'none';
             rotationSaved.style.display = 'none';
             document.getElementById('step-rotation').style.display = 'none';
@@ -1467,6 +1469,7 @@
 
         // Change function - keeps previous settings and enters edit mode
         function changeRotation() {
+            overlays.correctionStep = true;
             const total = savedRotation || 0;
             rotationCoarse.value = Math.trunc(total);
             rotationFine.value = ((total - Math.trunc(total)) * 10).toFixed(0) / 10;
