@@ -32,6 +32,7 @@ from .meter_state import MeterState
 from .confirmation import ConfirmationManager
 from .mqtt_publisher import MqttPublisher
 from .correction import CorrectionEngine
+from .data_collector import DataCollector
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +86,15 @@ class WatermeterService:
 
         # Low confidence capture
         self._low_confidence = LowConfidenceCapture(self.config)
+
+        # Data collection mode
+        dc_config = self.config.get("inference", {}).get("data_collection", {})
+        if dc_config.get("enabled", False):
+            save_path = self.config["low_confidence"]["save_path"]
+            self._data_collector = DataCollector(dc_config, save_path=save_path)
+            logger.info("Data collection mode enabled (quota: %d per class)", dc_config["quota_per_class"])
+        else:
+            self._data_collector = None
 
         # Rate history for plausibility checks
         self._rate_tracker = RateTracker(
@@ -549,6 +559,15 @@ class WatermeterService:
                 _, arrow_ids = get_position_ids(self.config)
 
                 for pred in predictions.values():
+                    # Data collection (saves regardless of confidence)
+                    if self._data_collector is not None:
+                        self._data_collector.collect(
+                            pred["model"],       # "digits" or "arrows"
+                            pred["id"],          # e.g., "analog_1", "digit_2"
+                            pred["class"],       # predicted class string
+                            pred["image_bytes"],
+                        )
+
                     if pred["confidence"] < threshold:
                         logger.warning(f"Low confidence: {pred['id']} = {pred['class']} ({pred['confidence']:.3f})")
 
