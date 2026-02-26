@@ -8,8 +8,6 @@ persists counters to disk, and enforces configurable quotas.
 import copy
 import json
 import logging
-import os
-import tempfile
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -218,17 +216,6 @@ class DataCollector:
         Converts defaultdicts to regular dicts for clean JSON serialization.
         """
         data = _defaultdict_to_dict(self._counters)
-        fd, tmp_path = tempfile.mkstemp(
-            dir=self._counters_path.parent, suffix=".tmp"
-        )
-        try:
-            with os.fdopen(fd, "w") as f:
-                json.dump(data, f, indent=2)
-            os.replace(tmp_path, self._counters_path)
-            logger.debug("Collection counters saved to %s", self._counters_path)
-        except BaseException:
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
-            raise
+        with open(self._counters_path, "w") as f:
+            json.dump(data, f, indent=2)
+        logger.debug("Collection counters saved to %s", self._counters_path)
