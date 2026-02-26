@@ -231,6 +231,26 @@ class TestOpenCVArrowDetector:
         detected = float(result["class"])
         assert abs(detected - 5.0) <= 1.0, f"Expected ~5.0, got {detected}"
 
+    def test_predict_from_file_path(self):
+        """predict() from file path should match predict_from_bytes()."""
+        import cv2
+        import tempfile
+        from pathlib import Path
+
+        from watermeter.opencv_arrows import OpenCVArrowDetector
+
+        detector = OpenCVArrowDetector(bisection_iterations=4)
+        img = self._make_arrow_image(6.0)
+
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+            cv2.imwrite(f.name, img)
+            result = detector.predict(f.name)
+            Path(f.name).unlink()
+
+        assert result["class"] != "NaN"
+        detected = float(result["class"])
+        assert abs(detected - 6.0) <= 0.5, f"Expected ~6.0, got {detected}"
+
     def test_bisection_iterations_affects_precision(self):
         """More iterations should give equal or better precision."""
         import cv2

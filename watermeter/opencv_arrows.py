@@ -153,6 +153,24 @@ class OpenCVArrowDetector:
         precision = (angle_hi - angle_lo) / _GAUGE_ARC_DEG * 10.0 / 2.0
         return value, precision
 
+    def predict(self, image_path) -> dict:
+        """Predict gauge value from an image file path.
+
+        Returns:
+            {"class": "3.7", "confidence": float} or
+            {"class": "NaN", "confidence": 0.0} on failure.
+        """
+        image = cv2.imread(str(image_path))
+        if image is None:
+            logger.warning("OpenCV arrow detector: failed to read %s", image_path)
+            return {"class": "NaN", "confidence": 0.0}
+        _, buf = cv2.imencode(".jpg", image)
+        return self.predict_from_bytes(buf.tobytes())
+
+    def predict_detailed(self, image_path, top_k: int = 3) -> list[dict]:
+        """Return prediction from file path as a single-element list."""
+        return [self.predict(image_path)]
+
     def predict_from_bytes(self, image_bytes: bytes) -> dict:
         """Predict gauge value from JPEG/PNG bytes.
 
