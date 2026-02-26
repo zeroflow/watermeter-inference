@@ -1,6 +1,6 @@
 # Codebase Map
 
-> Auto-generated reference. Line numbers as of 2026-02-18. Updated with one-shot CLI mode files. Updated 2026-02-26 with DataCollector module.
+> Auto-generated reference. Line numbers as of 2026-02-18. Updated with one-shot CLI mode files. Updated 2026-02-26 with DataCollector module. Updated 2026-02-26 with OpenCVArrowDetector module.
 
 ## Python Package: `watermeter/`
 
@@ -344,6 +344,7 @@
 | 80 | func | `predict` | Returns (value, conf) tuple |
 | 108 | func | `predict_detailed` | Returns value, conf, and all class scores |
 | 118 | func | `_detect_training_mode()` | Detect if digits or arrows training mode |
+| 208 | func | `_create_arrows_backend(config)` | Factory: returns OpenCVArrowDetector or None based on config |
 | 148 | class | `InferenceService` | Hot-reloadable inference service singleton |
 | 151 | func | `__init__` | Initialize empty model references |
 | 157 | func | `initialize(config)` | Load models from config on startup |
@@ -358,6 +359,21 @@
 | 385 | func | `arrows_classifier` | Property: arrows classifier instance |
 | 390 | func | `validate_model_config(model_path, model_type, classes, resolution)` | Validate model file and config |
 | 457 | func | `get_inference_service()` | Singleton accessor |
+
+---
+
+### `watermeter/opencv_arrows.py` (204 lines) -- OpenCV-based arrow detection for circular gauge dials
+
+| Line | Type | Name | Description |
+|------|------|------|-------------|
+| 32 | func | `detect_color_mask(image_bgr, hue_ranges, saturation_min, value_min)` | HSV color thresholding; returns binary mask of colored arrow pixels |
+| 64 | class | `OpenCVArrowDetector` | OpenCV-based arrow detection implementing the same predict interface as Classifier/Regressor |
+| 71 | func | `__init__` | Configurable hue ranges, saturation/value thresholds, bisection iterations |
+| 83 | func | `_detect` | 8-slice initial scan + bisection refinement algorithm; returns (value, precision) |
+| 156 | func | `predict` | Predict gauge value from file path; returns `{"class": str, "confidence": float}` |
+| 170 | func | `predict_detailed` | File-path variant returning single-element list |
+| 174 | func | `predict_from_bytes` | Predict gauge value from JPEG/PNG bytes; returns `{"class": str, "confidence": float}` |
+| 199 | func | `predict_detailed_from_bytes` | Bytes variant returning single-element list |
 
 ---
 
