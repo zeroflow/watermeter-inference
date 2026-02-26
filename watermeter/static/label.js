@@ -85,6 +85,9 @@ async function loadNextImage() {
         }
 
         input.focus();
+        if (data.label_hint) {
+            input.select();
+        }
 
         // Hide message
         const message = document.getElementById('message');
