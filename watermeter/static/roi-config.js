@@ -61,6 +61,7 @@
         const overlays = {
             mode: null,  // 'marker_select', 'digit_select', 'analog_select', null
             correctionStep: false,
+            correctionClick: null,  // {x, y} in canvas pixels when user clicks during correctionStep
             mouse: { x: null, y: null, active: false },
             crosshair: { x: null, y: null },
 
@@ -86,7 +87,7 @@
 
         function setOverlayMode(mode) {
             overlays.mode = mode;
-            canvas.style.cursor = mode ? 'crosshair' : 'default';
+            canvas.style.cursor = (mode || overlays.correctionStep) ? 'crosshair' : 'default';
             render();
         }
 
@@ -107,7 +108,7 @@
 
         // Canvas mouse events
         canvas.addEventListener('mousemove', function(event) {
-            if (!overlays.mode) return;
+            if (!overlays.mode && !overlays.correctionStep) return;
             const coords = getCanvasCoordinates(event);
             overlays.mouse.x = coords.x;
             overlays.mouse.y = coords.y;
@@ -233,6 +234,13 @@
             setOverlayMode(null);
         });
 
+        canvas.addEventListener('click', function(event) {
+            if (!overlays.correctionStep) return;
+            const coords = getCanvasCoordinates(event);
+            overlays.correctionClick = { x: coords.x, y: coords.y };
+            render();
+        });
+
         // ============================================================
         // Drawing Functions
         // ============================================================
@@ -313,24 +321,17 @@
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.drawImage(image, 0, 0);
 
-            // Draw correction guides (centered crosshair + 80% circle) during Step 1
+            // Draw correction guides during Step 1 (image correction)
             if (overlays.correctionStep) {
-                const cx = canvas.width / 2;
-                const cy = canvas.height / 2;
+                // Mouse-following crosshair
+                if (overlays.mouse.active) {
+                    drawCrosshair(overlays.mouse.x, overlays.mouse.y, 'rgba(255, 255, 255, 0.6)', 1, true, false);
+                }
 
-                // Static centered crosshair
-                drawCrosshair(cx, cy, 'rgba(255, 255, 255, 0.5)', 1, true, false);
-
-                // Dotted circle at 80% of canvas (diameter = 80% of shorter dimension)
-                const radius = Math.min(canvas.width, canvas.height) * 0.4;
-                ctx.save();
-                ctx.setLineDash([8, 6]);
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-                ctx.lineWidth = 1;
-                ctx.beginPath();
-                ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
-                ctx.stroke();
-                ctx.restore();
+                // Static crosshair at clicked position
+                if (overlays.correctionClick) {
+                    drawCrosshair(overlays.correctionClick.x, overlays.correctionClick.y, 'rgba(255, 200, 0, 0.8)', 1.5, false, true);
+                }
             }
 
             // Draw crosshair on mouseover in selection modes (no circle)
@@ -1384,6 +1385,7 @@
 
         function showRotationSavedMode() {
             overlays.correctionStep = false;
+            overlays.correctionClick = null;
             rotationEdit.style.display = 'none';
             rotationSaved.style.display = 'none';
             document.getElementById('step-rotation').style.display = 'none';
