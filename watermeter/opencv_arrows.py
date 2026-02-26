@@ -3,11 +3,11 @@
 Detects the arrow/needle position (0.0-9.9) by:
 1. HSV thresholding to isolate colored arrow pixels
 2. 85th-percentile distance cutoff to isolate the arrow tip
-3. Distance-weighted circular mean of tip pixel angles
+3. Angular histogram peak detection on tip pixel angles
 
-The circular mean naturally handles 360-degree wrap-around and produces
-both a direction (the gauge value) and a concentration metric R (confidence).
-No iterative refinement needed — all tip pixels vote simultaneously.
+Tip pixels are binned into 100 angular bins (each representing 0.1 on the
+gauge). The peak bin gives the gauge value, and the fraction of total weight
+concentrated at the peak (plus neighbors) gives the confidence score.
 
 This module provides `OpenCVArrowDetector`, which implements the same
 predict interface as `Classifier` and `Regressor` in `inference.py`.
@@ -64,7 +64,7 @@ def detect_color_mask(
 
 
 class OpenCVArrowDetector:
-    """Detects gauge arrow position using distance-weighted circular mean.
+    """Detects gauge arrow position using angular histogram peak detection.
 
     Implements the same predict interface as Classifier/Regressor so it can
     be used as a drop-in replacement for InferenceService._arrows_classifier.
@@ -81,11 +81,11 @@ class OpenCVArrowDetector:
         self.value_min = value_min
 
     def _detect(self, image_bgr: np.ndarray) -> tuple[float | None, float]:
-        """Run detection via distance-weighted circular mean of tip pixels.
+        """Run detection via angular histogram peak detection on tip pixels.
 
         Returns:
             (value, confidence) where value is 0.0-9.9 or None on failure.
-            confidence is the resultant length R (0.0-1.0).
+            confidence is fraction of weight at peak bin and neighbors (0.0-1.0).
         """
         img_h, img_w = image_bgr.shape[:2]
         cx, cy = img_w // 2, img_h // 2
@@ -113,22 +113,41 @@ class OpenCVArrowDetector:
         tip_cutoff = np.percentile(colored_dists, _TIP_PERCENTILE)
         tip_mask = colored_pixels & (dist >= tip_cutoff)
 
-        # Distance-weighted circular mean of tip pixel angles
-        tip_angles_rad = np.radians(gauge_angles[tip_mask])
-        weights = dist[tip_mask]
+        # --- Angular histogram peak detection ---
+        N_BINS = 100  # bins 0-99, each represents 0.1 on the gauge (0.0 to 9.9)
+        bin_width = _GAUGE_ARC_DEG / N_BINS  # degrees per bin
 
-        wx = np.sum(weights * np.cos(tip_angles_rad))
-        wy = np.sum(weights * np.sin(tip_angles_rad))
+        # Assign each tip pixel to a bin based on its gauge angle
+        tip_angles = gauge_angles[tip_mask]
+        tip_weights = dist[tip_mask]
 
-        mean_angle_deg = np.degrees(np.arctan2(wy, wx)) % 360.0
+        # Bin index for each tip pixel (clamp to 0..N_BINS-1)
+        bin_indices = np.clip((tip_angles / bin_width).astype(int), 0, N_BINS - 1)
 
-        # Resultant length R as confidence (0-1)
-        resultant = np.sqrt(wx**2 + wy**2)
-        weight_sum = np.sum(weights)
-        confidence = float(resultant / weight_sum) if weight_sum > 0 else 0.0
+        # Accumulate distance-weighted scores per bin
+        histogram = np.zeros(N_BINS, dtype=np.float64)
+        np.add.at(histogram, bin_indices, tip_weights)
 
-        # Convert angle to gauge value
-        value = mean_angle_deg / _GAUGE_ARC_DEG * 10.0
+        # Peak bin = arrow direction
+        peak_bin = int(np.argmax(histogram))
+        value = peak_bin / 10.0  # bin 0 -> 0.0, bin 35 -> 3.5, bin 99 -> 9.9
+
+        # Confidence = fraction of total weight concentrated at peak
+        # Use peak + immediate neighbors to account for edge effects
+        total_weight = np.sum(histogram)
+        if total_weight == 0:
+            return None, 0.0
+
+        # Sum peak and neighbors (with wraparound for bin 0 and 99)
+        peak_score = histogram[peak_bin]
+        if peak_bin > 0:
+            peak_score += histogram[peak_bin - 1]
+        if peak_bin < N_BINS - 1:
+            peak_score += histogram[peak_bin + 1]
+
+        confidence = float(peak_score / total_weight)
+        confidence = min(confidence, 1.0)
+
         value = round(value, 1)
         value = max(0.0, min(9.9, value))
 
