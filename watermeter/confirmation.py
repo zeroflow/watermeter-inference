@@ -235,12 +235,14 @@ class ConfirmationManager:
             # We need publish_to_mqtt — get it via the service singleton
             svc = _svc_mod.get_service()
             if svc is not None:
+                raw_total = self._compute_raw_total(pending["raw_values"]) if pending.get("raw_values") else None
                 asyncio.run_coroutine_threadsafe(
                     svc.publish_to_mqtt(
                         state.previous_value,
                         state.current_state["warnings"],
                         {},
                         leak_warning=state.leak_warning,
+                        raw_value=raw_total,
                     ),
                     loop,
                 )
@@ -318,12 +320,14 @@ class ConfirmationManager:
 
             # Publish diagnostic state update so HA reflects the rejection
             if state.previous_value is not None and loop:
+                raw_total = self._compute_raw_total(pending["raw_values"]) if pending.get("raw_values") else None
                 asyncio.run_coroutine_threadsafe(
                     publish_fn(
                         state.previous_value,
                         state.current_state["warnings"],
                         {},
                         leak_warning=state.leak_warning,
+                        raw_value=raw_total,
                     ),
                     loop,
                 )

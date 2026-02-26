@@ -706,12 +706,13 @@ class WatermeterService:
 
                     # Publish diagnostic state update so HA sees rejection
                     # info immediately (consecutive_rejections, last_rejected_*).
-                    # Use the last accepted value -- the rejected reading must
-                    # NOT change water_usage / water_usage_raw.
+                    # Use the last accepted value for water_usage but still
+                    # publish the raw inference result in water_usage_raw.
                     if self.previous_value is not None:
+                        raw_total = self._compute_raw_total(raw_values)
                         await self.publish_to_mqtt(
                             self.previous_value, all_warnings, predictions,
-                            leak_warning=self.leak_warning,
+                            leak_warning=self.leak_warning, raw_value=raw_total,
                         )
 
                 logger.info("=" * 60)
