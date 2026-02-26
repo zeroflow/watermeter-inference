@@ -323,6 +323,31 @@ CONFIG_SCHEMA = {
                 "arrows_model": {"type": "string", "description": "Path to arrows model"},
                 "arrows_classes": {"type": "array", "items": {"type": "string"}, "description": "Arrow class labels"},
                 "arrows_resolution": {"type": "integer", "description": "Input resolution for arrows"},
+                "data_collection": {
+                    "type": "object",
+                    "description": "Quota-based data collection mode",
+                    "properties": {
+                        "enabled": {"type": "boolean", "default": False},
+                        "quota_per_class": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "default": 10,
+                            "description": "Max images to collect per class per ROI",
+                        },
+                        "dedup_enabled": {"type": "boolean", "default": True},
+                        "dedup_threshold": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 64,
+                            "default": 10,
+                        },
+                        "counters_file": {
+                            "type": "string",
+                            "default": ".collection_counts.json",
+                        },
+                    },
+                    "additionalProperties": False,
+                },
             },
         },
         "plausibility": {
@@ -507,3 +532,40 @@ def get_config_schema() -> Dict[str, Any]:
 def get_config_schema_json() -> str:
     """Get the JSON schema as a formatted JSON string."""
     return json.dumps(CONFIG_SCHEMA, indent=2)
+
+
+# ── Data-collection defaults ──────────────────────────────────────────────
+
+DATA_COLLECTION_DEFAULTS: Dict[str, Any] = {
+    "enabled": False,
+    "quota_per_class": 10,
+    "dedup_enabled": True,
+    "dedup_threshold": 10,
+    "counters_file": ".collection_counts.json",
+}
+
+
+def get_data_collection_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Return data_collection config with defaults applied.
+
+    Works even when the ``data_collection`` key is absent from the
+    inference section (returns all defaults).
+    """
+    inference = config.get("inference", {})
+    user = inference.get("data_collection", {})
+    return {**DATA_COLLECTION_DEFAULTS, **user}
+
+
+def validate_config_schema(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate a config dict against the full JSON Schema.
+
+    Returns:
+        Dict with 'valid' (bool) and 'error' (str or None).
+    """
+    import jsonschema
+
+    try:
+        jsonschema.validate(instance=dict(config), schema=CONFIG_SCHEMA)
+        return {"valid": True, "error": None}
+    except jsonschema.ValidationError as exc:
+        return {"valid": False, "error": exc.message}

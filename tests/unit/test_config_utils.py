@@ -1,16 +1,17 @@
 """Unit tests for config_utils.py - YAML config handling."""
 
-import pytest
-
 from watermeter.config_utils import (
-    load_config,
-    save_config,
-    load_config_string,
+    DATA_COLLECTION_DEFAULTS,
     dump_config_string,
-    update_config,
-    validate_config,
     get_config_schema,
     get_config_schema_json,
+    get_data_collection_config,
+    load_config,
+    load_config_string,
+    save_config,
+    update_config,
+    validate_config,
+    validate_config_schema,
 )
 
 
@@ -163,3 +164,108 @@ class TestConfigSchema:
         schema_json = get_config_schema_json()
         parsed = json.loads(schema_json)
         assert parsed['title'] == 'Water Meter AI Service Configuration'
+
+    def test_schema_has_data_collection(self):
+        schema = get_config_schema()
+        inf_props = schema["properties"]["inference"]["properties"]
+        assert "data_collection" in inf_props
+        dc = inf_props["data_collection"]
+        assert dc["type"] == "object"
+        assert "quota_per_class" in dc["properties"]
+        assert "dedup_threshold" in dc["properties"]
+
+
+class TestDataCollectionDefaults:
+    """Tests for data_collection defaults and schema validation."""
+
+    def test_defaults_applied_when_section_absent(self):
+        """Config without data_collection section gets all defaults."""
+        config = {"inference": {"confidence_threshold": 0.5}}
+        result = get_data_collection_config(config)
+        assert result == DATA_COLLECTION_DEFAULTS
+        assert result["enabled"] is False
+        assert result["quota_per_class"] == 10
+        assert result["dedup_enabled"] is True
+        assert result["dedup_threshold"] == 10
+        assert result["counters_file"] == ".collection_counts.json"
+
+    def test_defaults_applied_when_inference_absent(self):
+        """Config without inference section still returns defaults."""
+        config = {}
+        result = get_data_collection_config(config)
+        assert result == DATA_COLLECTION_DEFAULTS
+
+    def test_user_values_override_defaults(self):
+        """User-provided values override defaults."""
+        config = {
+            "inference": {
+                "confidence_threshold": 0.5,
+                "data_collection": {"enabled": True, "quota_per_class": 50},
+            }
+        }
+        result = get_data_collection_config(config)
+        assert result["enabled"] is True
+        assert result["quota_per_class"] == 50
+        # Non-overridden defaults still present
+        assert result["dedup_enabled"] is True
+        assert result["dedup_threshold"] == 10
+
+    def test_quota_per_class_below_minimum_fails_validation(self):
+        """quota_per_class < 1 must fail schema validation."""
+        config = {
+            "images": {"digits": [], "arrows": []},
+            "mqtt": {"broker": "x", "port": 1883},
+            "inference": {
+                "confidence_threshold": 0.5,
+                "data_collection": {"quota_per_class": 0},
+            },
+        }
+        result = validate_config_schema(config)
+        assert result["valid"] is False
+        assert "minimum" in result["error"].lower() or "0" in result["error"]
+
+    def test_dedup_threshold_above_maximum_fails_validation(self):
+        """dedup_threshold > 64 must fail schema validation."""
+        config = {
+            "images": {"digits": [], "arrows": []},
+            "mqtt": {"broker": "x", "port": 1883},
+            "inference": {
+                "confidence_threshold": 0.5,
+                "data_collection": {"dedup_threshold": 65},
+            },
+        }
+        result = validate_config_schema(config)
+        assert result["valid"] is False
+        assert "maximum" in result["error"].lower() or "65" in result["error"]
+
+    def test_valid_data_collection_passes_validation(self):
+        """A valid data_collection config passes schema validation."""
+        config = {
+            "images": {"digits": [], "arrows": []},
+            "mqtt": {"broker": "x", "port": 1883},
+            "inference": {
+                "confidence_threshold": 0.5,
+                "data_collection": {
+                    "enabled": True,
+                    "quota_per_class": 20,
+                    "dedup_enabled": False,
+                    "dedup_threshold": 5,
+                    "counters_file": "/tmp/counts.json",
+                },
+            },
+        }
+        result = validate_config_schema(config)
+        assert result["valid"] is True
+
+    def test_additional_properties_rejected(self):
+        """Unknown keys in data_collection are rejected."""
+        config = {
+            "images": {"digits": [], "arrows": []},
+            "mqtt": {"broker": "x", "port": 1883},
+            "inference": {
+                "confidence_threshold": 0.5,
+                "data_collection": {"unknown_key": "value"},
+            },
+        }
+        result = validate_config_schema(config)
+        assert result["valid"] is False
