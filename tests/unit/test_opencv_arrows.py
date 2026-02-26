@@ -276,13 +276,14 @@ class TestOpenCVArrowsConfig:
         assert "bisection_iterations" in opencv_props
 
     def test_default_config_validates(self):
-        """Config with arrows_mode should pass validation."""
-        from watermeter.config_utils import validate_config
+        """Config with arrows_mode should pass schema validation."""
+        from watermeter.config_utils import validate_config_schema
 
         config = {
             "images": {"digits": ["d1"], "arrows": ["a1"]},
-            "mqtt": {"broker": "localhost"},
+            "mqtt": {"broker": "localhost", "port": 1883},
             "inference": {
+                "confidence_threshold": 0.8,
                 "arrows_mode": "opencv",
                 "opencv_arrows": {
                     "hue_ranges": [[0, 15], [165, 180]],
@@ -292,6 +293,5 @@ class TestOpenCVArrowsConfig:
                 },
             },
         }
-        errors = validate_config(config)
-        arrows_errors = [e for e in errors if "arrows_mode" in e or "opencv_arrows" in e]
-        assert arrows_errors == []
+        result = validate_config_schema(config)
+        assert result["valid"] is True, f"Schema validation failed: {result['error']}"
