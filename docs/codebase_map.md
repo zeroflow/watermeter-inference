@@ -1,6 +1,6 @@
 # Codebase Map
 
-> Auto-generated reference. Line numbers as of 2026-02-18. Updated with one-shot CLI mode files. Updated 2026-02-26 with DataCollector module. Updated 2026-02-26 with OpenCVArrowDetector module (circular mean algorithm).
+> Auto-generated reference. Line numbers as of 2026-02-18. Updated with one-shot CLI mode files. Updated 2026-02-26 with DataCollector module. Updated 2026-02-26 with OpenCVArrowDetector module (angular histogram peak detection).
 
 ## Python Package: `watermeter/`
 
@@ -362,18 +362,18 @@
 
 ---
 
-### `watermeter/opencv_arrows.py` (180 lines) -- OpenCV-based arrow detection via distance-weighted circular mean
+### `watermeter/opencv_arrows.py` (199 lines) -- OpenCV-based arrow detection via angular histogram peak detection
 
 | Line | Type | Name | Description |
 |------|------|------|-------------|
 | 34 | func | `detect_color_mask(image_bgr, hue_ranges, saturation_min, value_min)` | HSV color thresholding; returns binary mask of colored arrow pixels |
 | 66 | class | `OpenCVArrowDetector` | OpenCV-based arrow detection implementing the same predict interface as Classifier/Regressor |
 | 73 | func | `__init__` | Configurable hue ranges, saturation/value thresholds |
-| 83 | func | `_detect` | Distance-weighted circular mean of tip pixels; returns (value, confidence) |
-| 137 | func | `predict` | Predict gauge value from file path; returns `{"class": str, "confidence": float}` |
-| 151 | func | `predict_detailed` | File-path variant returning single-element list |
-| 155 | func | `predict_from_bytes` | Predict gauge value from JPEG/PNG bytes; returns `{"class": str, "confidence": float}` |
-| 175 | func | `predict_detailed_from_bytes` | Bytes variant returning single-element list |
+| 83 | func | `_detect` | Angular histogram peak detection of tip pixels; returns (value, confidence) |
+| 156 | func | `predict` | Predict gauge value from file path; returns `{"class": str, "confidence": float}` |
+| 170 | func | `predict_detailed` | File-path variant returning single-element list |
+| 174 | func | `predict_from_bytes` | Predict gauge value from JPEG/PNG bytes; returns `{"class": str, "confidence": float}` |
+| 194 | func | `predict_detailed_from_bytes` | Bytes variant returning single-element list |
 
 ---
 
