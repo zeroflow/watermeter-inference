@@ -295,3 +295,109 @@ class TestOpenCVArrowsConfig:
         }
         result = validate_config_schema(config)
         assert result["valid"] is True, f"Schema validation failed: {result['error']}"
+
+
+# ---------------------------------------------------------------------------
+# TestInferenceServiceOpenCVMode
+# ---------------------------------------------------------------------------
+
+def _load_inference_create_arrows_backend():
+    """Load _create_arrows_backend from inference.py in isolation.
+
+    Uses the same importlib trick as test_arrow_regression.py to bypass
+    the module-level OpenVINO side-effects.
+    """
+    import importlib.util
+    import io
+    import yaml
+    from pathlib import Path
+    from unittest.mock import patch
+
+    inference_path = (
+        Path(__file__).resolve().parents[2] / "watermeter" / "inference.py"
+    )
+    if not inference_path.exists():
+        return None
+
+    spec = importlib.util.spec_from_file_location(
+        "_inference_isolated_opencv",
+        str(inference_path),
+    )
+    mod = importlib.util.module_from_spec(spec)
+
+    minimal_config = yaml.dump({
+        "inference": {
+            "digits_model": "/fake/model.xml",
+            "digits_classes": ["0"],
+            "digits_resolution": 128,
+            "arrows_model": "/fake/model.xml",
+            "arrows_classes": ["0.0"],
+            "arrows_resolution": 128,
+            "device": "CPU",
+        }
+    })
+
+    import builtins
+    _real_open = builtins.open
+
+    def _patched_open(filepath, *args, **kwargs):
+        if isinstance(filepath, str) and filepath == "config.yaml":
+            return io.StringIO(minimal_config)
+        return _real_open(filepath, *args, **kwargs)
+
+    with patch("builtins.open", side_effect=_patched_open):
+        try:
+            spec.loader.exec_module(mod)
+        except Exception:
+            pass
+
+    return getattr(mod, "_create_arrows_backend", None)
+
+
+_create_arrows_backend = _load_inference_create_arrows_backend()
+
+
+class TestInferenceServiceOpenCVMode:
+    """Test _create_arrows_backend factory function."""
+
+    @pytest.fixture(autouse=True)
+    def _check_available(self):
+        if _create_arrows_backend is None:
+            pytest.skip("_create_arrows_backend not available from inference.py")
+
+    def test_opencv_mode_returns_detector(self):
+        config = {
+            "inference": {
+                "arrows_mode": "opencv",
+                "opencv_arrows": {
+                    "hue_ranges": [[0, 15], [165, 180]],
+                    "saturation_min": 50,
+                    "value_min": 50,
+                    "bisection_iterations": 6,
+                },
+            }
+        }
+        backend = _create_arrows_backend(config)
+        # The isolated module load creates a distinct class object, so check by name
+        assert type(backend).__name__ == "OpenCVArrowDetector"
+        assert backend.bisection_iterations == 6
+        assert backend.hue_ranges == [[0, 15], [165, 180]]
+
+    def test_model_mode_returns_none(self):
+        config = {"inference": {"arrows_mode": "model"}}
+        backend = _create_arrows_backend(config)
+        assert backend is None
+
+    def test_default_mode_returns_none(self):
+        config = {"inference": {}}
+        backend = _create_arrows_backend(config)
+        assert backend is None
+
+    def test_opencv_mode_uses_defaults(self):
+        config = {"inference": {"arrows_mode": "opencv"}}
+        backend = _create_arrows_backend(config)
+        # The isolated module load creates a distinct class object, so check by name
+        assert type(backend).__name__ == "OpenCVArrowDetector"
+        assert backend.bisection_iterations == 4
+        assert backend.saturation_min == 50
+        assert backend.value_min == 50

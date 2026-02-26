@@ -7,6 +7,8 @@ import re
 import logging
 import threading
 
+from watermeter.opencv_arrows import OpenCVArrowDetector
+
 logger = logging.getLogger(__name__)
 
 
@@ -203,6 +205,26 @@ def _detect_training_mode(model_path: str) -> str:
     return "discrete"
 
 
+def _create_arrows_backend(config: dict) -> OpenCVArrowDetector | None:
+    """Create OpenCV arrow detector if arrows_mode is 'opencv', else None.
+
+    Returns None when the ML model path should be used instead.
+    """
+    inference_cfg = config.get("inference", {})
+    mode = inference_cfg.get("arrows_mode", "model")
+
+    if mode != "opencv":
+        return None
+
+    opencv_cfg = inference_cfg.get("opencv_arrows", {})
+    return OpenCVArrowDetector(
+        hue_ranges=opencv_cfg.get("hue_ranges"),
+        saturation_min=opencv_cfg.get("saturation_min", 50),
+        value_min=opencv_cfg.get("value_min", 50),
+        bisection_iterations=opencv_cfg.get("bisection_iterations", 4),
+    )
+
+
 class InferenceService:
     """Thread-safe inference service with hot-reload support."""
 
@@ -243,40 +265,45 @@ class InferenceService:
                 logger.warning(f"Digits model not found at {digits_path} -- inference disabled for digits: {e}")
                 self._digits_classifier = None
 
-            # --- Arrows (classification or regression) ---
-            arrows_path = inference_config["arrows_model"]
-            try:
-                if not Path(arrows_path).exists():
-                    raise FileNotFoundError(f"Model file not found: {arrows_path}")
-                arrows_mode = _detect_training_mode(arrows_path)
+            # --- Arrows (OpenCV mode or ML model) ---
+            opencv_detector = _create_arrows_backend(config)
+            if opencv_detector is not None:
+                self._arrows_classifier = opencv_detector
+                logger.info("Arrows initialized in OPENCV mode (HSV + bisection)")
+            else:
+                arrows_path = inference_config["arrows_model"]
+                try:
+                    if not Path(arrows_path).exists():
+                        raise FileNotFoundError(f"Model file not found: {arrows_path}")
+                    arrows_mode = _detect_training_mode(arrows_path)
 
-                if arrows_mode == "continuous":
-                    # Regression model — no class list validation needed
-                    self._arrows_classifier = Regressor(
-                        arrows_path,
-                        inference_config["arrows_resolution"],
-                        "arrow_value",
-                        device=inference_config.get("device", "GPU"),
-                    )
-                    logger.info("Arrows model initialized in REGRESSION mode")
-                else:
-                    validate_model_config(
-                        arrows_path,
-                        "arrows",
-                        inference_config["arrows_classes"],
-                        inference_config["arrows_resolution"],
-                    )
-                    self._arrows_classifier = Classifier(
-                        arrows_path,
-                        inference_config["arrows_classes"],
-                        inference_config["arrows_resolution"],
-                        "arrow_value",
-                        device=inference_config.get("device", "GPU"),
-                    )
-                    logger.info("Arrows model initialized in CLASSIFICATION mode")
-            except Exception as e:
-                logger.warning(f"Arrows model not found at {arrows_path} -- inference disabled for arrows: {e}")
-                self._arrows_classifier = None
+                    if arrows_mode == "continuous":
+                        # Regression model — no class list validation needed
+                        self._arrows_classifier = Regressor(
+                            arrows_path,
+                            inference_config["arrows_resolution"],
+                            "arrow_value",
+                            device=inference_config.get("device", "GPU"),
+                        )
+                        logger.info("Arrows model initialized in REGRESSION mode")
+                    else:
+                        validate_model_config(
+                            arrows_path,
+                            "arrows",
+                            inference_config["arrows_classes"],
+                            inference_config["arrows_resolution"],
+                        )
+                        self._arrows_classifier = Classifier(
+                            arrows_path,
+                            inference_config["arrows_classes"],
+                            inference_config["arrows_resolution"],
+                            "arrow_value",
+                            device=inference_config.get("device", "GPU"),
+                        )
+                        logger.info("Arrows model initialized in CLASSIFICATION mode")
+                except Exception as e:
+                    logger.warning(f"Arrows model not found at {arrows_path} -- inference disabled for arrows: {e}")
+                    self._arrows_classifier = None
 
             logger.info(f"Inference service initialized (loaded: {self.loaded_model_types})")
 
@@ -317,39 +344,44 @@ class InferenceService:
                 except Exception as e:
                     logger.warning(f"Digits model not found at {digits_path} -- inference disabled for digits: {e}")
 
-                # --- Arrows (classification or regression) ---
-                new_arrows = None
-                arrows_path = inference_config["arrows_model"]
-                try:
-                    if not Path(arrows_path).exists():
-                        raise FileNotFoundError(f"Model file not found: {arrows_path}")
-                    arrows_mode = _detect_training_mode(arrows_path)
+                # --- Arrows (OpenCV mode or ML model) ---
+                opencv_detector = _create_arrows_backend(config)
+                if opencv_detector is not None:
+                    new_arrows = opencv_detector
+                    logger.info("Arrows reloaded in OPENCV mode (HSV + bisection)")
+                else:
+                    new_arrows = None
+                    arrows_path = inference_config["arrows_model"]
+                    try:
+                        if not Path(arrows_path).exists():
+                            raise FileNotFoundError(f"Model file not found: {arrows_path}")
+                        arrows_mode = _detect_training_mode(arrows_path)
 
-                    if arrows_mode == "continuous":
-                        new_arrows = Regressor(
-                            arrows_path,
-                            inference_config["arrows_resolution"],
-                            "arrow_value",
-                            device=inference_config.get("device", "GPU"),
-                        )
-                        logger.info("Arrows model reloaded in REGRESSION mode")
-                    else:
-                        validate_model_config(
-                            arrows_path,
-                            "arrows",
-                            inference_config["arrows_classes"],
-                            inference_config["arrows_resolution"],
-                        )
-                        new_arrows = Classifier(
-                            arrows_path,
-                            inference_config["arrows_classes"],
-                            inference_config["arrows_resolution"],
-                            "arrow_value",
-                            device=inference_config.get("device", "GPU"),
-                        )
-                        logger.info("Arrows model reloaded in CLASSIFICATION mode")
-                except Exception as e:
-                    logger.warning(f"Arrows model not found at {arrows_path} -- inference disabled for arrows: {e}")
+                        if arrows_mode == "continuous":
+                            new_arrows = Regressor(
+                                arrows_path,
+                                inference_config["arrows_resolution"],
+                                "arrow_value",
+                                device=inference_config.get("device", "GPU"),
+                            )
+                            logger.info("Arrows model reloaded in REGRESSION mode")
+                        else:
+                            validate_model_config(
+                                arrows_path,
+                                "arrows",
+                                inference_config["arrows_classes"],
+                                inference_config["arrows_resolution"],
+                            )
+                            new_arrows = Classifier(
+                                arrows_path,
+                                inference_config["arrows_classes"],
+                                inference_config["arrows_resolution"],
+                                "arrow_value",
+                                device=inference_config.get("device", "GPU"),
+                            )
+                            logger.info("Arrows model reloaded in CLASSIFICATION mode")
+                    except Exception as e:
+                        logger.warning(f"Arrows model not found at {arrows_path} -- inference disabled for arrows: {e}")
 
                 # Atomic swap
                 self._digits_classifier = new_digits
