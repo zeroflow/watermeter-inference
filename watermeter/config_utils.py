@@ -323,6 +323,51 @@ CONFIG_SCHEMA = {
                 "arrows_model": {"type": "string", "description": "Path to arrows model"},
                 "arrows_classes": {"type": "array", "items": {"type": "string"}, "description": "Arrow class labels"},
                 "arrows_resolution": {"type": "integer", "description": "Input resolution for arrows"},
+                "arrows_mode": {
+                    "type": "string",
+                    "enum": ["model", "opencv"],
+                    "description": "Arrow inference backend: 'model' (ML/OpenVINO) or 'opencv' (color threshold + bisection)",
+                    "default": "model",
+                },
+                "opencv_arrows": {
+                    "type": "object",
+                    "description": "Settings for OpenCV-based arrow detection (used when arrows_mode='opencv')",
+                    "properties": {
+                        "hue_ranges": {
+                            "type": "array",
+                            "description": "HSV hue ranges for arrow color detection (OpenCV 0-179 scale)",
+                            "items": {
+                                "type": "array",
+                                "items": {"type": "integer"},
+                                "minItems": 2,
+                                "maxItems": 2,
+                            },
+                            "default": [[0, 15], [165, 180]],
+                        },
+                        "saturation_min": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 255,
+                            "description": "Minimum HSV saturation for arrow pixels",
+                            "default": 50,
+                        },
+                        "value_min": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 255,
+                            "description": "Minimum HSV value (brightness) for arrow pixels",
+                            "default": 50,
+                        },
+                        "bisection_iterations": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 20,
+                            "description": "Number of bisection refinement steps (4 = ~±0.04 precision)",
+                            "default": 4,
+                        },
+                    },
+                    "additionalProperties": False,
+                },
                 "data_collection": {
                     "type": "object",
                     "description": "Quota-based data collection mode",

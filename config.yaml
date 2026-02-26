@@ -63,6 +63,13 @@ inference:
   confidence_threshold: 0.8
   device: "AUTO"  # CPU, GPU, or AUTO
 
+  arrows_mode: "model"           # "model" (ML/OpenVINO) or "opencv" (color threshold)
+  # opencv_arrows:               # Settings for arrows_mode: "opencv"
+  #   hue_ranges: [[0, 15], [165, 180]]  # HSV hue ranges (red default)
+  #   saturation_min: 50
+  #   value_min: 50
+  #   bisection_iterations: 4
+
   # Data collection mode — fills training dataset with diverse images
   # Set enabled: true to start collecting, then label via /label page
   data_collection:
