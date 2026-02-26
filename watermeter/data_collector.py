@@ -209,10 +209,8 @@ class DataCollector:
             self._counters = _nested_defaultdict()
 
     def _save_counters(self) -> None:
-        """Persist counters to disk using atomic write.
+        """Persist counters to disk.
 
-        Writes to a temporary file first, then renames to the target path.
-        This prevents corruption if the process is interrupted mid-write.
         Converts defaultdicts to regular dicts for clean JSON serialization.
         """
         data = _defaultdict_to_dict(self._counters)
