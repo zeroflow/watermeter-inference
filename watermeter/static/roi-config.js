@@ -60,6 +60,7 @@
         // ============================================================
         const overlays = {
             mode: null,  // 'marker_select', 'digit_select', 'analog_select', null
+            correctionStep: false,
             mouse: { x: null, y: null, active: false },
             crosshair: { x: null, y: null },
 
@@ -311,6 +312,26 @@
 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.drawImage(image, 0, 0);
+
+            // Draw correction guides (centered crosshair + 80% circle) during Step 1
+            if (overlays.correctionStep) {
+                const cx = canvas.width / 2;
+                const cy = canvas.height / 2;
+
+                // Static centered crosshair
+                drawCrosshair(cx, cy, 'rgba(255, 255, 255, 0.5)', 1, true, false);
+
+                // Dotted circle at 80% of canvas (diameter = 80% of shorter dimension)
+                const radius = Math.min(canvas.width, canvas.height) * 0.4;
+                ctx.save();
+                ctx.setLineDash([8, 6]);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
+                ctx.stroke();
+                ctx.restore();
+            }
 
             // Draw crosshair on mouseover in selection modes (no circle)
             if ((overlays.mode === 'marker_select' || overlays.mode === 'digit_select' || overlays.mode === 'analog_select') && overlays.mouse.active && !overlays.dragStart) {
