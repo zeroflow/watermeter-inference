@@ -81,9 +81,9 @@ class TestDetectRedMask:
 
     def test_low_saturation_rejected(self):
         """Grayish pixels should be rejected even with correct hue."""
-        from watermeter.opencv_arrows import detect_color_mask
-
         import cv2
+
+        from watermeter.opencv_arrows import detect_color_mask
 
         hsv = np.zeros((100, 100, 3), dtype=np.uint8)
         hsv[:, :] = (5, 20, 200)  # H=5 (red), S=20 (low), V=200
@@ -135,6 +135,7 @@ class TestOpenCVArrowDetector:
     def test_predict_from_bytes_returns_correct_format(self):
         """predict_from_bytes must return {"class": str, "confidence": float}."""
         import cv2
+
         from watermeter.opencv_arrows import OpenCVArrowDetector
 
         detector = OpenCVArrowDetector()
@@ -149,6 +150,7 @@ class TestOpenCVArrowDetector:
     def test_predict_from_bytes_detects_value_3(self):
         """Arrow pointing at value 3 should be detected as ~3."""
         import cv2
+
         from watermeter.opencv_arrows import OpenCVArrowDetector
 
         detector = OpenCVArrowDetector(bisection_iterations=6)
@@ -161,6 +163,7 @@ class TestOpenCVArrowDetector:
     def test_predict_from_bytes_detects_value_7(self):
         """Arrow pointing at value 7 should be detected as ~7."""
         import cv2
+
         from watermeter.opencv_arrows import OpenCVArrowDetector
 
         detector = OpenCVArrowDetector(bisection_iterations=6)
@@ -173,6 +176,7 @@ class TestOpenCVArrowDetector:
     def test_predict_detailed_from_bytes(self):
         """predict_detailed_from_bytes returns a single-element list."""
         import cv2
+
         from watermeter.opencv_arrows import OpenCVArrowDetector
 
         detector = OpenCVArrowDetector()
@@ -187,6 +191,7 @@ class TestOpenCVArrowDetector:
     def test_no_colored_pixels_returns_nan(self):
         """An image with no matching color pixels should return NaN/error."""
         import cv2
+
         from watermeter.opencv_arrows import OpenCVArrowDetector
 
         detector = OpenCVArrowDetector()
@@ -201,6 +206,7 @@ class TestOpenCVArrowDetector:
     def test_custom_color_config(self):
         """Detector with custom hue ranges detects non-red arrows."""
         import cv2
+
         from watermeter.opencv_arrows import OpenCVArrowDetector
 
         # Green arrow image
@@ -228,6 +234,7 @@ class TestOpenCVArrowDetector:
     def test_bisection_iterations_affects_precision(self):
         """More iterations should give equal or better precision."""
         import cv2
+
         from watermeter.opencv_arrows import OpenCVArrowDetector
 
         img = self._make_arrow_image(4.5)

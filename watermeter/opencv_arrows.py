@@ -51,13 +51,13 @@ def detect_color_mask(
         hue_ranges = _DEFAULT_HUE_RANGES
 
     hsv = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2HSV)
-    h, s, v = hsv[:, :, 0], hsv[:, :, 1], hsv[:, :, 2]
+    hue, sat, val = hsv[:, :, 0], hsv[:, :, 1], hsv[:, :, 2]
 
-    hue_mask = np.zeros(h.shape, dtype=bool)
+    hue_mask = np.zeros(hue.shape, dtype=bool)
     for lo, hi in hue_ranges:
-        hue_mask |= (h >= lo) & (h <= hi)
+        hue_mask |= (hue >= lo) & (hue <= hi)
 
-    mask = hue_mask & (s >= saturation_min) & (v >= value_min)
+    mask = hue_mask & (sat >= saturation_min) & (val >= value_min)
     return mask.astype(np.uint8) * 255
 
 
