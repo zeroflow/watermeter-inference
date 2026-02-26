@@ -65,7 +65,14 @@ class DataCollector:
         self._quota_per_class = config.get("quota_per_class", 10)
         self._dedup_enabled = config.get("dedup_enabled", False)
         self._dedup_threshold = config.get("dedup_threshold", 10)
-        self._counters_file = config.get("counters_file", ".collection_counts.json")
+        raw_counters_file = config.get("counters_file", ".collection_counts.json")
+        self._counters_file = Path(raw_counters_file).name
+        if self._counters_file != raw_counters_file:
+            logger.warning(
+                "counters_file %r contained directory components; using filename %r under save_path",
+                raw_counters_file,
+                self._counters_file,
+            )
         self._save_path = Path(save_path)
         self._save_path.mkdir(parents=True, exist_ok=True)
 
@@ -219,7 +226,7 @@ class DataCollector:
         """
         data = _defaultdict_to_dict(self._counters)
         fd, tmp_path = tempfile.mkstemp(
-            dir=self._save_path, suffix=".tmp"
+            dir=self._counters_path.parent, suffix=".tmp"
         )
         try:
             with os.fdopen(fd, "w") as f:
