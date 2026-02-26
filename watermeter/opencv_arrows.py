@@ -148,7 +148,7 @@ class OpenCVArrowDetector:
         confidence = float(peak_score / total_weight)
         confidence = min(confidence, 1.0)
         # Gamma curve: rises fast then slowly approaches 1.0
-        confidence = confidence ** 0.4
+        confidence = confidence ** 0.25
 
         value = round(value, 1)
         value = max(0.0, min(9.9, value))
