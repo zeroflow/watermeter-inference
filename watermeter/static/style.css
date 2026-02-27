@@ -698,6 +698,7 @@ main {
     display: flex;
     align-items: center;
     gap: 24px;
+    flex-wrap: wrap;
 }
 
 .saved-value {
@@ -824,6 +825,7 @@ main {
     margin-top: 20px;
     display: flex;
     gap: 12px;
+    flex-wrap: wrap;
 }
 
 .markers-preview-saved {
@@ -1688,6 +1690,7 @@ main {
     align-items: center;
     gap: 1rem;
     margin-top: 1rem;
+    flex-wrap: wrap;
 }
 
 #mqtt-test-result {
@@ -1741,6 +1744,7 @@ main {
     gap: 1rem;
     margin-top: 1.5rem;
     padding-top: 1rem;
+    flex-wrap: wrap;
 }
 
 #mqtt-save-result {
