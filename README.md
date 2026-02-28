@@ -6,6 +6,9 @@ AI-powered water meter reader with live dashboard, built-in model training, and 
 
 ![Dashboard Screenshot](docs/screenshot.png)
 
+> [!WARNING]
+> This project was vibe-coded with AI assistance and has only been function-tested against the author's own hardware setup. No guarantees are made regarding security, bugs, or vulnerabilities. **Do not expose this application to the public internet without additional hardening.** Use at your own risk.
+
 ## Features
 
 - **AI-Powered Reading**: Digit classification and analog arrow regression using OpenVINO inference; supports CPU and Intel GPU
