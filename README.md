@@ -7,7 +7,15 @@ AI-powered water meter reader with live dashboard, built-in model training, and 
 ![Dashboard Screenshot](docs/screenshot.png)
 
 > [!WARNING]
-> This project was vibe-coded with AI assistance and has only been function-tested against the author's own hardware setup. No guarantees are made regarding security, bugs, or vulnerabilities. **Do not expose this application to the public internet without additional hardening.** Use at your own risk.
+> **AI-assisted hobby project — not production software.**
+>
+> This application was written ("vibe-coded") almost entirely by AI (Claude). The author reviewed outputs and tested against their own hardware setup — that is the full extent of any quality assurance. There have been no security audits, no penetration tests, no human code reviews, no dependency audits, and no benchmarks. It is provided "AS IS", without warranty of any kind, as stated in the [LICENSE](LICENSE) file.
+>
+> **What's at stake:** AI Water Meter stores and transmits MQTT broker credentials, camera URLs with authentication parameters, and Home Assistant integration tokens. The web UI has no authentication layer. Dependencies have not been vetted for supply-chain vulnerabilities.
+>
+> **Do NOT expose this application to the public internet.** Do NOT run it in a shared or untrusted network environment without a thorough independent security review. Anyone deploying this software assumes full responsibility for its operation.
+>
+> If it breaks, misreads your meter, or leaks your credentials, that is on you. Use entirely at your own risk.
 
 ## Features
 
