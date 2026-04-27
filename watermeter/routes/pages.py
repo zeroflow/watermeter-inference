@@ -122,8 +122,7 @@ async def get_status_html(request: Request):
     service = watermeter_service.get_service()
     # Refresh pipeline_status / is_live / age before rendering so the badge
     # reflects current health even between processing cycles (Issue #2).
-    if hasattr(service, "_derive_pipeline_status"):
-        service._derive_pipeline_status()
+    service._derive_pipeline_status()
     # CRITICAL: Create a copy of current_state to prevent pollution.
     # Starlette's TemplateResponse mutates the context dict by adding a "request" key,
     # so passing current_state directly would inject a non-serializable Request object

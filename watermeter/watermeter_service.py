@@ -76,6 +76,10 @@ class WatermeterService:
                 self._state.current_state["last_published_timestamp"] = (
                     self._state.last_update_time.strftime("%H:%M") if self._state.last_update_time else None
                 )
+                # Full ISO timestamp for age computation in _derive_pipeline_status (Issue #2)
+                self._state.current_state["last_published_iso"] = (
+                    self._state.last_update_time.isoformat() if self._state.last_update_time else None
+                )
         else:
             self.state_store = None
             logger.info("Persistence disabled")
@@ -554,7 +558,11 @@ class WatermeterService:
 
         if consecutive >= max_failures:
             pipeline_status = "STALE"
-        elif last_status in ("alignment_failed", "inference_failed"):
+        elif last_status in ("alignment_failed", "inference_failed", "error"):
+            # 'error' is the catch-all status set by process_reading's outer
+            # exception handler — same intent as the structured failure modes,
+            # so it must surface as FAILED to keep the badge consistent with
+            # the inner status pill.
             pipeline_status = "FAILED"
         elif consecutive > 0:
             pipeline_status = "DEGRADED"
@@ -564,18 +572,18 @@ class WatermeterService:
         self.current_state["pipeline_status"] = pipeline_status
         self.current_state["consecutive_alignment_failures"] = consecutive
 
-        # Age of last successful reading (best-effort — last_published_timestamp
-        # is stored as "HH:MM" by the success path, which doesn't carry a date.
-        # Fall back to None when parsing fails.)
-        last_pub_ts = self.current_state.get("last_published_timestamp")
+        # Age of last successful reading. Read the full ISO timestamp from
+        # last_published_iso (the HH:MM string in last_published_timestamp
+        # has no date and can't be parsed as ISO — see Issue #2 fix).
+        last_pub_iso = self.current_state.get("last_published_iso")
         age_seconds: Optional[int] = None
-        if last_pub_ts:
+        if last_pub_iso:
             try:
-                if isinstance(last_pub_ts, str):
-                    ts = datetime.fromisoformat(last_pub_ts)
+                if isinstance(last_pub_iso, str):
+                    ts = datetime.fromisoformat(last_pub_iso)
                 else:
-                    ts = last_pub_ts
-                age_seconds = int((datetime.now() - ts).total_seconds())
+                    ts = last_pub_iso
+                age_seconds = max(0, int((datetime.now() - ts).total_seconds()))
             except (ValueError, TypeError):
                 age_seconds = None
         self.current_state["last_valid_reading_age_seconds"] = age_seconds
@@ -787,6 +795,8 @@ class WatermeterService:
                     # Track last-published / clear last-rejected (BL-14)
                     self.current_state["last_published_value"] = total_value
                     self.current_state["last_published_timestamp"] = self.last_update_time.strftime("%H:%M")
+                    # Full ISO timestamp for age computation (Issue #2)
+                    self.current_state["last_published_iso"] = self.last_update_time.isoformat()
                     self.current_state["last_rejected_value"] = None
                     self.current_state["last_rejected_timestamp"] = None
                     self.current_state["last_rejected_reasons"] = []
@@ -1009,6 +1019,7 @@ class WatermeterService:
         # Clear last-published and last-rejected tracking (BL-14)
         self.current_state["last_published_value"] = None
         self.current_state["last_published_timestamp"] = None
+        self.current_state["last_published_iso"] = None
         self.current_state["last_rejected_value"] = None
         self.current_state["last_rejected_timestamp"] = None
         self.current_state["last_rejected_reasons"] = []
@@ -1064,6 +1075,8 @@ class WatermeterService:
         # Update last-published / clear last-rejected (BL-14)
         self.current_state["last_published_value"] = value
         self.current_state["last_published_timestamp"] = now.strftime("%H:%M")
+        # Full ISO timestamp for age computation (Issue #2)
+        self.current_state["last_published_iso"] = now.isoformat()
         self.current_state["last_rejected_value"] = None
         self.current_state["last_rejected_timestamp"] = None
         self.current_state["last_rejected_reasons"] = []

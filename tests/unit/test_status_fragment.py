@@ -120,3 +120,17 @@ def test_stale_state_shows_alarm_badge(env):
     # Live value is suppressed
     assert "total-value-live" not in html
     assert "total-value-stale" in html
+
+
+def test_generic_error_status_renders_failed_badge(env):
+    """Generic 'error' status (from catch-all exception path) must surface as FAILED."""
+    html = render(
+        env,
+        pipeline_status="FAILED",
+        status="error",
+        total_value=12.345,
+        is_live=False,
+    )
+    assert "pipeline-failed" in html
+    assert "FAILED" in html
+    assert "total-value-live" not in html
