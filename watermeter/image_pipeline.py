@@ -7,6 +7,7 @@ All methods are self-contained; the only shared state is _marker_templates.
 
 import asyncio
 import logging
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -15,6 +16,27 @@ import httpx
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class AlignmentResult:
+    """Outcome of marker-based image alignment.
+
+    On success, ``image`` holds the warped image and ``marker_confidences``
+    holds the cv2.matchTemplate scores per marker.
+
+    On failure, ``image`` is None — callers MUST NOT proceed with the original
+    misaligned image (that's the whole point of fail-closed). ``error_reason``
+    is one of: ``"insufficient_markers"``, ``"templates_missing"``,
+    ``"search_region_too_small"``, ``"low_confidence"``, ``"transform_failed"``.
+    ``failed_marker`` is 1-indexed when a single marker is at fault, else None.
+    """
+
+    success: bool
+    image: Optional[np.ndarray] = None
+    error_reason: Optional[str] = None
+    failed_marker: Optional[int] = None
+    marker_confidences: List[float] = field(default_factory=list)
 
 
 def apply_fisheye_correction(image, k1):
@@ -36,9 +58,7 @@ def apply_fisheye_correction(image, k1):
     dist_coeffs = np.array([k1, 0, 0, 0, 0], dtype=np.float64)
 
     # alpha=1 preserves all source pixels; no content is lost (black borders may appear at edges)
-    new_camera_matrix, _ = cv2.getOptimalNewCameraMatrix(
-        camera_matrix, dist_coeffs, (w, h), alpha=1, newImgSize=(w, h)
-    )
+    new_camera_matrix, _ = cv2.getOptimalNewCameraMatrix(camera_matrix, dist_coeffs, (w, h), alpha=1, newImgSize=(w, h))
 
     return cv2.undistort(image, camera_matrix, dist_coeffs, None, new_camera_matrix)
 
@@ -79,10 +99,14 @@ class ImagePipeline:
 
     # Alignment constants (internal tuning, not user-facing)
     SEARCH_MARGIN = 0.15  # +/-15% of image dimensions for search window
-    CONFIDENCE_THRESHOLD = 0.5  # Minimum template match quality
+    DEFAULT_CONFIDENCE_THRESHOLD = 0.5  # cv2.TM_CCOEFF_NORMED min match score (back-compat default)
 
     def __init__(self, config: dict):
         self.config = config
+        alignment_cfg = config.get("alignment", {}) if isinstance(config, dict) else {}
+        self.CONFIDENCE_THRESHOLD = float(
+            alignment_cfg.get("marker_confidence_threshold", self.DEFAULT_CONFIDENCE_THRESHOLD)
+        )
         # Cached marker templates for alignment (loaded lazily)
         self._marker_templates: Optional[List[np.ndarray]] = None
 
@@ -148,7 +172,7 @@ class ImagePipeline:
                 logger.error(f"Failed to fetch whole image: {e}")
                 return None
 
-    def process_whole_image(self, image_bytes: bytes) -> Dict[str, Tuple[bytes, str]]:
+    def process_whole_image(self, image_bytes: bytes) -> Tuple[Optional[Dict[str, Tuple[bytes, str]]], AlignmentResult]:
         """
         Process whole image: apply rotation, marker alignment, and extract ROIs.
 
@@ -156,7 +180,12 @@ class ImagePipeline:
             image_bytes: Raw image bytes
 
         Returns:
-            Dict mapping ID to (image_bytes, image_class) - same format as fetch_images
+            Tuple of (images_dict_or_None, AlignmentResult).
+            - On alignment success: (dict mapping ID to (image_bytes, image_class),
+              AlignmentResult(success=True, ...)).
+            - On alignment failure: (None, AlignmentResult(success=False, ...)).
+            - When markers are not configured: (images_dict, AlignmentResult(success=True, ...))
+              so callers can always rely on the alignment object.
         """
         # Decode image
         nparr = np.frombuffer(image_bytes, np.uint8)
@@ -178,11 +207,18 @@ class ImagePipeline:
             height, width = img.shape[:2]
             logger.debug(f"Applied rotation: {rotation}° (expanded canvas to {width}x{height})")
 
-        # 3. Marker-based alignment if markers are configured
+        # 3. Marker-based alignment if markers are configured (fail-closed)
         markers = detection.get("markers", [])
         if len(markers) >= 2:
-            img = self._align_with_markers(img, markers)
+            alignment = self._align_with_markers(img, markers)
+            if not alignment.success:
+                # Fail-closed: do NOT proceed with the misaligned image.
+                return None, alignment
+            img = alignment.image
             height, width = img.shape[:2]  # Update dimensions after alignment
+        else:
+            # No markers configured — treat as trivially aligned for caller.
+            alignment = AlignmentResult(success=True, image=img, marker_confidences=[])
 
         # 4. Extract ROIs
         images = {}
@@ -214,7 +250,7 @@ class ImagePipeline:
             logger.debug(f"Extracted analog ROI: {analog_id}")
 
         logger.info(f"Extracted {len(images)} ROIs from whole image")
-        return images
+        return images, alignment
 
     def _load_marker_templates(self, marker_count: int) -> Optional[List[np.ndarray]]:
         """
@@ -249,7 +285,7 @@ class ImagePipeline:
         """Clear cached marker templates so they are reloaded on next alignment."""
         self._marker_templates = None
 
-    def _align_with_markers(self, img: np.ndarray, markers: List[Dict]) -> np.ndarray:
+    def _align_with_markers(self, img: np.ndarray, markers: List[Dict]) -> AlignmentResult:
         """
         Align image using saved marker positions via template matching.
 
@@ -257,30 +293,34 @@ class ImagePipeline:
         then applies a similarity transform (rotation + uniform scale + translation)
         to correct for camera drift.
 
-        Fail-open: returns original image unchanged on any failure.
+        Fail-closed: never returns a misaligned image. Callers receive an
+        ``AlignmentResult`` and MUST check ``.success`` before using ``.image``.
 
         Args:
             img: Input image (BGR)
             markers: List of marker dicts with x, y, width, height (normalized 0-1)
 
         Returns:
-            Aligned image, or original if alignment fails
+            AlignmentResult with success=True and the warped image, or
+            success=False with an error_reason and image=None.
         """
         height, width = img.shape[:2]
 
         if len(markers) < 2:
-            logger.warning("Need at least 2 markers for alignment")
-            return img
+            logger.error(f"Alignment failed: need at least 2 markers, got {len(markers)}")
+            return AlignmentResult(success=False, error_reason="insufficient_markers")
 
         # Load templates (cached after first call)
         templates = self._load_marker_templates(len(markers))
         if templates is None:
-            return img
+            logger.error("Alignment failed: marker templates not loadable")
+            return AlignmentResult(success=False, error_reason="templates_missing")
 
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-        ref_centers = []
-        found_centers = []
+        ref_centers: list[list[float]] = []
+        found_centers: list[list[float]] = []
+        confidences: list[float] = []
 
         for i, marker in enumerate(markers[:2]):
             template = templates[i]
@@ -302,17 +342,31 @@ class ImagePipeline:
 
             # Search region must be larger than template
             if (sx2 - sx1) < tw or (sy2 - sy1) < th:
-                logger.warning(f"Search region too small for marker {i+1}")
-                return img
+                logger.error(f"Alignment failed: search region too small for marker {i+1}")
+                return AlignmentResult(
+                    success=False,
+                    error_reason="search_region_too_small",
+                    failed_marker=i + 1,
+                    marker_confidences=confidences,
+                )
 
             search_region = gray[sy1:sy2, sx1:sx2]
 
             result = cv2.matchTemplate(search_region, template, cv2.TM_CCOEFF_NORMED)
             _, max_val, _, max_loc = cv2.minMaxLoc(result)
+            confidences.append(float(max_val))
 
             if max_val < self.CONFIDENCE_THRESHOLD:
-                logger.warning(f"Marker {i+1} match confidence too low: {max_val:.3f} < {self.CONFIDENCE_THRESHOLD}")
-                return img
+                logger.error(
+                    f"Alignment failed: marker {i+1} match confidence {max_val:.3f} "
+                    f"< threshold {self.CONFIDENCE_THRESHOLD}"
+                )
+                return AlignmentResult(
+                    success=False,
+                    error_reason="low_confidence",
+                    failed_marker=i + 1,
+                    marker_confidences=confidences,
+                )
 
             # Convert match position back to full-image coordinates (center of matched region)
             found_cx = sx1 + max_loc[0] + tw / 2
@@ -322,17 +376,18 @@ class ImagePipeline:
         ref_pts = np.float32(ref_centers).reshape(-1, 1, 2)
         found_pts = np.float32(found_centers).reshape(-1, 1, 2)
 
-        transform, inliers = cv2.estimateAffinePartial2D(found_pts, ref_pts)
+        transform, _inliers = cv2.estimateAffinePartial2D(found_pts, ref_pts)
         if transform is None:
-            logger.warning("Failed to estimate alignment transform")
-            return img
+            logger.error("Alignment failed: estimateAffinePartial2D returned None")
+            return AlignmentResult(
+                success=False,
+                error_reason="transform_failed",
+                marker_confidences=confidences,
+            )
 
         aligned = cv2.warpAffine(img, transform, (width, height), borderMode=cv2.BORDER_REPLICATE)
-        logger.debug(
-            f"Applied marker alignment (confidence: "
-            f"{', '.join(f'{c:.3f}' for c in [ref_centers[0][0], ref_centers[1][0]])})"
-        )
-        return aligned
+        logger.debug(f"Alignment ok (confidences: {[f'{c:.3f}' for c in confidences]})")
+        return AlignmentResult(success=True, image=aligned, marker_confidences=confidences)
 
     def _extract_roi(self, img: np.ndarray, roi: Dict, width: int, height: int) -> np.ndarray:
         """

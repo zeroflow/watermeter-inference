@@ -7,9 +7,10 @@ import asyncio
 import logging
 import logging.handlers
 import os
+import shutil
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import json
@@ -20,8 +21,9 @@ import numpy as np
 import httpx
 import yaml
 from .inference import get_inference_service
-from .persistence import StateStore
-from .image_pipeline import ImagePipeline
+from .metrics import PipelineMetrics
+from .persistence import StateStore, FailureStore
+from .image_pipeline import AlignmentResult, ImagePipeline
 from .position_utils import calculate_total as _calculate_total_impl, get_position_ids
 from .low_confidence_capture import LowConfidenceCapture
 from .scheduling import SchedulingManager
@@ -35,7 +37,6 @@ from .correction import CorrectionEngine
 from .data_collector import DataCollector
 
 logger = logging.getLogger(__name__)
-
 
 
 class WatermeterService:
@@ -54,13 +55,9 @@ class WatermeterService:
         # Configure file logging if specified in config
         log_file = self.config["logging"].get("file")
         if log_file:
-            log_format = self.config["logging"].get(
-                "format", "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-            )
+            log_format = self.config["logging"].get("format", "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
             os.makedirs(os.path.dirname(log_file), exist_ok=True)
-            file_handler = logging.handlers.RotatingFileHandler(
-                log_file, maxBytes=10 * 1024 * 1024, backupCount=5
-            )
+            file_handler = logging.handlers.RotatingFileHandler(log_file, maxBytes=10 * 1024 * 1024, backupCount=5)
             file_handler.setFormatter(logging.Formatter(log_format))
             logging.getLogger().addHandler(file_handler)
 
@@ -80,9 +77,33 @@ class WatermeterService:
                 self._state.current_state["last_published_timestamp"] = (
                     self._state.last_update_time.strftime("%H:%M") if self._state.last_update_time else None
                 )
+                # Full ISO timestamp for age computation in _derive_pipeline_status (Issue #2)
+                self._state.current_state["last_published_iso"] = (
+                    self._state.last_update_time.isoformat() if self._state.last_update_time else None
+                )
         else:
             self.state_store = None
             logger.info("Persistence disabled")
+
+        # Failure history (ring buffer of last N pipeline failures).
+        # Co-located with the state file so /data is the single persistence root.
+        state_file_path = persistence_config.get("state_file", "/data/state.json")
+        failure_history_path = Path(state_file_path).parent / "failure_history.json"
+        self._failure_store = FailureStore(failure_history_path)
+
+        # Pipeline observability metrics (Issue #4). Co-located with state file.
+        metrics_path = Path(state_file_path).parent / "metrics.json"
+        self._metrics = PipelineMetrics(metrics_path)
+
+        # Consecutive alignment failures (separate from consecutive_rejections,
+        # which counts plausibility-rejected readings).  Initialized to 0;
+        # increments on every fail-closed alignment, resets on success.
+        self.consecutive_alignment_failures = 0
+        # Edge-trigger latch for the STALE-pipeline MQTT notification.  Set to
+        # True the first time the failure counter crosses the configured
+        # threshold; cleared on the next successful alignment so a future STALE
+        # episode triggers a fresh notification.
+        self._stale_notified = False
 
         # Low confidence capture
         self._low_confidence = LowConfidenceCapture(self.config)
@@ -99,9 +120,7 @@ class WatermeterService:
             self._data_collector = None
 
         # Rate history for plausibility checks
-        self._rate_tracker = RateTracker(
-            max_size=self.config["plausibility"].get("rate_history_size", 5)
-        )
+        self._rate_tracker = RateTracker(max_size=self.config["plausibility"].get("rate_history_size", 5))
 
         # Leak detection
         self._leak_detector = LeakDetector(
@@ -167,6 +186,10 @@ class WatermeterService:
         # Timing instrumentation (populated by process_reading, published via MQTT)
         self._last_inference_duration_ms: Optional[int] = None
         self._last_processing_duration_s: Optional[float] = None
+
+        # Raw-image archive retention sweep state (see _archive_raw_image).
+        # Tracks the date of the last sweep so we only walk the archive dir once per day.
+        self._last_sweep_date = None
 
         logger.info(f"WatermeterService initialized (trigger_mode={self.trigger_mode})")
 
@@ -237,7 +260,7 @@ class WatermeterService:
     @state_store.setter
     def state_store(self, value) -> None:
         self._state_store = value
-        if hasattr(self, '_confirmation_manager'):
+        if hasattr(self, "_confirmation_manager"):
             self._confirmation_manager._state_store = value
 
     # ── MQTT delegation properties ──────────────────────────────────────────
@@ -295,14 +318,67 @@ class WatermeterService:
         self._image_pipeline.config = self.config
         return await self._image_pipeline.fetch_whole_image()
 
-    def process_whole_image(self, image_bytes: bytes) -> Dict[str, Tuple[bytes, str]]:
-        """Process whole image: rotation, marker alignment, ROI extraction."""
+    def process_whole_image(self, image_bytes: bytes) -> Tuple[Optional[Dict[str, Tuple[bytes, str]]], AlignmentResult]:
+        """Process whole image: rotation, marker alignment, ROI extraction.
+
+        Returns ``(images_dict_or_None, AlignmentResult)``. On alignment failure
+        the images dict is ``None`` and callers MUST short-circuit before
+        running inference.
+        """
         self._image_pipeline.config = self.config
         return self._image_pipeline.process_whole_image(image_bytes)
 
     def invalidate_marker_cache(self):
         """Clear cached marker templates so they are reloaded on next alignment."""
         self._image_pipeline.invalidate_marker_cache()
+
+    def _archive_raw_image(self, image_bytes: bytes) -> None:
+        """Persist a raw fetched image for offline confidence analysis. Best-effort, never raises.
+
+        After writing, runs a max-age sweep over the archive directory at most once
+        per day to delete dated subdirs older than ``alignment.archive_max_age_days``
+        (default 7). Sweep failures are logged but never propagate.
+        """
+        try:
+            archive_dir = Path(self.config.get("alignment", {}).get("archive_dir", "/data/raw_archive"))
+            now = datetime.now()
+            day_dir = archive_dir / now.strftime("%Y-%m-%d")
+            day_dir.mkdir(parents=True, exist_ok=True)
+            path = day_dir / f"{now.strftime('%H%M%S_%f')}.jpg"
+            path.write_bytes(image_bytes)
+        except Exception as e:
+            logger.warning(f"Failed to archive raw image: {e}")
+            return
+
+        # Best-effort retention sweep — only runs on the first archive write of a new day.
+        # Any error here must not affect the archive write or the caller.
+        today = now.date()
+        if self._last_sweep_date is None or self._last_sweep_date != today:
+            try:
+                self._sweep_old_archive_dirs(archive_dir)
+            except Exception as e:
+                logger.warning(f"Archive retention sweep failed: {e}")
+            # Mark sweep attempted regardless of success — avoids re-walking on every call after a failure.
+            self._last_sweep_date = today
+
+    def _sweep_old_archive_dirs(self, archive_dir: Path) -> None:
+        """Delete per-day subdirectories older than ``archive_max_age_days``.
+
+        Subdirs whose name does not parse as ``%Y-%m-%d`` are left untouched so we
+        never delete unknown content. Errors per-subdir are swallowed via
+        ``shutil.rmtree(..., ignore_errors=True)``.
+        """
+        max_age_days = int(self.config.get("alignment", {}).get("archive_max_age_days", 7))
+        cutoff = datetime.now().date() - timedelta(days=max_age_days)
+        for sub in archive_dir.iterdir():
+            if not sub.is_dir():
+                continue
+            try:
+                sub_date = datetime.strptime(sub.name, "%Y-%m-%d").date()
+            except ValueError:
+                continue  # leave non-dated subdirs alone
+            if sub_date < cutoff:
+                shutil.rmtree(sub, ignore_errors=True)
 
     async def run_inference(self, images: Dict[str, Tuple[bytes, str]]) -> Dict[str, Dict]:
         """
@@ -423,7 +499,10 @@ class WatermeterService:
     ) -> None:
         """Delegate to ConfirmationManager.publish_request()."""
         self._confirmation_manager.publish_request(
-            total_value, warnings, predictions, reason,
+            total_value,
+            warnings,
+            predictions,
+            reason,
             mqtt_client=self.mqtt_client,
             loop=self.loop,
         )
@@ -467,6 +546,96 @@ class WatermeterService:
         """Delegate to LowConfidenceCapture."""
         return await self._low_confidence.save_low_confidence(image_id, image_bytes, prediction, next_image_bytes)
 
+    def _notify_stale(self) -> None:
+        """One-shot notification when pipeline transitions into STALE (Task 4).
+
+        Publishes a JSON payload to a dedicated HA event topic.  HA automations
+        can forward this to push notifications, email, etc.  Best-effort: never
+        raises — notification failure must not block reading processing.
+
+        The latch (``self._stale_notified``) is managed by the caller so this
+        helper stays idempotent if invoked directly.
+        """
+        try:
+            if self.mqtt_client is None:
+                logger.error(
+                    f"STALE pipeline (no MQTT): consecutive_alignment_failures="
+                    f"{self.consecutive_alignment_failures}"
+                )
+                return
+            ha_cfg = self.config.get("homeassistant", {})
+            topic = ha_cfg.get("event_topic", f"{ha_cfg.get('publish_topic', 'watermeter')}/event")
+            payload = {
+                "event": "pipeline_stale",
+                "consecutive_alignment_failures": self.consecutive_alignment_failures,
+                "last_alignment_error": self.current_state.get("last_alignment_error"),
+                "timestamp": datetime.now().isoformat(),
+            }
+            self.mqtt_client.publish(topic, json.dumps(payload), qos=1, retain=False)
+            logger.info(f"Pipeline STALE notification published to {topic}")
+        except Exception as e:
+            logger.error(f"Failed to publish STALE notification: {e}")
+
+    def _derive_pipeline_status(self) -> None:
+        """Compute pipeline_status, last_valid_reading_age_seconds, and is_live.
+
+        Mutates self.current_state in-place. Idempotent — safe to call multiple
+        times in the same processing cycle.
+
+        Status policy (Issue #2):
+          - STALE     — consecutive_alignment_failures >= max_consecutive_failures
+          - FAILED    — most recent status is alignment_failed or inference_failed
+          - DEGRADED  — at least one consecutive failure but below threshold
+          - OK        — no failures and last status is healthy
+
+        is_live is True only when pipeline_status == "OK".
+        """
+        # Task 4 will add alignment.max_consecutive_failures to config.yaml.
+        # Default to 10 here so this helper is usable before Task 4 lands.
+        max_failures = self.config.get("alignment", {}).get("max_consecutive_failures", 10)
+        consecutive = self.consecutive_alignment_failures
+        last_status = self.current_state.get("status")
+
+        if consecutive >= max_failures:
+            pipeline_status = "STALE"
+        elif last_status in ("alignment_failed", "inference_failed", "error"):
+            # 'error' is the catch-all status set by process_reading's outer
+            # exception handler — same intent as the structured failure modes,
+            # so it must surface as FAILED to keep the badge consistent with
+            # the inner status pill.
+            pipeline_status = "FAILED"
+        elif consecutive > 0:
+            pipeline_status = "DEGRADED"
+        else:
+            pipeline_status = "OK"
+
+        # Level-tie the STALE-notified latch to the derived status.
+        # If we're no longer STALE (recovered, or threshold was raised), re-arm
+        # the latch so the next STALE crossing produces a fresh notification.
+        if pipeline_status != "STALE":
+            self._stale_notified = False
+
+        self.current_state["pipeline_status"] = pipeline_status
+        self.current_state["consecutive_alignment_failures"] = consecutive
+
+        # Age of last successful reading. Read the full ISO timestamp from
+        # last_published_iso (the HH:MM string in last_published_timestamp
+        # has no date and can't be parsed as ISO — see Issue #2 fix).
+        last_pub_iso = self.current_state.get("last_published_iso")
+        age_seconds: Optional[int] = None
+        if last_pub_iso:
+            try:
+                if isinstance(last_pub_iso, str):
+                    ts = datetime.fromisoformat(last_pub_iso)
+                else:
+                    ts = last_pub_iso
+                age_seconds = max(0, int((datetime.now() - ts).total_seconds()))
+            except (ValueError, TypeError):
+                age_seconds = None
+        self.current_state["last_valid_reading_age_seconds"] = age_seconds
+
+        self.current_state["is_live"] = pipeline_status == "OK"
+
     async def process_reading(self) -> Dict:
         """
         Main processing workflow:
@@ -490,7 +659,9 @@ class WatermeterService:
             # If no inference models are loaded, exit early
             if not get_inference_service().models_loaded:
                 self.current_state["status"] = "no_models"
-                self.current_state["warnings"] = ["No inference models loaded. Train or import models via the Training page."]
+                self.current_state["warnings"] = [
+                    "No inference models loaded. Train or import models via the Training page."
+                ]
                 return self.current_state
 
             # If no digit ROIs are configured, skip processing (fresh install)
@@ -522,13 +693,74 @@ class WatermeterService:
                     whole_image = await self.fetch_whole_image()
                     if not whole_image:
                         raise Exception("Failed to fetch whole image")
-                    images = await asyncio.get_running_loop().run_in_executor(None, self.process_whole_image, whole_image)
+                    # Optional: archive raw image for offline confidence analysis
+                    alignment_cfg = self.config.get("alignment", {})
+                    if alignment_cfg.get("archive_raw_images", False):
+                        await asyncio.get_running_loop().run_in_executor(None, self._archive_raw_image, whole_image)
+                    images, alignment = await asyncio.get_running_loop().run_in_executor(
+                        None, self.process_whole_image, whole_image
+                    )
+                    # Fail-closed: if alignment failed, persist + short-circuit before inference.
+                    if not alignment.success:
+                        self._failure_store.record_failure(
+                            reason=alignment.error_reason,
+                            stage="alignment",
+                            failed_marker=alignment.failed_marker,
+                            marker_confidences=alignment.marker_confidences,
+                        )
+                        # Pipeline metrics (Issue #4): per-marker failure + confidence + status.
+                        if alignment.failed_marker:
+                            self._metrics.record_marker_failure(marker_index=alignment.failed_marker)
+                        for i, conf in enumerate(alignment.marker_confidences):
+                            self._metrics.record_marker_confidence(marker_index=i + 1, confidence=conf)
+                        self._metrics.record_reading(status="alignment_failed")
+                        self.consecutive_alignment_failures += 1
+                        self.current_state["status"] = "alignment_failed"
+                        self.current_state["last_alignment_error"] = alignment.error_reason
+                        self.current_state["last_alignment_timestamp"] = datetime.now().isoformat()
+                        logger.error(
+                            f"Reading discarded: alignment failed ({alignment.error_reason}, "
+                            f"failed_marker={alignment.failed_marker}, "
+                            f"confidences={alignment.marker_confidences})"
+                        )
+                        self._derive_pipeline_status()
+
+                        # Edge-trigger STALE notification: fire exactly once on
+                        # the boundary, latched until alignment recovers (Task 4).
+                        max_fail = self.config.get("alignment", {}).get("max_consecutive_failures", 10)
+                        if self.consecutive_alignment_failures >= max_fail and not self._stale_notified:
+                            self._notify_stale()
+                            self._stale_notified = True
+                        return self.current_state
+
+                    # Reset counter and STALE latch only on alignment success.
+                    self.consecutive_alignment_failures = 0
+                    self._stale_notified = False
+
                     if not images:
                         raise Exception("No ROIs extracted from whole image")
 
                 # 2. Run inference
+                # Wrap in try/except so we can record `inference_failed` ONLY when
+                # the inference call itself raises (timeout, model crash, OpenVINO
+                # error). Downstream exceptions fall through to the catch-all and
+                # do NOT pollute the inference_failed metric (Issue #4 / Task 5).
                 t_inf = time.monotonic()
-                predictions = await self.run_inference(images)
+                try:
+                    predictions = await self.run_inference(images)
+                except Exception as inf_err:
+                    logger.error(f"Inference failed: {inf_err}", exc_info=True)
+                    self.current_state["status"] = "inference_failed"
+                    self.current_state["last_inference_error"] = str(inf_err)
+                    self.current_state["warnings"] = [str(inf_err)]
+                    try:
+                        self._metrics.record_reading(status="inference_failed")
+                    except Exception:
+                        pass
+                    # Fall through to the `finally` block which sets processing
+                    # timings + derives pipeline_status. Returning here skips the
+                    # remaining happy-path / catch-all branches.
+                    return self.current_state
                 self._last_inference_duration_ms = round((time.monotonic() - t_inf) * 1000)
 
                 # 3. Calculate total
@@ -567,9 +799,9 @@ class WatermeterService:
                     # Data collection (saves regardless of confidence)
                     if self._data_collector is not None:
                         self._data_collector.collect(
-                            pred["model"],       # "digits" or "arrows"
-                            pred["id"],          # e.g., "analog_1", "digit_2"
-                            pred["class"],       # predicted class string
+                            pred["model"],  # "digits" or "arrows"
+                            pred["id"],  # e.g., "analog_1", "digit_2"
+                            pred["class"],  # predicted class string
                             pred["image_bytes"],
                         )
 
@@ -641,6 +873,8 @@ class WatermeterService:
                     # Track last-published / clear last-rejected (BL-14)
                     self.current_state["last_published_value"] = total_value
                     self.current_state["last_published_timestamp"] = self.last_update_time.strftime("%H:%M")
+                    # Full ISO timestamp for age computation (Issue #2)
+                    self.current_state["last_published_iso"] = self.last_update_time.isoformat()
                     self.current_state["last_rejected_value"] = None
                     self.current_state["last_rejected_timestamp"] = None
                     self.current_state["last_rejected_reasons"] = []
@@ -677,9 +911,21 @@ class WatermeterService:
                         # Normal path -- publish immediately
                         raw_total = self._compute_raw_total(raw_values)
                         await self.publish_to_mqtt(
-                            total_value, all_warnings, predictions,
-                            leak_warning=self.leak_warning, raw_value=raw_total,
+                            total_value,
+                            all_warnings,
+                            predictions,
+                            leak_warning=self.leak_warning,
+                            raw_value=raw_total,
                         )
+
+                    # Pipeline metrics (Issue #4): record successful reading and
+                    # confidence trends from the happy path. `alignment` is only
+                    # defined in whole-image mode; in separate mode there is no
+                    # alignment step, so record only the status.
+                    if "alignment" in locals() and alignment is not None:
+                        for i, conf in enumerate(alignment.marker_confidences):
+                            self._metrics.record_marker_confidence(marker_index=i + 1, confidence=conf)
+                    self._metrics.record_reading(status="ok")
                 else:
                     self.consecutive_rejections += 1
                     self.current_state["status"] = "error"
@@ -713,8 +959,11 @@ class WatermeterService:
                     if self.previous_value is not None:
                         raw_total = self._compute_raw_total(raw_values)
                         await self.publish_to_mqtt(
-                            self.previous_value, all_warnings, predictions,
-                            leak_warning=self.leak_warning, raw_value=raw_total,
+                            self.previous_value,
+                            all_warnings,
+                            predictions,
+                            leak_warning=self.leak_warning,
+                            raw_value=raw_total,
                         )
 
                 logger.info("=" * 60)
@@ -723,6 +972,11 @@ class WatermeterService:
                 logger.error(f"Error during processing: {e}", exc_info=True)
                 self.current_state["status"] = "error"
                 self.current_state["warnings"] = [str(e)]
+                # Note: this catch-all is for unexpected/generic errors only.
+                # Structured statuses (`ok` / `alignment_failed` / `inference_failed`)
+                # are recorded at their own dedicated branches above. Generic errors
+                # are intentionally NOT counted in readings_total — adding them here
+                # would inflate the metric with downstream/post-inference faults.
                 # Try to save predictions if we got that far
                 try:
                     if "predictions" in locals() and predictions:
@@ -741,8 +995,15 @@ class WatermeterService:
             finally:
                 self._last_processing_duration_s = round(time.monotonic() - t_start, 2)
                 self.current_state["processing"] = False
+                # Derive pipeline_status / is_live so the dashboard reflects the
+                # latest health on every cycle (Issue #2). Idempotent.
+                self._derive_pipeline_status()
 
         return self.current_state
+
+    def get_metrics_snapshot(self) -> dict:
+        """Public accessor for pipeline metrics snapshot (used by /api/metrics)."""
+        return self._metrics.snapshot()
 
     def _get_active_model_name(self, model_type: str) -> Optional[str]:
         """Return the active model directory name for a model type, or None."""
@@ -835,6 +1096,13 @@ class WatermeterService:
             "processing_duration": self._last_processing_duration_s,
             "active_digits_model": self._get_active_model_name("digits"),
             "active_arrows_model": self._get_active_model_name("arrows"),
+            # Pipeline-health fields (Task 4): keep dashboard + HA in lockstep.
+            # NOTE: Mirror these three pipeline-health fields in
+            # MqttPublisher.publish_to_mqtt. Both publish paths exist during the
+            # publisher migration; remove this site once the migration completes.
+            "pipeline_status": self.current_state.get("pipeline_status", "OK"),
+            "consecutive_alignment_failures": self.consecutive_alignment_failures,
+            "last_alignment_error": self.current_state.get("last_alignment_error"),
         }
 
         topic = ha_config["publish_topic"]
@@ -854,6 +1122,7 @@ class WatermeterService:
         # Clear last-published and last-rejected tracking (BL-14)
         self.current_state["last_published_value"] = None
         self.current_state["last_published_timestamp"] = None
+        self.current_state["last_published_iso"] = None
         self.current_state["last_rejected_value"] = None
         self.current_state["last_rejected_timestamp"] = None
         self.current_state["last_rejected_reasons"] = []
@@ -909,21 +1178,23 @@ class WatermeterService:
         # Update last-published / clear last-rejected (BL-14)
         self.current_state["last_published_value"] = value
         self.current_state["last_published_timestamp"] = now.strftime("%H:%M")
+        # Full ISO timestamp for age computation (Issue #2)
+        self.current_state["last_published_iso"] = now.isoformat()
         self.current_state["last_rejected_value"] = None
         self.current_state["last_rejected_timestamp"] = None
         self.current_state["last_rejected_reasons"] = []
 
         # Publish to MQTT via shared method (raw_value=value since no raw
         # predictions exist for a manual set)
-        can_publish = (
-            self.ha_publish_enabled
-            and self.mqtt_client
-            and self.mqtt_client.is_connected()
-        )
+        can_publish = self.ha_publish_enabled and self.mqtt_client and self.mqtt_client.is_connected()
         if can_publish:
             try:
                 await self.publish_to_mqtt(
-                    value, [], {}, leak_warning=False, raw_value=value,
+                    value,
+                    [],
+                    {},
+                    leak_warning=False,
+                    raw_value=value,
                 )
                 logger.info(f"Published manual value {value:.4f} to MQTT")
                 return True
@@ -954,9 +1225,7 @@ class WatermeterService:
             return
 
         ha_config = self.config["homeassistant"]
-        training_path = Path(
-            self.config.get("low_confidence", {}).get("save_path", "/training")
-        )
+        training_path = Path(self.config.get("low_confidence", {}).get("save_path", "/training"))
 
         digits_input = training_path / "digits" / "input"
         arrows_input = training_path / "arrows" / "input"
@@ -964,12 +1233,8 @@ class WatermeterService:
         arrows_gt = training_path / "arrows" / "ground_truth"
 
         payload = {
-            "unlabeled_digits": (
-                sum(1 for _ in digits_input.glob("*.jpg")) if digits_input.exists() else 0
-            ),
-            "unlabeled_arrows": (
-                sum(1 for _ in arrows_input.glob("*.jpg")) if arrows_input.exists() else 0
-            ),
+            "unlabeled_digits": (sum(1 for _ in digits_input.glob("*.jpg")) if digits_input.exists() else 0),
+            "unlabeled_arrows": (sum(1 for _ in arrows_input.glob("*.jpg")) if arrows_input.exists() else 0),
             "training_digits": (
                 sum(sum(1 for _ in d.glob("*.jpg")) for d in digits_gt.iterdir() if d.is_dir())
                 if digits_gt.exists()
@@ -1024,10 +1289,7 @@ class WatermeterService:
         new_mqtt = new_config.get("mqtt", {})
 
         # Check if MQTT connection params changed
-        mqtt_changed = any(
-            old_mqtt.get(k) != new_mqtt.get(k)
-            for k in ("broker", "port", "username", "password")
-        )
+        mqtt_changed = any(old_mqtt.get(k) != new_mqtt.get(k) for k in ("broker", "port", "username", "password"))
 
         # Update main config
         self.config = new_config

@@ -4,6 +4,38 @@
 </div>
 {% endif %}
 
+{# --- Pipeline status banner (Issue #2) --- #}
+{% if pipeline_status is defined and pipeline_status %}
+{% set pclass = {
+    'OK': 'pipeline-ok',
+    'DEGRADED': 'pipeline-degraded',
+    'FAILED': 'pipeline-failed',
+    'STALE': 'pipeline-stale'
+  }.get(pipeline_status, 'pipeline-ok') %}
+<div class="pipeline-status-badge {{ pclass }}">
+    <span class="pipeline-status-dot"></span>
+    <strong>{{ pipeline_status }}</strong>
+    {% if last_valid_reading_age_seconds is defined and last_valid_reading_age_seconds is not none %}
+        {% set s = last_valid_reading_age_seconds %}
+        {% if s < 60 %}
+            <span>Letztes gültiges Reading: vor {{ s }}s</span>
+        {% elif s < 3600 %}
+            <span>Letztes gültiges Reading: vor {{ (s // 60) }} Min</span>
+        {% else %}
+            <span>Letztes gültiges Reading: vor {{ (s // 3600) }}h {{ ((s % 3600) // 60) }} Min</span>
+        {% endif %}
+    {% else %}
+        <span>Noch kein gültiges Reading</span>
+    {% endif %}
+    {% if consecutive_alignment_failures and consecutive_alignment_failures > 0 %}
+        <span class="failure-counter">{{ consecutive_alignment_failures }} consecutive failures</span>
+    {% endif %}
+    {% if last_alignment_error %}
+        <span class="failure-reason">({{ last_alignment_error }})</span>
+    {% endif %}
+</div>
+{% endif %}
+
 {% if status == 'no_models' %}
 <div class="no-data">
     <h3>No Models Loaded</h3>
@@ -32,11 +64,14 @@
 {% else %}
 <!-- Total Value Display -->
 {% if total_value %}
-<div class="total-value">
+<div class="total-value{% if is_live %} total-value-live{% else %} total-value-stale{% endif %}">
     <h2>Current Meter Reading</h2>
     <div>
         <span class="value">{{ "%.4f"|format(total_value) }}</span>
         <span class="unit">{{ unit }}</span>
+        {% if not is_live %}
+        <span class="stale-marker">stale</span>
+        {% endif %}
     </div>
     <div class="meta">
         <span>🕒 {{ last_update or 'N/A' }}</span>
