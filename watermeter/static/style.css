@@ -1834,3 +1834,81 @@ main {
     vertical-align: middle;
 }
 
+/* --- Pipeline Health Widget (Issue #4) --- */
+.pipeline-health {
+    background: var(--bg-surface);
+    border: 1px solid var(--bg-alt);
+    border-radius: 12px;
+    margin: 0 32px 32px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    overflow: hidden;
+}
+
+.pipeline-health summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 14px 20px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-dark);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    user-select: none;
+    transition: background 0.15s ease;
+}
+.pipeline-health summary::-webkit-details-marker { display: none; }
+.pipeline-health summary::after {
+    content: '›';
+    margin-left: auto;
+    font-size: 22px;
+    line-height: 1;
+    color: var(--text-light);
+    transition: transform 0.2s ease;
+    display: inline-block;
+}
+.pipeline-health[open] summary::after {
+    transform: rotate(90deg);
+}
+.pipeline-health summary:hover {
+    background: var(--bg-inset);
+}
+
+.pipeline-health .health-body {
+    padding: 4px 20px 16px;
+    border-top: 1px solid var(--bg-alt);
+}
+
+.pipeline-health .hint {
+    color: var(--text-light);
+    font-size: 14px;
+    padding: 16px 0;
+    text-align: center;
+    font-style: italic;
+}
+
+.pipeline-health .metric {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--bg-alt);
+    font-size: 14px;
+}
+.pipeline-health .metric:last-child {
+    border-bottom: none;
+}
+.pipeline-health .metric > span {
+    color: var(--text-light);
+    font-weight: 500;
+}
+.pipeline-health .metric > strong {
+    color: var(--text-dark);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+    text-align: right;
+}
+
