@@ -22,7 +22,7 @@ import httpx
 import yaml
 from .inference import get_inference_service
 from .persistence import StateStore, FailureStore
-from .image_pipeline import ImagePipeline
+from .image_pipeline import AlignmentResult, ImagePipeline
 from .position_utils import calculate_total as _calculate_total_impl, get_position_ids
 from .low_confidence_capture import LowConfidenceCapture
 from .scheduling import SchedulingManager
@@ -304,7 +304,7 @@ class WatermeterService:
         self._image_pipeline.config = self.config
         return await self._image_pipeline.fetch_whole_image()
 
-    def process_whole_image(self, image_bytes: bytes):
+    def process_whole_image(self, image_bytes: bytes) -> Tuple[Optional[Dict[str, Tuple[bytes, str]]], AlignmentResult]:
         """Process whole image: rotation, marker alignment, ROI extraction.
 
         Returns ``(images_dict_or_None, AlignmentResult)``. On alignment failure
@@ -604,7 +604,7 @@ class WatermeterService:
                             failed_marker=alignment.failed_marker,
                             marker_confidences=alignment.marker_confidences,
                         )
-                        self.consecutive_alignment_failures = getattr(self, "consecutive_alignment_failures", 0) + 1
+                        self.consecutive_alignment_failures += 1
                         self.current_state["status"] = "alignment_failed"
                         self.current_state["last_alignment_error"] = alignment.error_reason
                         self.current_state["last_alignment_timestamp"] = datetime.now().isoformat()
@@ -613,7 +613,7 @@ class WatermeterService:
                             f"failed_marker={alignment.failed_marker}, "
                             f"confidences={alignment.marker_confidences})"
                         )
-                        return {"status": "alignment_failed", "reason": alignment.error_reason}
+                        return self.current_state
 
                     # Reset counter only on alignment success.
                     self.consecutive_alignment_failures = 0

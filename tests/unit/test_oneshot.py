@@ -30,16 +30,15 @@ import tempfile
 import os
 import yaml
 
-
 # ---------------------------------------------------------------------------
 # NOTE: This import is expected to FAIL until watermeter/oneshot.py exists.
 # ---------------------------------------------------------------------------
 from watermeter.oneshot import run_one_shot  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_minimal_config() -> dict:
     """Return a minimal valid config dict that the pipeline expects."""
@@ -101,8 +100,14 @@ def _make_mock_image_pipeline(
     fetch_bytes: bytes = b"FAKEJPEG",
     fetch_fails: bool = False,
     rois: dict = None,
+    alignment_success: bool = True,
 ) -> MagicMock:
-    """Build a mock ImagePipeline with real method signatures."""
+    """Build a mock ImagePipeline with real method signatures.
+
+    process_whole_image returns ``(rois, AlignmentResult)`` per the fail-closed
+    contract. ``alignment_success=False`` simulates a failed alignment
+    (rois will be None, AlignmentResult.success=False).
+    """
     pipeline = MagicMock()
 
     if fetch_fails:
@@ -117,13 +122,24 @@ def _make_mock_image_pipeline(
             "analog_1": (b"ANALOG1JPG", "arrows"),
         }
 
-    pipeline.process_whole_image = MagicMock(return_value=rois)
+    # Build AlignmentResult mock matching watermeter.image_pipeline.AlignmentResult shape.
+    alignment = MagicMock()
+    alignment.success = alignment_success
+    alignment.error_reason = None if alignment_success else "low_confidence"
+    alignment.failed_marker = None
+    alignment.marker_confidences = []
+
+    if alignment_success:
+        pipeline.process_whole_image = MagicMock(return_value=(rois, alignment))
+    else:
+        pipeline.process_whole_image = MagicMock(return_value=(None, alignment))
     return pipeline
 
 
 # ---------------------------------------------------------------------------
 # Test: Successful run returns 0
 # ---------------------------------------------------------------------------
+
 
 class TestOneShotSuccess:
     """Happy path — all steps succeed, expect exit code 0."""
@@ -205,6 +221,7 @@ class TestOneShotSuccess:
 # Test: Config load failure returns 1
 # ---------------------------------------------------------------------------
 
+
 class TestOneShotConfigFailure:
     """Config cannot be loaded — expect exit code 1."""
 
@@ -242,6 +259,7 @@ class TestOneShotConfigFailure:
 # ---------------------------------------------------------------------------
 # Test: Model load failure returns 1
 # ---------------------------------------------------------------------------
+
 
 class TestOneShotModelLoadFailure:
     """Models not loaded after initialize() — expect exit code 1."""
@@ -305,6 +323,7 @@ class TestOneShotModelLoadFailure:
 # Test: Image fetch failure returns 1
 # ---------------------------------------------------------------------------
 
+
 class TestOneShotImageFetchFailure:
     """fetch_whole_image() returns None (HTTP error) — expect exit code 1."""
 
@@ -345,6 +364,7 @@ class TestOneShotImageFetchFailure:
 # ---------------------------------------------------------------------------
 # Test: No ROIs extracted returns 1
 # ---------------------------------------------------------------------------
+
 
 class TestOneShotNoRois:
     """process_whole_image() returns empty dict — expect exit code 1."""
@@ -389,6 +409,7 @@ class TestOneShotNoRois:
 # Test: ImagePipeline is constructed with config dict
 # ---------------------------------------------------------------------------
 
+
 class TestOneShotPipelineConstruction:
     """Verify that ImagePipeline is instantiated with the loaded config."""
 
@@ -417,6 +438,7 @@ class TestOneShotPipelineConstruction:
 # ---------------------------------------------------------------------------
 # Test: Output / logging (basic sanity — run_one_shot prints meter reading)
 # ---------------------------------------------------------------------------
+
 
 class TestOneShotOutput:
     """Ensure run_one_shot produces a total meter reading on success."""

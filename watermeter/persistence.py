@@ -154,7 +154,8 @@ class FailureStore:
             if not isinstance(data["records"], list):
                 return {"records": []}
             return data
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning(f"FailureStore: failed to load {self.file_path}, resetting history: {e}")
             return {"records": []}
 
     def _save(self, data: dict) -> None:
