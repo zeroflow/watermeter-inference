@@ -7,9 +7,10 @@ import asyncio
 import logging
 import logging.handlers
 import os
+import shutil
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import json
@@ -161,6 +162,10 @@ class WatermeterService:
         self._last_inference_duration_ms: Optional[int] = None
         self._last_processing_duration_s: Optional[float] = None
 
+        # Raw-image archive retention sweep state (see _archive_raw_image).
+        # Tracks the date of the last sweep so we only walk the archive dir once per day.
+        self._last_sweep_date = None
+
         logger.info(f"WatermeterService initialized (trigger_mode={self.trigger_mode})")
 
     # ── MeterState forwarding properties ────────────────────────────────────
@@ -298,16 +303,52 @@ class WatermeterService:
         self._image_pipeline.invalidate_marker_cache()
 
     def _archive_raw_image(self, image_bytes: bytes) -> None:
-        """Persist a raw fetched image for offline confidence analysis. Best-effort, never raises."""
+        """Persist a raw fetched image for offline confidence analysis. Best-effort, never raises.
+
+        After writing, runs a max-age sweep over the archive directory at most once
+        per day to delete dated subdirs older than ``alignment.archive_max_age_days``
+        (default 7). Sweep failures are logged but never propagate.
+        """
         try:
             archive_dir = Path(self.config.get("alignment", {}).get("archive_dir", "/data/raw_archive"))
             now = datetime.now()
             day_dir = archive_dir / now.strftime("%Y-%m-%d")
             day_dir.mkdir(parents=True, exist_ok=True)
-            path = day_dir / f"{now.strftime('%H%M%S')}.jpg"
+            path = day_dir / f"{now.strftime('%H%M%S_%f')}.jpg"
             path.write_bytes(image_bytes)
         except Exception as e:
             logger.warning(f"Failed to archive raw image: {e}")
+            return
+
+        # Best-effort retention sweep — only runs on the first archive write of a new day.
+        # Any error here must not affect the archive write or the caller.
+        today = now.date()
+        if self._last_sweep_date is None or self._last_sweep_date != today:
+            try:
+                self._sweep_old_archive_dirs(archive_dir)
+            except Exception as e:
+                logger.warning(f"Archive retention sweep failed: {e}")
+            # Mark sweep attempted regardless of success — avoids re-walking on every call after a failure.
+            self._last_sweep_date = today
+
+    def _sweep_old_archive_dirs(self, archive_dir: Path) -> None:
+        """Delete per-day subdirectories older than ``archive_max_age_days``.
+
+        Subdirs whose name does not parse as ``%Y-%m-%d`` are left untouched so we
+        never delete unknown content. Errors per-subdir are swallowed via
+        ``shutil.rmtree(..., ignore_errors=True)``.
+        """
+        max_age_days = int(self.config.get("alignment", {}).get("archive_max_age_days", 7))
+        cutoff = datetime.now().date() - timedelta(days=max_age_days)
+        for sub in archive_dir.iterdir():
+            if not sub.is_dir():
+                continue
+            try:
+                sub_date = datetime.strptime(sub.name, "%Y-%m-%d").date()
+            except ValueError:
+                continue  # leave non-dated subdirs alone
+            if sub_date < cutoff:
+                shutil.rmtree(sub, ignore_errors=True)
 
     async def run_inference(self, images: Dict[str, Tuple[bytes, str]]) -> Dict[str, Dict]:
         """

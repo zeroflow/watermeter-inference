@@ -40,6 +40,10 @@ alignment:
   # Disable in production once threshold is tuned (consumes disk).
   archive_raw_images: false
   archive_dir: "/data/raw_archive"
+  # Max age (days) for archived per-day subdirectories. Older subdirs are
+  # removed on the first archive write of each new day. Self-cleaning safety
+  # net so the archive cannot grow unbounded if archive_raw_images is left on.
+  archive_max_age_days: 7
 
 # Trigger Mode
 trigger:
