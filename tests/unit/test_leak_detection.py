@@ -21,7 +21,7 @@ import pytest
 # so the real module can be imported once we remove the module-level mock.
 # ---------------------------------------------------------------------------
 _ws_mock_backup = {}
-for _name in ['watermeter_service', 'watermeter.watermeter_service']:
+for _name in ["watermeter_service", "watermeter.watermeter_service"]:
     if _name in sys.modules:
         _ws_mock_backup[_name] = sys.modules.pop(_name)
 
@@ -40,6 +40,7 @@ for _name, _mock in _ws_mock_backup.items():
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def service():
     """Create a minimal WatermeterService with a mock config for leak detection tests.
@@ -50,14 +51,14 @@ def service():
     svc = object.__new__(WatermeterService)
 
     svc.config = {
-        'plausibility': {
-            'enable_leak_detection': True,
-            'sustained_rate_threshold': 0.05,   # m^3/h
-            'sustained_rate_readings': 3,        # consecutive pairs
+        "plausibility": {
+            "enable_leak_detection": True,
+            "sustained_rate_threshold": 0.05,  # m^3/h
+            "sustained_rate_readings": 3,  # consecutive pairs
         },
-        'homeassistant': {
-            'enabled': False,
-            'publish_topic': 'watermeter/state',
+        "homeassistant": {
+            "enabled": False,
+            "publish_topic": "watermeter/state",
         },
     }
 
@@ -82,19 +83,20 @@ def service():
     svc.rate_history = []
     svc.leak_warning = False
     svc.current_state = {
-        'total_value': None,
-        'unit': 'm\u00b3',
-        'last_update': None,
-        'status': 'idle',
-        'warnings': [],
-        'predictions': [],
-        'processing': False,
-        'ha_publish_enabled': False,
-        'leak_warning': False,
+        "total_value": None,
+        "unit": "m\u00b3",
+        "last_update": None,
+        "status": "idle",
+        "warnings": [],
+        "predictions": [],
+        "processing": False,
+        "ha_publish_enabled": False,
+        "leak_warning": False,
     }
     svc.previous_value = None
     svc.last_update_time = None
     svc.consecutive_rejections = 0
+    svc.consecutive_alignment_failures = 0
     svc.state_store = None
     svc.mqtt_client = None
     svc.ha_publish_enabled = False
@@ -112,6 +114,7 @@ def service():
 # ---------------------------------------------------------------------------
 # Detection logic tests
 # ---------------------------------------------------------------------------
+
 
 class TestCheckSustainedConsumption:
     """Tests for _check_sustained_consumption()."""
@@ -163,9 +166,9 @@ class TestCheckSustainedConsumption:
         base = datetime(2026, 2, 14, 12, 0)
         service.rate_history = [
             (100.000, base),
-            (100.020, base + timedelta(minutes=5)),    # 0.24 m^3/h - high
-            (100.021, base + timedelta(minutes=10)),   # 0.012 m^3/h - LOW
-            (100.041, base + timedelta(minutes=15)),   # 0.24 m^3/h - high
+            (100.020, base + timedelta(minutes=5)),  # 0.24 m^3/h - high
+            (100.021, base + timedelta(minutes=10)),  # 0.012 m^3/h - LOW
+            (100.041, base + timedelta(minutes=15)),  # 0.24 m^3/h - high
         ]
 
         result = service._check_sustained_consumption()
@@ -173,7 +176,7 @@ class TestCheckSustainedConsumption:
 
     def test_no_warning_feature_disabled(self, service):
         """enable_leak_detection is False -> None regardless of history."""
-        service.config['plausibility']['enable_leak_detection'] = False
+        service.config["plausibility"]["enable_leak_detection"] = False
 
         base = datetime(2026, 2, 14, 12, 0)
         # Data that would normally trigger a warning
@@ -220,6 +223,7 @@ class TestCheckSustainedConsumption:
 # MQTT payload test
 # ---------------------------------------------------------------------------
 
+
 class TestLeakWarningMqtt:
     """Tests for leak_warning flag in MQTT payload."""
 
@@ -228,7 +232,7 @@ class TestLeakWarningMqtt:
         """publish_to_mqtt includes leak_warning: True in the payload."""
         # Enable HA publishing
         service.ha_publish_enabled = True
-        service.config['homeassistant']['enabled'] = True
+        service.config["homeassistant"]["enabled"] = True
 
         # Set up mock MQTT client
         mock_client = MagicMock()
@@ -237,10 +241,12 @@ class TestLeakWarningMqtt:
 
         # Call publish_to_mqtt with leak_warning=True
         predictions = {
-            'digit_1': {'id': 'digit_1', 'class': '5', 'confidence': 0.95},
+            "digit_1": {"id": "digit_1", "class": "5", "confidence": 0.95},
         }
         await service.publish_to_mqtt(
-            123.456, ["Sustained consumption: 0.240 m\u00b3/h over 15 min"], predictions,
+            123.456,
+            ["Sustained consumption: 0.240 m\u00b3/h over 15 min"],
+            predictions,
             leak_warning=True,
         )
 
@@ -249,36 +255,39 @@ class TestLeakWarningMqtt:
         call_args = mock_client.publish.call_args
 
         # Parse the published payload
-        payload = json.loads(call_args[1]['json'] if 'json' in call_args[1] else call_args[0][1])
-        assert payload['leak_warning'] is True
+        payload = json.loads(call_args[1]["json"] if "json" in call_args[1] else call_args[0][1])
+        assert payload["leak_warning"] is True
 
     @pytest.mark.asyncio
     async def test_no_leak_warning_in_mqtt_payload(self, service):
         """publish_to_mqtt includes leak_warning: False when no leak."""
         service.ha_publish_enabled = True
-        service.config['homeassistant']['enabled'] = True
+        service.config["homeassistant"]["enabled"] = True
 
         mock_client = MagicMock()
         mock_client.is_connected.return_value = True
         service.mqtt_client = mock_client
 
         predictions = {
-            'digit_1': {'id': 'digit_1', 'class': '5', 'confidence': 0.95},
+            "digit_1": {"id": "digit_1", "class": "5", "confidence": 0.95},
         }
         await service.publish_to_mqtt(
-            123.456, [], predictions,
+            123.456,
+            [],
+            predictions,
             leak_warning=False,
         )
 
         mock_client.publish.assert_called_once()
         call_args = mock_client.publish.call_args
         payload = json.loads(call_args[0][1])
-        assert payload['leak_warning'] is False
+        assert payload["leak_warning"] is False
 
 
 # ---------------------------------------------------------------------------
 # State clearing / reset tests
 # ---------------------------------------------------------------------------
+
 
 class TestLeakWarningStateManagement:
     """Tests for leak_warning in current_state and clearing behavior."""
@@ -298,9 +307,7 @@ class TestLeakWarningStateManagement:
         assert result is not None
 
         # Now: add a reading with very low consumption (below threshold)
-        service.rate_history.append(
-            (100.061, base + timedelta(minutes=20))  # 0.012 m^3/h
-        )
+        service.rate_history.append((100.061, base + timedelta(minutes=20)))  # 0.012 m^3/h
 
         result = service._check_sustained_consumption()
         assert result is None
@@ -318,20 +325,20 @@ class TestLeakWarningStateManagement:
         # Simulate what process_reading does
         leak_msg = service._check_sustained_consumption()
         service.leak_warning = leak_msg is not None
-        service.current_state['leak_warning'] = service.leak_warning
+        service.current_state["leak_warning"] = service.leak_warning
 
         assert service.leak_warning is True
-        assert service.current_state['leak_warning'] is True
+        assert service.current_state["leak_warning"] is True
 
     def test_leak_warning_reset_on_reset_previous_value(self, service):
         """reset_previous_value() clears leak_warning flag."""
         # Simulate an active leak warning
         service.leak_warning = True
-        service.current_state['leak_warning'] = True
+        service.current_state["leak_warning"] = True
 
         service.reset_previous_value()
 
         assert service.leak_warning is False
-        assert service.current_state['leak_warning'] is False
+        assert service.current_state["leak_warning"] is False
         # Also verify rate_history was cleared
         assert service.rate_history == []

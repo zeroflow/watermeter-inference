@@ -184,6 +184,34 @@ def test_first_success_resets_counter_and_clears_stale():
     assert svc.current_state["pipeline_status"] in ("OK", "DEGRADED")
 
 
+def test_threshold_raised_mid_incident_re_arms_latch():
+    """If the threshold is raised while the latch is set, a future STALE crossing must re-notify."""
+    svc = make_failing_service(max_failures=3)
+    svc._notify_stale = MagicMock()
+
+    # Cross threshold at 3, latch fires
+    asyncio.run(svc.process_reading())
+    asyncio.run(svc.process_reading())
+    asyncio.run(svc.process_reading())
+    assert svc._stale_notified is True
+    assert svc._notify_stale.call_count == 1
+
+    # Operator raises threshold to 10 mid-incident
+    svc.config["alignment"]["max_consecutive_failures"] = 10
+
+    # Next failure: counter=4, status no longer STALE → latch should clear
+    asyncio.run(svc.process_reading())
+    # Latch was cleared by _derive_pipeline_status because pipeline_status != "STALE"
+    assert svc._stale_notified is False
+
+    # Continue failing until the new threshold is crossed
+    for _ in range(6):  # 4 + 6 = 10
+        asyncio.run(svc.process_reading())
+    # New STALE crossing: notification fires again
+    assert svc._notify_stale.call_count == 2
+    assert svc._stale_notified is True
+
+
 # ---------------------------------------------------------------------------
 # Restore conftest mocks so subsequent test files in the same session see them.
 # ---------------------------------------------------------------------------

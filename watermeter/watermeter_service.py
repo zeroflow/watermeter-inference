@@ -567,7 +567,7 @@ class WatermeterService:
                 "timestamp": datetime.now().isoformat(),
             }
             self.mqtt_client.publish(topic, json.dumps(payload), qos=1, retain=False)
-            logger.error(f"Pipeline STALE notification published to {topic}")
+            logger.info(f"Pipeline STALE notification published to {topic}")
         except Exception as e:
             logger.error(f"Failed to publish STALE notification: {e}")
 
@@ -603,6 +603,12 @@ class WatermeterService:
             pipeline_status = "DEGRADED"
         else:
             pipeline_status = "OK"
+
+        # Level-tie the STALE-notified latch to the derived status.
+        # If we're no longer STALE (recovered, or threshold was raised), re-arm
+        # the latch so the next STALE crossing produces a fresh notification.
+        if pipeline_status != "STALE":
+            self._stale_notified = False
 
         self.current_state["pipeline_status"] = pipeline_status
         self.current_state["consecutive_alignment_failures"] = consecutive
@@ -1044,8 +1050,11 @@ class WatermeterService:
             "active_digits_model": self._get_active_model_name("digits"),
             "active_arrows_model": self._get_active_model_name("arrows"),
             # Pipeline-health fields (Task 4): keep dashboard + HA in lockstep.
+            # NOTE: Mirror these three pipeline-health fields in
+            # MqttPublisher.publish_to_mqtt. Both publish paths exist during the
+            # publisher migration; remove this site once the migration completes.
             "pipeline_status": self.current_state.get("pipeline_status", "OK"),
-            "consecutive_alignment_failures": getattr(self, "consecutive_alignment_failures", 0),
+            "consecutive_alignment_failures": self.consecutive_alignment_failures,
             "last_alignment_error": self.current_state.get("last_alignment_error"),
         }
 
