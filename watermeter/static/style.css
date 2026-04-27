@@ -1779,3 +1779,58 @@ main {
         gap: 0.5rem;
     }
 }
+
+/* --- Pipeline status banner (Issue #2) --- */
+.pipeline-status-badge {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 1rem;
+    border-radius: 0.5rem;
+    font-size: 0.95rem;
+    margin-bottom: 1rem;
+    border: 1px solid transparent;
+    flex-wrap: wrap;
+}
+.pipeline-status-badge .pipeline-status-dot {
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.pipeline-status-badge.pipeline-ok       { background: #d4edda; color: #155724; border-color: #c3e6cb; }
+.pipeline-status-badge.pipeline-ok       .pipeline-status-dot { background: #28a745; }
+.pipeline-status-badge.pipeline-degraded { background: #fff3cd; color: #856404; border-color: #ffeaa7; }
+.pipeline-status-badge.pipeline-degraded .pipeline-status-dot { background: #ffc107; }
+.pipeline-status-badge.pipeline-failed   { background: #f8d7da; color: #721c24; border-color: #f5c6cb; }
+.pipeline-status-badge.pipeline-failed   .pipeline-status-dot { background: #dc3545; }
+.pipeline-status-badge.pipeline-stale    { background: #e2e3e5; color: #383d41; border-color: #d6d8db; }
+.pipeline-status-badge.pipeline-stale    .pipeline-status-dot { background: #6c757d; }
+
+.pipeline-status-badge .failure-counter { font-weight: 600; }
+.pipeline-status-badge .failure-reason  { font-style: italic; opacity: 0.8; }
+
+/* Dark-theme overrides — keep banner readable on dark backgrounds */
+:root[data-theme="dark"] .pipeline-status-badge.pipeline-ok       { background: rgba(40,167,69,0.18);  color: #b8f5c2; border-color: rgba(40,167,69,0.4); }
+:root[data-theme="dark"] .pipeline-status-badge.pipeline-degraded { background: rgba(255,193,7,0.18);  color: #ffe79b; border-color: rgba(255,193,7,0.4); }
+:root[data-theme="dark"] .pipeline-status-badge.pipeline-failed   { background: rgba(220,53,69,0.20);  color: #f8b6bd; border-color: rgba(220,53,69,0.45); }
+:root[data-theme="dark"] .pipeline-status-badge.pipeline-stale    { background: rgba(108,117,125,0.25); color: #d6d8db; border-color: rgba(108,117,125,0.5); }
+@media (prefers-color-scheme: dark) {
+    :root[data-theme="auto"] .pipeline-status-badge.pipeline-ok       { background: rgba(40,167,69,0.18);  color: #b8f5c2; border-color: rgba(40,167,69,0.4); }
+    :root[data-theme="auto"] .pipeline-status-badge.pipeline-degraded { background: rgba(255,193,7,0.18);  color: #ffe79b; border-color: rgba(255,193,7,0.4); }
+    :root[data-theme="auto"] .pipeline-status-badge.pipeline-failed   { background: rgba(220,53,69,0.20);  color: #f8b6bd; border-color: rgba(220,53,69,0.45); }
+    :root[data-theme="auto"] .pipeline-status-badge.pipeline-stale    { background: rgba(108,117,125,0.25); color: #d6d8db; border-color: rgba(108,117,125,0.5); }
+}
+
+.total-value-stale .stale-marker {
+    margin-left: 0.5rem;
+    font-size: 0.7em;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: rgba(255,255,255,0.2);
+    padding: 2px 8px;
+    border-radius: 4px;
+    vertical-align: middle;
+}
+

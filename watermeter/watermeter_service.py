@@ -532,6 +532,56 @@ class WatermeterService:
         """Delegate to LowConfidenceCapture."""
         return await self._low_confidence.save_low_confidence(image_id, image_bytes, prediction, next_image_bytes)
 
+    def _derive_pipeline_status(self) -> None:
+        """Compute pipeline_status, last_valid_reading_age_seconds, and is_live.
+
+        Mutates self.current_state in-place. Idempotent — safe to call multiple
+        times in the same processing cycle.
+
+        Status policy (Issue #2):
+          - STALE     — consecutive_alignment_failures >= max_consecutive_failures
+          - FAILED    — most recent status is alignment_failed or inference_failed
+          - DEGRADED  — at least one consecutive failure but below threshold
+          - OK        — no failures and last status is healthy
+
+        is_live is True only when pipeline_status == "OK".
+        """
+        # Task 4 will add alignment.max_consecutive_failures to config.yaml.
+        # Default to 10 here so this helper is usable before Task 4 lands.
+        max_failures = self.config.get("alignment", {}).get("max_consecutive_failures", 10)
+        consecutive = self.consecutive_alignment_failures
+        last_status = self.current_state.get("status")
+
+        if consecutive >= max_failures:
+            pipeline_status = "STALE"
+        elif last_status in ("alignment_failed", "inference_failed"):
+            pipeline_status = "FAILED"
+        elif consecutive > 0:
+            pipeline_status = "DEGRADED"
+        else:
+            pipeline_status = "OK"
+
+        self.current_state["pipeline_status"] = pipeline_status
+        self.current_state["consecutive_alignment_failures"] = consecutive
+
+        # Age of last successful reading (best-effort — last_published_timestamp
+        # is stored as "HH:MM" by the success path, which doesn't carry a date.
+        # Fall back to None when parsing fails.)
+        last_pub_ts = self.current_state.get("last_published_timestamp")
+        age_seconds: Optional[int] = None
+        if last_pub_ts:
+            try:
+                if isinstance(last_pub_ts, str):
+                    ts = datetime.fromisoformat(last_pub_ts)
+                else:
+                    ts = last_pub_ts
+                age_seconds = int((datetime.now() - ts).total_seconds())
+            except (ValueError, TypeError):
+                age_seconds = None
+        self.current_state["last_valid_reading_age_seconds"] = age_seconds
+
+        self.current_state["is_live"] = pipeline_status == "OK"
+
     async def process_reading(self) -> Dict:
         """
         Main processing workflow:
@@ -613,6 +663,7 @@ class WatermeterService:
                             f"failed_marker={alignment.failed_marker}, "
                             f"confidences={alignment.marker_confidences})"
                         )
+                        self._derive_pipeline_status()
                         return self.current_state
 
                     # Reset counter only on alignment success.
@@ -842,6 +893,9 @@ class WatermeterService:
             finally:
                 self._last_processing_duration_s = round(time.monotonic() - t_start, 2)
                 self.current_state["processing"] = False
+                # Derive pipeline_status / is_live so the dashboard reflects the
+                # latest health on every cycle (Issue #2). Idempotent.
+                self._derive_pipeline_status()
 
         return self.current_state
 

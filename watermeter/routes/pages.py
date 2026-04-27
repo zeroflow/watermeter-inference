@@ -29,10 +29,14 @@ async def dashboard(request: Request):
         return RedirectResponse("/roi-config?setup=1", status_code=303)
 
     inference_svc = get_inference_service()
-    return templates.TemplateResponse(request, "dashboard.html", context={
-        "nav_active": "dashboard",
-        "models_loaded": inference_svc.models_loaded,
-    })
+    return templates.TemplateResponse(
+        request,
+        "dashboard.html",
+        context={
+            "nav_active": "dashboard",
+            "models_loaded": inference_svc.models_loaded,
+        },
+    )
 
 
 @router.get(
@@ -59,11 +63,15 @@ async def roi_config_page(request: Request):
     service = watermeter_service.get_service()
     setup_mode = request.query_params.get("setup") == "1"
     image_src = service.config.get("images", {}).get("src", "")
-    return templates.TemplateResponse(request, "roi_config.html", context={
-        "nav_active": "roi",
-        "setup_mode": setup_mode,
-        "image_src": image_src,
-    })
+    return templates.TemplateResponse(
+        request,
+        "roi_config.html",
+        context={
+            "nav_active": "roi",
+            "setup_mode": setup_mode,
+            "image_src": image_src,
+        },
+    )
 
 
 @router.get(
@@ -112,6 +120,10 @@ async def explore_page(request: Request):
 async def get_status_html(request: Request):
     """Get current status as HTML fragment for HTMX."""
     service = watermeter_service.get_service()
+    # Refresh pipeline_status / is_live / age before rendering so the badge
+    # reflects current health even between processing cycles (Issue #2).
+    if hasattr(service, "_derive_pipeline_status"):
+        service._derive_pipeline_status()
     # CRITICAL: Create a copy of current_state to prevent pollution.
     # Starlette's TemplateResponse mutates the context dict by adding a "request" key,
     # so passing current_state directly would inject a non-serializable Request object
