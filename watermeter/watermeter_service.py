@@ -21,7 +21,7 @@ import numpy as np
 import httpx
 import yaml
 from .inference import get_inference_service
-from .persistence import StateStore
+from .persistence import StateStore, FailureStore
 from .image_pipeline import ImagePipeline
 from .position_utils import calculate_total as _calculate_total_impl, get_position_ids
 from .low_confidence_capture import LowConfidenceCapture
@@ -79,6 +79,17 @@ class WatermeterService:
         else:
             self.state_store = None
             logger.info("Persistence disabled")
+
+        # Failure history (ring buffer of last N pipeline failures).
+        # Co-located with the state file so /data is the single persistence root.
+        state_file_path = persistence_config.get("state_file", "/data/state.json")
+        failure_history_path = Path(state_file_path).parent / "failure_history.json"
+        self._failure_store = FailureStore(failure_history_path)
+
+        # Consecutive alignment failures (separate from consecutive_rejections,
+        # which counts plausibility-rejected readings).  Initialized to 0;
+        # increments on every fail-closed alignment, resets on success.
+        self.consecutive_alignment_failures = 0
 
         # Low confidence capture
         self._low_confidence = LowConfidenceCapture(self.config)
@@ -293,8 +304,13 @@ class WatermeterService:
         self._image_pipeline.config = self.config
         return await self._image_pipeline.fetch_whole_image()
 
-    def process_whole_image(self, image_bytes: bytes) -> Dict[str, Tuple[bytes, str]]:
-        """Process whole image: rotation, marker alignment, ROI extraction."""
+    def process_whole_image(self, image_bytes: bytes):
+        """Process whole image: rotation, marker alignment, ROI extraction.
+
+        Returns ``(images_dict_or_None, AlignmentResult)``. On alignment failure
+        the images dict is ``None`` and callers MUST short-circuit before
+        running inference.
+        """
         self._image_pipeline.config = self.config
         return self._image_pipeline.process_whole_image(image_bytes)
 
@@ -577,9 +593,31 @@ class WatermeterService:
                     alignment_cfg = self.config.get("alignment", {})
                     if alignment_cfg.get("archive_raw_images", False):
                         await asyncio.get_running_loop().run_in_executor(None, self._archive_raw_image, whole_image)
-                    images = await asyncio.get_running_loop().run_in_executor(
+                    images, alignment = await asyncio.get_running_loop().run_in_executor(
                         None, self.process_whole_image, whole_image
                     )
+                    # Fail-closed: if alignment failed, persist + short-circuit before inference.
+                    if not alignment.success:
+                        self._failure_store.record_failure(
+                            reason=alignment.error_reason,
+                            stage="alignment",
+                            failed_marker=alignment.failed_marker,
+                            marker_confidences=alignment.marker_confidences,
+                        )
+                        self.consecutive_alignment_failures = getattr(self, "consecutive_alignment_failures", 0) + 1
+                        self.current_state["status"] = "alignment_failed"
+                        self.current_state["last_alignment_error"] = alignment.error_reason
+                        self.current_state["last_alignment_timestamp"] = datetime.now().isoformat()
+                        logger.error(
+                            f"Reading discarded: alignment failed ({alignment.error_reason}, "
+                            f"failed_marker={alignment.failed_marker}, "
+                            f"confidences={alignment.marker_confidences})"
+                        )
+                        return {"status": "alignment_failed", "reason": alignment.error_reason}
+
+                    # Reset counter only on alignment success.
+                    self.consecutive_alignment_failures = 0
+
                     if not images:
                         raise Exception("No ROIs extracted from whole image")
 

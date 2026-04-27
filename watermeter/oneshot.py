@@ -72,12 +72,24 @@ async def run_one_shot(config_path: str) -> int:
         logger.error("fetch_whole_image() returned None — HTTP failure")
         return 1
 
-    # Step 5: Extract ROIs
+    # Step 5: Extract ROIs (process_whole_image now returns (images, AlignmentResult))
     try:
-        rois: Dict[str, Tuple[bytes, str]] = pipeline.process_whole_image(image_bytes)
+        result = pipeline.process_whole_image(image_bytes)
     except Exception as e:
         logger.error(f"Exception processing image: {e}")
         return 1
+
+    # Back-compat: tests may still mock the old contract (returning a bare dict).
+    if isinstance(result, tuple):
+        rois, alignment = result
+        if not alignment.success:
+            logger.error(
+                f"Alignment failed ({alignment.error_reason}, "
+                f"failed_marker={alignment.failed_marker}); aborting one-shot run"
+            )
+            return 1
+    else:
+        rois: Dict[str, Tuple[bytes, str]] = result
 
     if not rois:
         logger.error("No ROIs extracted from image — cannot run inference")
