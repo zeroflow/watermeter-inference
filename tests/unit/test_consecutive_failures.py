@@ -89,6 +89,7 @@ def make_failing_service(*, max_failures=10):
 
     svc.processing_lock = asyncio.Lock()
     svc._failure_store = MagicMock()
+    svc._metrics = MagicMock()  # PipelineMetrics mocked (Task 5)
     svc.consecutive_alignment_failures = 0
     svc._stale_notified = False
 

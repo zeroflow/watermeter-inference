@@ -115,6 +115,14 @@
 </div>
 {% endif %}
 
+{# --- Pipeline Health Widget (Issue #4) --- #}
+<details class="pipeline-health" id="pipeline-health">
+    <summary>📊 Pipeline Health</summary>
+    <div class="health-body" id="pipeline-health-body" data-metrics-url="/api/metrics">
+        <p class="hint">Loading metrics…</p>
+    </div>
+</details>
+
 <!-- All Images - Digits and Arrows -->
 {% if predictions %}
 {% set ns = namespace(digit_count=0, analog_count=0) %}

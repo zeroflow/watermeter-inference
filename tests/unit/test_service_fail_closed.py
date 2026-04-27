@@ -86,6 +86,7 @@ def _make_service_with_alignment_failure(alignment_result):
     svc._confirmation_manager._pending_confirmation = None
     svc.processing_lock = asyncio.Lock()
     svc._failure_store = MagicMock()  # FailureStore is mocked here
+    svc._metrics = MagicMock()  # PipelineMetrics mocked (Task 5)
     svc.consecutive_alignment_failures = 0  # __init__ sets this; we bypass __init__ here
 
     # Pipeline returns (None, AlignmentResult(success=False, ...))

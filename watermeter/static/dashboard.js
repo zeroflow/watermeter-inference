@@ -97,3 +97,79 @@ function submitForTraining(id, imageBase64, model, nextImageBase64 = null) {
         console.error('Error submitting for training:', error);
     });
 }
+
+// --- Pipeline Health metrics poller (Issue #4) ---
+// Polls /api/metrics every 30s, renders into #pipeline-health-body using
+// textContent + createElement only. No innerHTML, no template strings into DOM.
+(function() {
+    const POLL_INTERVAL_MS = 30000;
+
+    function makeRow(label, value) {
+        const row = document.createElement('div');
+        row.className = 'metric';
+        const labelEl = document.createElement('span');
+        labelEl.textContent = label;
+        const valueEl = document.createElement('strong');
+        valueEl.textContent = value;
+        row.appendChild(labelEl);
+        row.appendChild(valueEl);
+        return row;
+    }
+
+    function fmtPct(x) {
+        if (x === null || x === undefined) return '—';
+        return (x * 100).toFixed(1) + '%';
+    }
+    function fmtFloat(x, digits) {
+        if (x === null || x === undefined) return '—';
+        return Number(x).toFixed(digits);
+    }
+
+    function renderMetrics(body, data) {
+        // Clear via DOM, not innerHTML
+        while (body.firstChild) body.removeChild(body.firstChild);
+
+        const okCount = data.readings_total.ok;
+        const failCount = data.readings_total.alignment_failed + data.readings_total.inference_failed;
+        body.appendChild(makeRow('Readings OK / Failed', okCount + ' / ' + failCount));
+        body.appendChild(makeRow('Failure rate (1h)', fmtPct(data.failure_rate_1h)));
+        body.appendChild(makeRow('Failure rate (24h)', fmtPct(data.failure_rate_24h)));
+
+        ['M1', 'M2'].forEach(function(m) {
+            const c = data.marker_match_confidence[m] || { count: 0 };
+            if (c.count > 0) {
+                body.appendChild(makeRow(
+                    m + ' confidence (median / min)',
+                    fmtFloat(c.median, 3) + ' / ' + fmtFloat(c.min, 3)
+                ));
+            }
+            body.appendChild(makeRow(
+                m + ' failures total',
+                String(data.marker_detection_failures_total[m] || 0)
+            ));
+        });
+    }
+
+    function pollOnce() {
+        const body = document.getElementById('pipeline-health-body');
+        if (!body) return;
+        const url = body.dataset.metricsUrl || '/api/metrics';
+        fetch(url, { credentials: 'same-origin' })
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(data) {
+                if (data) renderMetrics(body, data);
+            })
+            .catch(function() { /* silent — keep last good render */ });
+    }
+
+    // Re-attach poller after every HTMX swap of the status fragment, since the
+    // <details id="pipeline-health"> element gets replaced.
+    function startPolling() {
+        pollOnce();
+        if (window.__pipelineHealthInterval) clearInterval(window.__pipelineHealthInterval);
+        window.__pipelineHealthInterval = setInterval(pollOnce, POLL_INTERVAL_MS);
+    }
+
+    document.addEventListener('DOMContentLoaded', startPolling);
+    document.body.addEventListener('htmx:afterSwap', startPolling);
+})();

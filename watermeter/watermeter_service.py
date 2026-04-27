@@ -21,6 +21,7 @@ import numpy as np
 import httpx
 import yaml
 from .inference import get_inference_service
+from .metrics import PipelineMetrics
 from .persistence import StateStore, FailureStore
 from .image_pipeline import AlignmentResult, ImagePipeline
 from .position_utils import calculate_total as _calculate_total_impl, get_position_ids
@@ -89,6 +90,10 @@ class WatermeterService:
         state_file_path = persistence_config.get("state_file", "/data/state.json")
         failure_history_path = Path(state_file_path).parent / "failure_history.json"
         self._failure_store = FailureStore(failure_history_path)
+
+        # Pipeline observability metrics (Issue #4). Co-located with state file.
+        metrics_path = Path(state_file_path).parent / "metrics.json"
+        self._metrics = PipelineMetrics(metrics_path)
 
         # Consecutive alignment failures (separate from consecutive_rejections,
         # which counts plausibility-rejected readings).  Initialized to 0;
@@ -703,6 +708,12 @@ class WatermeterService:
                             failed_marker=alignment.failed_marker,
                             marker_confidences=alignment.marker_confidences,
                         )
+                        # Pipeline metrics (Issue #4): per-marker failure + confidence + status.
+                        if alignment.failed_marker:
+                            self._metrics.record_marker_failure(marker_index=alignment.failed_marker)
+                        for i, conf in enumerate(alignment.marker_confidences):
+                            self._metrics.record_marker_confidence(marker_index=i + 1, confidence=conf)
+                        self._metrics.record_reading(status="alignment_failed")
                         self.consecutive_alignment_failures += 1
                         self.current_state["status"] = "alignment_failed"
                         self.current_state["last_alignment_error"] = alignment.error_reason
@@ -888,6 +899,15 @@ class WatermeterService:
                             leak_warning=self.leak_warning,
                             raw_value=raw_total,
                         )
+
+                    # Pipeline metrics (Issue #4): record successful reading and
+                    # confidence trends from the happy path. `alignment` is only
+                    # defined in whole-image mode; in separate mode there is no
+                    # alignment step, so record only the status.
+                    if "alignment" in locals() and alignment is not None:
+                        for i, conf in enumerate(alignment.marker_confidences):
+                            self._metrics.record_marker_confidence(marker_index=i + 1, confidence=conf)
+                    self._metrics.record_reading(status="ok")
                 else:
                     self.consecutive_rejections += 1
                     self.current_state["status"] = "error"
@@ -934,6 +954,18 @@ class WatermeterService:
                 logger.error(f"Error during processing: {e}", exc_info=True)
                 self.current_state["status"] = "error"
                 self.current_state["warnings"] = [str(e)]
+                # Pipeline metrics (Issue #4): treat post-alignment exceptions as
+                # inference_failed. The current code only sets status="error" in
+                # this catch-all; if `predictions` exists in locals(), we know the
+                # exception happened after run_inference returned (or while
+                # processing predictions), which is the closest signal we have.
+                # TODO: distinguish fetch/inference/other failure modes more
+                # precisely once dedicated exception types exist.
+                try:
+                    if "predictions" in locals() and predictions:
+                        self._metrics.record_reading(status="inference_failed")
+                except Exception:
+                    pass
                 # Try to save predictions if we got that far
                 try:
                     if "predictions" in locals() and predictions:
