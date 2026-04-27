@@ -94,6 +94,11 @@ class WatermeterService:
         # which counts plausibility-rejected readings).  Initialized to 0;
         # increments on every fail-closed alignment, resets on success.
         self.consecutive_alignment_failures = 0
+        # Edge-trigger latch for the STALE-pipeline MQTT notification.  Set to
+        # True the first time the failure counter crosses the configured
+        # threshold; cleared on the next successful alignment so a future STALE
+        # episode triggers a fresh notification.
+        self._stale_notified = False
 
         # Low confidence capture
         self._low_confidence = LowConfidenceCapture(self.config)
@@ -536,6 +541,36 @@ class WatermeterService:
         """Delegate to LowConfidenceCapture."""
         return await self._low_confidence.save_low_confidence(image_id, image_bytes, prediction, next_image_bytes)
 
+    def _notify_stale(self) -> None:
+        """One-shot notification when pipeline transitions into STALE (Task 4).
+
+        Publishes a JSON payload to a dedicated HA event topic.  HA automations
+        can forward this to push notifications, email, etc.  Best-effort: never
+        raises — notification failure must not block reading processing.
+
+        The latch (``self._stale_notified``) is managed by the caller so this
+        helper stays idempotent if invoked directly.
+        """
+        try:
+            if self.mqtt_client is None:
+                logger.error(
+                    f"STALE pipeline (no MQTT): consecutive_alignment_failures="
+                    f"{self.consecutive_alignment_failures}"
+                )
+                return
+            ha_cfg = self.config.get("homeassistant", {})
+            topic = ha_cfg.get("event_topic", f"{ha_cfg.get('publish_topic', 'watermeter')}/event")
+            payload = {
+                "event": "pipeline_stale",
+                "consecutive_alignment_failures": self.consecutive_alignment_failures,
+                "last_alignment_error": self.current_state.get("last_alignment_error"),
+                "timestamp": datetime.now().isoformat(),
+            }
+            self.mqtt_client.publish(topic, json.dumps(payload), qos=1, retain=False)
+            logger.error(f"Pipeline STALE notification published to {topic}")
+        except Exception as e:
+            logger.error(f"Failed to publish STALE notification: {e}")
+
     def _derive_pipeline_status(self) -> None:
         """Compute pipeline_status, last_valid_reading_age_seconds, and is_live.
 
@@ -672,10 +707,18 @@ class WatermeterService:
                             f"confidences={alignment.marker_confidences})"
                         )
                         self._derive_pipeline_status()
+
+                        # Edge-trigger STALE notification: fire exactly once on
+                        # the boundary, latched until alignment recovers (Task 4).
+                        max_fail = self.config.get("alignment", {}).get("max_consecutive_failures", 10)
+                        if self.consecutive_alignment_failures >= max_fail and not self._stale_notified:
+                            self._notify_stale()
+                            self._stale_notified = True
                         return self.current_state
 
-                    # Reset counter only on alignment success.
+                    # Reset counter and STALE latch only on alignment success.
                     self.consecutive_alignment_failures = 0
+                    self._stale_notified = False
 
                     if not images:
                         raise Exception("No ROIs extracted from whole image")
@@ -1000,6 +1043,10 @@ class WatermeterService:
             "processing_duration": self._last_processing_duration_s,
             "active_digits_model": self._get_active_model_name("digits"),
             "active_arrows_model": self._get_active_model_name("arrows"),
+            # Pipeline-health fields (Task 4): keep dashboard + HA in lockstep.
+            "pipeline_status": self.current_state.get("pipeline_status", "OK"),
+            "consecutive_alignment_failures": getattr(self, "consecutive_alignment_failures", 0),
+            "last_alignment_error": self.current_state.get("last_alignment_error"),
         }
 
         topic = ha_config["publish_topic"]

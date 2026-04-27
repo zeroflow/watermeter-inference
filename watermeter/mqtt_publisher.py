@@ -83,13 +83,40 @@ _HA_ENTITIES = [
         "icon": "mdi:information-outline",
         "entity_category": "diagnostic",
         "device_class": "enum",
-        "options": ["idle", "ok", "warning", "error", "no_models", "pending_confirmation", "processing", "timeout", "rejected"],
+        "options": [
+            "idle",
+            "ok",
+            "warning",
+            "error",
+            "no_models",
+            "pending_confirmation",
+            "processing",
+            "timeout",
+            "rejected",
+        ],
     },
     {
         "object_id": "consecutive_rejections",
         "name": "Consecutive Rejections",
         "component": "sensor",
         "icon": "mdi:close-octagon-outline",
+        "state_class": "measurement",
+        "entity_category": "diagnostic",
+    },
+    {
+        "object_id": "pipeline_status",
+        "name": "Pipeline Status",
+        "component": "sensor",
+        "icon": "mdi:pipe-valve",
+        "device_class": "enum",
+        "options": ["OK", "DEGRADED", "FAILED", "STALE"],
+        "entity_category": "diagnostic",
+    },
+    {
+        "object_id": "consecutive_alignment_failures",
+        "name": "Consecutive Alignment Failures",
+        "component": "sensor",
+        "icon": "mdi:image-broken-variant",
         "state_class": "measurement",
         "entity_category": "diagnostic",
     },
@@ -331,6 +358,10 @@ class MqttPublisher:
             "processing_duration": processing_dur,
             "active_digits_model": digits_model,
             "active_arrows_model": arrows_model,
+            # Pipeline-health fields (Task 4): keep dashboard + HA in lockstep.
+            "pipeline_status": self._meter_state.current_state.get("pipeline_status", "OK"),
+            "consecutive_alignment_failures": self._meter_state.current_state.get("consecutive_alignment_failures", 0),
+            "last_alignment_error": self._meter_state.current_state.get("last_alignment_error"),
         }
 
         topic = ha_config["publish_topic"]
@@ -345,9 +376,7 @@ class MqttPublisher:
             return
 
         ha_config = self.config["homeassistant"]
-        training_path = Path(
-            self.config.get("low_confidence", {}).get("save_path", "/training")
-        )
+        training_path = Path(self.config.get("low_confidence", {}).get("save_path", "/training"))
 
         digits_input = training_path / "digits" / "input"
         arrows_input = training_path / "arrows" / "input"
@@ -355,12 +384,8 @@ class MqttPublisher:
         arrows_gt = training_path / "arrows" / "ground_truth"
 
         payload = {
-            "unlabeled_digits": (
-                sum(1 for _ in digits_input.glob("*.jpg")) if digits_input.exists() else 0
-            ),
-            "unlabeled_arrows": (
-                sum(1 for _ in arrows_input.glob("*.jpg")) if arrows_input.exists() else 0
-            ),
+            "unlabeled_digits": (sum(1 for _ in digits_input.glob("*.jpg")) if digits_input.exists() else 0),
+            "unlabeled_arrows": (sum(1 for _ in arrows_input.glob("*.jpg")) if arrows_input.exists() else 0),
             "training_digits": (
                 sum(sum(1 for _ in d.glob("*.jpg")) for d in digits_gt.iterdir() if d.is_dir())
                 if digits_gt.exists()
@@ -418,8 +443,7 @@ class MqttPublisher:
             }
 
             # Optional fields
-            for key in ("device_class", "state_class", "unit_of_measurement",
-                        "icon", "entity_category", "options"):
+            for key in ("device_class", "state_class", "unit_of_measurement", "icon", "entity_category", "options"):
                 if key in entity:
                     payload[key] = entity[key]
 
@@ -583,8 +607,7 @@ class MqttPublisher:
             self.mqtt_client.connect(mqtt_config["broker"], mqtt_config["port"], mqtt_config["keepalive"])
         except (OSError, ConnectionRefusedError) as exc:
             logger.warning(
-                f"MQTT broker not reachable ({exc}). "
-                f"App continues without MQTT — will reconnect automatically."
+                f"MQTT broker not reachable ({exc}). " f"App continues without MQTT — will reconnect automatically."
             )
 
         # Configure paho's built-in reconnect backoff as belt-and-suspenders
