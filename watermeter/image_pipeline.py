@@ -36,9 +36,7 @@ def apply_fisheye_correction(image, k1):
     dist_coeffs = np.array([k1, 0, 0, 0, 0], dtype=np.float64)
 
     # alpha=1 preserves all source pixels; no content is lost (black borders may appear at edges)
-    new_camera_matrix, _ = cv2.getOptimalNewCameraMatrix(
-        camera_matrix, dist_coeffs, (w, h), alpha=1, newImgSize=(w, h)
-    )
+    new_camera_matrix, _ = cv2.getOptimalNewCameraMatrix(camera_matrix, dist_coeffs, (w, h), alpha=1, newImgSize=(w, h))
 
     return cv2.undistort(image, camera_matrix, dist_coeffs, None, new_camera_matrix)
 
@@ -79,10 +77,14 @@ class ImagePipeline:
 
     # Alignment constants (internal tuning, not user-facing)
     SEARCH_MARGIN = 0.15  # +/-15% of image dimensions for search window
-    CONFIDENCE_THRESHOLD = 0.5  # Minimum template match quality
+    DEFAULT_CONFIDENCE_THRESHOLD = 0.5  # cv2.TM_CCOEFF_NORMED min match score (back-compat default)
 
     def __init__(self, config: dict):
         self.config = config
+        alignment_cfg = config.get("alignment", {}) if isinstance(config, dict) else {}
+        self.CONFIDENCE_THRESHOLD = float(
+            alignment_cfg.get("marker_confidence_threshold", self.DEFAULT_CONFIDENCE_THRESHOLD)
+        )
         # Cached marker templates for alignment (loaded lazily)
         self._marker_templates: Optional[List[np.ndarray]] = None
 

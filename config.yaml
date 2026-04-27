@@ -30,6 +30,17 @@ detection:
     rois: []
   markers: []
 
+# Marker-based image alignment (cv2.matchTemplate)
+alignment:
+  # Minimum normalized cross-correlation score for cv2.matchTemplate.
+  # Default 0.5 is loose; 0.7-0.8 is conventional for TM_CCOEFF_NORMED.
+  # See docs/decisions.md and scripts/replay_marker_confidence.py.
+  marker_confidence_threshold: 0.5
+  # Archive every fetched whole-image for offline confidence analysis.
+  # Disable in production once threshold is tuned (consumes disk).
+  archive_raw_images: false
+  archive_dir: "/data/raw_archive"
+
 # Trigger Mode
 trigger:
   mode: "mqtt"  # "mqtt" (AIOTE triggers), "cyclic" (periodic polling), or "both"

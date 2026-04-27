@@ -37,7 +37,6 @@ from .data_collector import DataCollector
 logger = logging.getLogger(__name__)
 
 
-
 class WatermeterService:
     """Main service for watermeter reading and inference."""
 
@@ -54,13 +53,9 @@ class WatermeterService:
         # Configure file logging if specified in config
         log_file = self.config["logging"].get("file")
         if log_file:
-            log_format = self.config["logging"].get(
-                "format", "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-            )
+            log_format = self.config["logging"].get("format", "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
             os.makedirs(os.path.dirname(log_file), exist_ok=True)
-            file_handler = logging.handlers.RotatingFileHandler(
-                log_file, maxBytes=10 * 1024 * 1024, backupCount=5
-            )
+            file_handler = logging.handlers.RotatingFileHandler(log_file, maxBytes=10 * 1024 * 1024, backupCount=5)
             file_handler.setFormatter(logging.Formatter(log_format))
             logging.getLogger().addHandler(file_handler)
 
@@ -99,9 +94,7 @@ class WatermeterService:
             self._data_collector = None
 
         # Rate history for plausibility checks
-        self._rate_tracker = RateTracker(
-            max_size=self.config["plausibility"].get("rate_history_size", 5)
-        )
+        self._rate_tracker = RateTracker(max_size=self.config["plausibility"].get("rate_history_size", 5))
 
         # Leak detection
         self._leak_detector = LeakDetector(
@@ -237,7 +230,7 @@ class WatermeterService:
     @state_store.setter
     def state_store(self, value) -> None:
         self._state_store = value
-        if hasattr(self, '_confirmation_manager'):
+        if hasattr(self, "_confirmation_manager"):
             self._confirmation_manager._state_store = value
 
     # ── MQTT delegation properties ──────────────────────────────────────────
@@ -303,6 +296,18 @@ class WatermeterService:
     def invalidate_marker_cache(self):
         """Clear cached marker templates so they are reloaded on next alignment."""
         self._image_pipeline.invalidate_marker_cache()
+
+    def _archive_raw_image(self, image_bytes: bytes) -> None:
+        """Persist a raw fetched image for offline confidence analysis. Best-effort, never raises."""
+        try:
+            archive_dir = Path(self.config.get("alignment", {}).get("archive_dir", "/data/raw_archive"))
+            now = datetime.now()
+            day_dir = archive_dir / now.strftime("%Y-%m-%d")
+            day_dir.mkdir(parents=True, exist_ok=True)
+            path = day_dir / f"{now.strftime('%H%M%S')}.jpg"
+            path.write_bytes(image_bytes)
+        except Exception as e:
+            logger.warning(f"Failed to archive raw image: {e}")
 
     async def run_inference(self, images: Dict[str, Tuple[bytes, str]]) -> Dict[str, Dict]:
         """
@@ -423,7 +428,10 @@ class WatermeterService:
     ) -> None:
         """Delegate to ConfirmationManager.publish_request()."""
         self._confirmation_manager.publish_request(
-            total_value, warnings, predictions, reason,
+            total_value,
+            warnings,
+            predictions,
+            reason,
             mqtt_client=self.mqtt_client,
             loop=self.loop,
         )
@@ -490,7 +498,9 @@ class WatermeterService:
             # If no inference models are loaded, exit early
             if not get_inference_service().models_loaded:
                 self.current_state["status"] = "no_models"
-                self.current_state["warnings"] = ["No inference models loaded. Train or import models via the Training page."]
+                self.current_state["warnings"] = [
+                    "No inference models loaded. Train or import models via the Training page."
+                ]
                 return self.current_state
 
             # If no digit ROIs are configured, skip processing (fresh install)
@@ -522,7 +532,13 @@ class WatermeterService:
                     whole_image = await self.fetch_whole_image()
                     if not whole_image:
                         raise Exception("Failed to fetch whole image")
-                    images = await asyncio.get_running_loop().run_in_executor(None, self.process_whole_image, whole_image)
+                    # Optional: archive raw image for offline confidence analysis
+                    alignment_cfg = self.config.get("alignment", {})
+                    if alignment_cfg.get("archive_raw_images", False):
+                        await asyncio.get_running_loop().run_in_executor(None, self._archive_raw_image, whole_image)
+                    images = await asyncio.get_running_loop().run_in_executor(
+                        None, self.process_whole_image, whole_image
+                    )
                     if not images:
                         raise Exception("No ROIs extracted from whole image")
 
@@ -567,9 +583,9 @@ class WatermeterService:
                     # Data collection (saves regardless of confidence)
                     if self._data_collector is not None:
                         self._data_collector.collect(
-                            pred["model"],       # "digits" or "arrows"
-                            pred["id"],          # e.g., "analog_1", "digit_2"
-                            pred["class"],       # predicted class string
+                            pred["model"],  # "digits" or "arrows"
+                            pred["id"],  # e.g., "analog_1", "digit_2"
+                            pred["class"],  # predicted class string
                             pred["image_bytes"],
                         )
 
@@ -677,8 +693,11 @@ class WatermeterService:
                         # Normal path -- publish immediately
                         raw_total = self._compute_raw_total(raw_values)
                         await self.publish_to_mqtt(
-                            total_value, all_warnings, predictions,
-                            leak_warning=self.leak_warning, raw_value=raw_total,
+                            total_value,
+                            all_warnings,
+                            predictions,
+                            leak_warning=self.leak_warning,
+                            raw_value=raw_total,
                         )
                 else:
                     self.consecutive_rejections += 1
@@ -713,8 +732,11 @@ class WatermeterService:
                     if self.previous_value is not None:
                         raw_total = self._compute_raw_total(raw_values)
                         await self.publish_to_mqtt(
-                            self.previous_value, all_warnings, predictions,
-                            leak_warning=self.leak_warning, raw_value=raw_total,
+                            self.previous_value,
+                            all_warnings,
+                            predictions,
+                            leak_warning=self.leak_warning,
+                            raw_value=raw_total,
                         )
 
                 logger.info("=" * 60)
@@ -915,15 +937,15 @@ class WatermeterService:
 
         # Publish to MQTT via shared method (raw_value=value since no raw
         # predictions exist for a manual set)
-        can_publish = (
-            self.ha_publish_enabled
-            and self.mqtt_client
-            and self.mqtt_client.is_connected()
-        )
+        can_publish = self.ha_publish_enabled and self.mqtt_client and self.mqtt_client.is_connected()
         if can_publish:
             try:
                 await self.publish_to_mqtt(
-                    value, [], {}, leak_warning=False, raw_value=value,
+                    value,
+                    [],
+                    {},
+                    leak_warning=False,
+                    raw_value=value,
                 )
                 logger.info(f"Published manual value {value:.4f} to MQTT")
                 return True
@@ -954,9 +976,7 @@ class WatermeterService:
             return
 
         ha_config = self.config["homeassistant"]
-        training_path = Path(
-            self.config.get("low_confidence", {}).get("save_path", "/training")
-        )
+        training_path = Path(self.config.get("low_confidence", {}).get("save_path", "/training"))
 
         digits_input = training_path / "digits" / "input"
         arrows_input = training_path / "arrows" / "input"
@@ -964,12 +984,8 @@ class WatermeterService:
         arrows_gt = training_path / "arrows" / "ground_truth"
 
         payload = {
-            "unlabeled_digits": (
-                sum(1 for _ in digits_input.glob("*.jpg")) if digits_input.exists() else 0
-            ),
-            "unlabeled_arrows": (
-                sum(1 for _ in arrows_input.glob("*.jpg")) if arrows_input.exists() else 0
-            ),
+            "unlabeled_digits": (sum(1 for _ in digits_input.glob("*.jpg")) if digits_input.exists() else 0),
+            "unlabeled_arrows": (sum(1 for _ in arrows_input.glob("*.jpg")) if arrows_input.exists() else 0),
             "training_digits": (
                 sum(sum(1 for _ in d.glob("*.jpg")) for d in digits_gt.iterdir() if d.is_dir())
                 if digits_gt.exists()
@@ -1024,10 +1040,7 @@ class WatermeterService:
         new_mqtt = new_config.get("mqtt", {})
 
         # Check if MQTT connection params changed
-        mqtt_changed = any(
-            old_mqtt.get(k) != new_mqtt.get(k)
-            for k in ("broker", "port", "username", "password")
-        )
+        mqtt_changed = any(old_mqtt.get(k) != new_mqtt.get(k) for k in ("broker", "port", "username", "password"))
 
         # Update main config
         self.config = new_config
