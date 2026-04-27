@@ -43,6 +43,16 @@
                 <p>Loading status...</p>
             </div>
         </main>
+
+        {# --- Pipeline Health Widget (Issue #4) --- #}
+        {# Lives OUTSIDE the swap target so its open/closed state survives HTMX swaps #}
+        {# and so the metrics poller doesn't get re-triggered every 5s. #}
+        <details class="pipeline-health" id="pipeline-health">
+            <summary>📊 Pipeline Health</summary>
+            <div class="health-body" id="pipeline-health-body" data-metrics-url="/api/metrics">
+                <p class="hint">Loading metrics…</p>
+            </div>
+        </details>
     </div>
 
     <script src="/static/dashboard.js"></script>

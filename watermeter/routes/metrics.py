@@ -19,4 +19,4 @@ router = APIRouter()
 async def get_metrics() -> dict:
     """Return the current PipelineMetrics snapshot."""
     service = watermeter_service.get_service()
-    return service._metrics.snapshot()
+    return service.get_metrics_snapshot()

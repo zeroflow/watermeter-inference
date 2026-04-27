@@ -138,6 +138,124 @@ def test_alignment_failure_increments_consecutive_failures():
 
 
 # ---------------------------------------------------------------------------
+# Integration tests for the inference_failed metric path (Task 5 / review fix).
+# These verify the production process_reading flow records the metric correctly:
+#   - run_inference itself raises  → status="inference_failed" recorded
+#   - downstream code raises       → status="inference_failed" NOT recorded
+# ---------------------------------------------------------------------------
+
+
+def _make_service_with_alignment_success():
+    """Build a service whose alignment succeeds, so process_reading reaches inference."""
+    svc = object.__new__(WatermeterService)
+    svc.config = {
+        "images": {"process_separate": False},
+        "alignment": {},
+        "inference": {"confidence_threshold": 0.6},
+        "low_confidence": {"save_path": "/tmp/lc"},
+        "plausibility": {},
+        "homeassistant": {"enabled": False},
+        "detection": {"digits": {"rois": [{"x": 0.0, "y": 0.0, "width": 0.1, "height": 0.1}]}},
+    }
+    svc._state = MeterState(ha_publish_enabled=False)
+    svc._confirmation_manager = MagicMock()
+    svc._confirmation_manager._pending_confirmation = None
+    svc.processing_lock = asyncio.Lock()
+    svc._failure_store = MagicMock()
+    svc._metrics = MagicMock()
+    svc.consecutive_alignment_failures = 0
+    svc._stale_notified = False
+    svc._data_collector = None
+    svc._rate_tracker = MagicMock()
+    svc._rate_tracker.add = MagicMock()
+    svc._state_store = None
+
+    align_success = AlignmentResult(
+        success=True,
+        image=MagicMock(),
+        marker_confidences=[0.9, 0.92],
+    )
+    fake_images = {"d1": (b"...", "digits")}
+
+    svc._image_pipeline = MagicMock()
+    svc._image_pipeline.process_whole_image = MagicMock(return_value=(fake_images, align_success))
+
+    svc.fetch_whole_image = AsyncMock(return_value=b"fake jpeg bytes")
+    svc.publish_to_mqtt = AsyncMock()
+    svc._archive_raw_image = MagicMock()
+    svc._notify_stale = MagicMock()
+    return svc
+
+
+def test_inference_exception_records_inference_failed():
+    """If run_inference raises, the metric must record status='inference_failed'."""
+    svc = _make_service_with_alignment_success()
+
+    # The pivotal mock: run_inference raises
+    svc.run_inference = AsyncMock(side_effect=RuntimeError("openvino exploded"))
+
+    # Downstream methods that should NOT be called
+    svc.calculate_total = MagicMock()
+    svc.correct_predictions = MagicMock()
+    svc.check_consistency = MagicMock()
+    svc.validate_plausibility = MagicMock()
+
+    asyncio.run(svc.process_reading())
+
+    # inference_failed was recorded exactly once
+    inference_failed_calls = [
+        c for c in svc._metrics.record_reading.call_args_list if c.kwargs.get("status") == "inference_failed"
+    ]
+    assert (
+        len(inference_failed_calls) == 1
+    ), f"Expected exactly one inference_failed call, got: {svc._metrics.record_reading.call_args_list}"
+    # No "ok" or "alignment_failed" recorded for this reading
+    ok_calls = [c for c in svc._metrics.record_reading.call_args_list if c.kwargs.get("status") == "ok"]
+    assert len(ok_calls) == 0
+    # State reflects the failure
+    assert svc.current_state["status"] == "inference_failed"
+    assert "openvino exploded" in svc.current_state.get("last_inference_error", "")
+    # Downstream pipeline steps must not run
+    svc.calculate_total.assert_not_called()
+
+
+def test_post_inference_exception_does_not_record_inference_failed():
+    """If a downstream operation (e.g. calculate_total) raises, that's NOT inference_failed."""
+    svc = _make_service_with_alignment_success()
+
+    # run_inference returns successfully
+    svc.run_inference = AsyncMock(
+        return_value={
+            "d1": {
+                "id": "d1",
+                "class": 7,
+                "confidence": 0.99,
+                "model": "digits",
+                "image_bytes": b"",
+            }
+        }
+    )
+    # Pivotal mock: calculate_total raises (post-inference downstream failure)
+    svc.calculate_total = MagicMock(side_effect=RuntimeError("downstream boom"))
+    svc.correct_predictions = MagicMock()
+    svc.check_consistency = MagicMock()
+    svc.validate_plausibility = MagicMock()
+
+    asyncio.run(svc.process_reading())
+
+    # No inference_failed metric recorded — that label is reserved for actual
+    # run_inference exceptions.
+    inference_failed_calls = [
+        c for c in svc._metrics.record_reading.call_args_list if c.kwargs.get("status") == "inference_failed"
+    ]
+    assert (
+        len(inference_failed_calls) == 0
+    ), f"Downstream exception must NOT record inference_failed, got: {svc._metrics.record_reading.call_args_list}"
+    # Status should be "error" (the catch-all generic), not "inference_failed"
+    assert svc.current_state["status"] == "error"
+
+
+# ---------------------------------------------------------------------------
 # Restore conftest mocks so subsequent test files in the same session see them.
 # (Done at module bottom so failures during imports above leave the mocks
 # unrestored only for this file, not the whole run.)

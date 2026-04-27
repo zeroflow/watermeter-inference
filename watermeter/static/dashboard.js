@@ -162,14 +162,12 @@ function submitForTraining(id, imageBase64, model, nextImageBase64 = null) {
             .catch(function() { /* silent — keep last good render */ });
     }
 
-    // Re-attach poller after every HTMX swap of the status fragment, since the
-    // <details id="pipeline-health"> element gets replaced.
+    // The widget lives OUTSIDE the HTMX swap target (in dashboard.html), so it
+    // is never replaced. startPolling runs exactly once per page load.
     function startPolling() {
         pollOnce();
-        if (window.__pipelineHealthInterval) clearInterval(window.__pipelineHealthInterval);
-        window.__pipelineHealthInterval = setInterval(pollOnce, POLL_INTERVAL_MS);
+        setInterval(pollOnce, POLL_INTERVAL_MS);
     }
 
     document.addEventListener('DOMContentLoaded', startPolling);
-    document.body.addEventListener('htmx:afterSwap', startPolling);
 })();

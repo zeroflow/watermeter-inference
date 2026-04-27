@@ -741,8 +741,26 @@ class WatermeterService:
                         raise Exception("No ROIs extracted from whole image")
 
                 # 2. Run inference
+                # Wrap in try/except so we can record `inference_failed` ONLY when
+                # the inference call itself raises (timeout, model crash, OpenVINO
+                # error). Downstream exceptions fall through to the catch-all and
+                # do NOT pollute the inference_failed metric (Issue #4 / Task 5).
                 t_inf = time.monotonic()
-                predictions = await self.run_inference(images)
+                try:
+                    predictions = await self.run_inference(images)
+                except Exception as inf_err:
+                    logger.error(f"Inference failed: {inf_err}", exc_info=True)
+                    self.current_state["status"] = "inference_failed"
+                    self.current_state["last_inference_error"] = str(inf_err)
+                    self.current_state["warnings"] = [str(inf_err)]
+                    try:
+                        self._metrics.record_reading(status="inference_failed")
+                    except Exception:
+                        pass
+                    # Fall through to the `finally` block which sets processing
+                    # timings + derives pipeline_status. Returning here skips the
+                    # remaining happy-path / catch-all branches.
+                    return self.current_state
                 self._last_inference_duration_ms = round((time.monotonic() - t_inf) * 1000)
 
                 # 3. Calculate total
@@ -954,18 +972,11 @@ class WatermeterService:
                 logger.error(f"Error during processing: {e}", exc_info=True)
                 self.current_state["status"] = "error"
                 self.current_state["warnings"] = [str(e)]
-                # Pipeline metrics (Issue #4): treat post-alignment exceptions as
-                # inference_failed. The current code only sets status="error" in
-                # this catch-all; if `predictions` exists in locals(), we know the
-                # exception happened after run_inference returned (or while
-                # processing predictions), which is the closest signal we have.
-                # TODO: distinguish fetch/inference/other failure modes more
-                # precisely once dedicated exception types exist.
-                try:
-                    if "predictions" in locals() and predictions:
-                        self._metrics.record_reading(status="inference_failed")
-                except Exception:
-                    pass
+                # Note: this catch-all is for unexpected/generic errors only.
+                # Structured statuses (`ok` / `alignment_failed` / `inference_failed`)
+                # are recorded at their own dedicated branches above. Generic errors
+                # are intentionally NOT counted in readings_total — adding them here
+                # would inflate the metric with downstream/post-inference faults.
                 # Try to save predictions if we got that far
                 try:
                     if "predictions" in locals() and predictions:
@@ -989,6 +1000,10 @@ class WatermeterService:
                 self._derive_pipeline_status()
 
         return self.current_state
+
+    def get_metrics_snapshot(self) -> dict:
+        """Public accessor for pipeline metrics snapshot (used by /api/metrics)."""
+        return self._metrics.snapshot()
 
     def _get_active_model_name(self, model_type: str) -> Optional[str]:
         """Return the active model directory name for a model type, or None."""
