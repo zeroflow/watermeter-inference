@@ -112,6 +112,14 @@ def test_derive_status_failed_on_generic_error():
     assert svc.current_state["is_live"] is False
 
 
+def test_derive_status_rejected_on_plausibility_rejection():
+    """A plausibility rejection is not a pipeline failure: alignment and inference worked."""
+    svc = _make_service(current_state={"status": "rejected"})
+    svc._derive_pipeline_status()
+    assert svc.current_state["pipeline_status"] == "REJECTED"
+    assert svc.current_state["is_live"] is False
+
+
 def test_derive_status_degraded_on_partial_failures():
     svc = _make_service(consecutive_alignment_failures=3, current_state={"status": "ok"})
     svc._derive_pipeline_status()

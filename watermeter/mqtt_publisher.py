@@ -109,7 +109,7 @@ _HA_ENTITIES = [
         "component": "sensor",
         "icon": "mdi:pipe-valve",
         "device_class": "enum",
-        "options": ["OK", "DEGRADED", "FAILED", "STALE"],
+        "options": ["OK", "DEGRADED", "REJECTED", "FAILED", "STALE"],
         "entity_category": "diagnostic",
     },
     {

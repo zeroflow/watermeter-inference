@@ -9,6 +9,7 @@
 {% set pclass = {
     'OK': 'pipeline-ok',
     'DEGRADED': 'pipeline-degraded',
+    'REJECTED': 'pipeline-degraded',
     'FAILED': 'pipeline-failed',
     'STALE': 'pipeline-stale'
   }.get(pipeline_status, 'pipeline-ok') %}

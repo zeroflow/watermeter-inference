@@ -584,6 +584,8 @@ class WatermeterService:
         Status policy (Issue #2):
           - STALE     — consecutive_alignment_failures >= max_consecutive_failures
           - FAILED    — most recent status is alignment_failed or inference_failed
+          - REJECTED  — most recent reading was rejected (plausibility check or
+                        declined confirmation); alignment and inference worked
           - DEGRADED  — at least one consecutive failure but below threshold
           - OK        — no failures and last status is healthy
 
@@ -603,6 +605,8 @@ class WatermeterService:
             # so it must surface as FAILED to keep the badge consistent with
             # the inner status pill.
             pipeline_status = "FAILED"
+        elif last_status == "rejected":
+            pipeline_status = "REJECTED"
         elif consecutive > 0:
             pipeline_status = "DEGRADED"
         else:
@@ -927,7 +931,7 @@ class WatermeterService:
                     self._metrics.record_reading(status="ok")
                 else:
                     self.consecutive_rejections += 1
-                    self.current_state["status"] = "error"
+                    self.current_state["status"] = "rejected"
                     self.current_state["warnings"] = all_warnings
                     self.current_state["total_value"] = total_value
 

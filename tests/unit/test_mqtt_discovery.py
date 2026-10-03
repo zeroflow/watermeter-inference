@@ -38,3 +38,8 @@ def test_timestamp_entities_publish_timezone_aware_values():
     payload = json.loads(publisher.mqtt_client.publish.call_args[0][1])
     for oid in timestamp_ids:
         assert datetime.fromisoformat(payload[oid]).tzinfo is not None, oid
+
+
+def test_pipeline_status_enum_includes_rejected():
+    entity = next(e for e in _HA_ENTITIES if e["object_id"] == "pipeline_status")
+    assert "REJECTED" in entity["options"]

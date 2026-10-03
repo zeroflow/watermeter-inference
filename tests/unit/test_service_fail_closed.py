@@ -255,6 +255,30 @@ def test_post_inference_exception_does_not_record_inference_failed():
     assert svc.current_state["status"] == "error"
 
 
+def test_plausibility_rejection_reports_rejected_not_failed():
+    """A plausibility rejection must surface as status 'rejected' / pipeline REJECTED, not FAILED."""
+    svc = _make_service_with_alignment_success()
+    svc.run_inference = AsyncMock(
+        return_value={
+            "d1": {"id": "d1", "class": 7, "confidence": 0.99, "model": "digits", "image_bytes": b""},
+        }
+    )
+    svc.calculate_total = MagicMock(return_value=(56.3624, {}))
+    svc.correct_predictions = MagicMock(return_value=[])
+    svc.check_consistency = MagicMock(return_value=[])
+    svc.validate_plausibility = MagicMock(return_value=(False, ["Reverse detected: 56.3682 → 56.3624"]))
+    svc._check_sustained_consumption = MagicMock(return_value=None)
+    svc._data_collector = None
+    svc.previous_value = 56.3682
+    svc._compute_raw_total = MagicMock(return_value=56.40679)
+
+    asyncio.run(svc.process_reading())
+
+    assert svc.current_state["status"] == "rejected"
+    assert svc.current_state["pipeline_status"] == "REJECTED"
+    assert svc.consecutive_rejections == 1
+
+
 # ---------------------------------------------------------------------------
 # Restore conftest mocks so subsequent test files in the same session see them.
 # (Done at module bottom so failures during imports above leave the mocks
