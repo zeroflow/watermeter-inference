@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 #   device_class       – (optional) HA device class
 #   state_class        – (optional) HA state class
 #   unit_of_measurement – (optional)
-#   entity_category    – (optional) "diagnostic" or "config"
+#   entity_category    – (optional) "diagnostic" (HA rejects "config" on read-only sensors)
 #   state_topic_key    – "main" (default) or "training_stats"
 #   options            – (optional) list of enum options (for enum sensors)
 # ---------------------------------------------------------------------------
@@ -228,20 +228,20 @@ _HA_ENTITIES = [
         "unit_of_measurement": "s",
         "entity_category": "diagnostic",
     },
-    # ── Config entities ────────────────────────────────────────────────────
+    # ── Model entities ─────────────────────────────────────────────────────
     {
         "object_id": "active_digits_model",
         "name": "Active Digits Model",
         "component": "sensor",
         "icon": "mdi:brain",
-        "entity_category": "config",
+        "entity_category": "diagnostic",
     },
     {
         "object_id": "active_arrows_model",
         "name": "Active Arrows Model",
         "component": "sensor",
         "icon": "mdi:brain",
-        "entity_category": "config",
+        "entity_category": "diagnostic",
     },
 ]
 
@@ -351,7 +351,7 @@ class MqttPublisher:
             "last_rejected_value": self._meter_state.current_state.get("last_rejected_value"),
             "last_rejected_reason": last_rejected_reason,
             "average_rate": round(avg_rate, 4) if avg_rate is not None else None,
-            "last_update": datetime.now().isoformat(),
+            "last_update": datetime.now().astimezone().isoformat(),
             "mqtt_connected": True,
             "processing": False,
             "inference_duration": inference_dur,
