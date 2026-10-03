@@ -1,6 +1,6 @@
 # Development and testing dependencies
 # Install on top of requirements.txt:
-#   pip install -r requirements.txt -r requirements-dev.txt
+#   uv pip install -r requirements.txt -r requirements-dev.txt   (or run ./setup.sh)
 
 pytest>=7.0.0,<9.0.0
 pytest-asyncio>=0.21.0,<1.0.0
