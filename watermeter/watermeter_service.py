@@ -1091,7 +1091,7 @@ class WatermeterService:
             "last_rejected_value": self.current_state.get("last_rejected_value"),
             "last_rejected_reason": last_rejected_reason,
             "average_rate": round(avg_rate, 4) if avg_rate is not None else None,
-            "last_update": datetime.now().isoformat(),
+            "last_update": datetime.now().astimezone().isoformat(),
             "mqtt_connected": True,
             "processing": False,
             "confirmation_pending": self._pending_confirmation is not None,

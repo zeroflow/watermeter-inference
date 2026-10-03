@@ -283,6 +283,21 @@ class TestLeakWarningMqtt:
         payload = json.loads(call_args[0][1])
         assert payload["leak_warning"] is False
 
+    @pytest.mark.asyncio
+    async def test_last_update_is_timezone_aware(self, service):
+        """HA rejects timestamp-sensor states without timezone information."""
+        service.ha_publish_enabled = True
+        service.config["homeassistant"]["enabled"] = True
+
+        mock_client = MagicMock()
+        mock_client.is_connected.return_value = True
+        service.mqtt_client = mock_client
+
+        await service.publish_to_mqtt(123.456, [], {})
+
+        payload = json.loads(mock_client.publish.call_args[0][1])
+        assert datetime.fromisoformat(payload["last_update"]).tzinfo is not None
+
 
 # ---------------------------------------------------------------------------
 # State clearing / reset tests
