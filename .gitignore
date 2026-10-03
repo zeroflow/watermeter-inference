@@ -74,3 +74,14 @@ docs/agent_output/
 .env
 token.txt
 .worktrees/
+
+# Publish hygiene
+ground_truth_orig_backup_*/
+tmp/
+/tmp
+*.pem
+*.key
+.env.*
+!.env.example
+auth.json
+*.secrets

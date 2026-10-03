@@ -237,7 +237,7 @@ The review is organized into 6 increments by logical domain. Each increment revi
 - **Fix**: Validate `model_id` doesn't contain path separators or `..`, e.g. `if '/' in model_id or '..' in model_id: raise ValueError(...)`.
 
 **S5. Hardcoded server credentials** (`server_detect.py:8-10`) ✅ FIXED (file deleted, see M22)
-- `SERVER_IP = "192.168.4.35"`, `SERVER_USER = "thomas"`, plus filesystem paths are hardcoded. Not a runtime security issue (this is a dev/sync script), but credentials in source code are a bad practice, especially if the repo becomes public.
+- `SERVER_IP = "<server-ip>"`, `SERVER_USER = "<user>"`, plus filesystem paths are hardcoded. Not a runtime security issue (this is a dev/sync script), but credentials in source code are a bad practice, especially if the repo becomes public.
 
 #### ARCHITECTURE / DESIGN
 
@@ -474,7 +474,7 @@ The review is organized into 6 increments by logical domain. Each increment revi
 #### SECURITY
 
 **S9. Hardcoded server credentials in `server_detect.py`** (Low — commented out, dev tool) ✅ FIXED (file deleted, see M22)
-- `server_detect.py:8-11`: Hardcodes `SERVER_IP = "192.168.4.35"`, `SERVER_USER = "thomas"`, and absolute paths. This file is committed to git.
+- `server_detect.py:8-11`: Hardcodes `SERVER_IP = "<server-ip>"`, `SERVER_USER = "<user>"`, and absolute paths. This file is committed to git.
 - Currently commented out in `train_arrows.py:5-6` and `train_digits.py:4-5`, so no runtime risk. But it exposes internal network topology and usernames.
 - **Fix**: Add to `.gitignore` or move credentials to an env file/`.env`.
 
@@ -483,7 +483,7 @@ The review is organized into 6 increments by logical domain. Each increment revi
 - **Fix**: Create a non-root user (`RUN useradd -m appuser`) and switch to it before `CMD`. Adjust directory permissions accordingly.
 
 **S11. Config file contains hardcoded IP addresses** (`config.yaml`)
-- `aiote.host: "192.168.5.136"`, `mqtt.broker: "192.168.4.11"` — internal network IPs are baked into the default config shipped with the Docker image. This is fine for personal use but would be problematic if the image were shared.
+- `aiote.host: "<camera-ip>"`, `mqtt.broker: "<mqtt-broker-ip>"` — internal network IPs are baked into the default config shipped with the Docker image. This is fine for personal use but would be problematic if the image were shared.
 - Minor: more of a deployment concern than a code issue.
 
 #### BUGS / CORRECTNESS
@@ -569,8 +569,8 @@ The review is organized into 6 increments by logical domain. Each increment revi
 - However, `training_manager.py` doesn't use these files — it reimplements training and benchmarking inline. The standalone scripts are development tools.
 - This is correct behavior, but the presence of both standalone scripts AND inline implementations (D5/D6 from Increment 4) creates maintenance divergence: a fix to training logic needs to be applied in two places.
 
-**A23. `/home/thomas/.cache/huggingface` hardcoded in compose** (`docker-compose.yml:22`)
-- `- /home/thomas/.cache/huggingface:/root/.cache/huggingface` — The host path is hardcoded to a specific user's home directory. Anyone else using this compose file would need to edit it.
+**A23. `~/.cache/huggingface` hardcoded in compose** (`docker-compose.yml:22`)
+- `- ~/.cache/huggingface:/root/.cache/huggingface` — The host path is hardcoded to a specific user's home directory. Anyone else using this compose file would need to edit it.
 - **Fix**: Use `- ${HF_CACHE:-~/.cache/huggingface}:/root/.cache/huggingface` or document in `.env.example`.
 
 #### STYLE / MINOR

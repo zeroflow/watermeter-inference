@@ -17,7 +17,7 @@ The scan identified one leaked Label Studio API token in git history. The token 
 
 ### [CRITICAL] Label Studio API Token Leaked
 
-**Token**: `***REMOVED***`
+**Token**: `<REDACTED>`
 
 **Where found**:
 - Initial commit `296a44e` (2024-11-27): `README.md` — example config with real token
@@ -33,15 +33,15 @@ The scan identified one leaked Label Studio API token in git history. The token 
   - `README.md` example config (now rewritten without token)
 
 **Impact**:
-- If this token is still active, anyone with read access to the git history can authenticate to the Label Studio instance at `http://192.168.4.35:8080`
-- Given that the Label Studio URL uses a private IP (192.168.4.35), the token is only exploitable from within the same network
+- If this token is still active, anyone with read access to the git history can authenticate to the Label Studio instance at `http://<server-ip>:8080`
+- Given that the Label Studio URL uses a private IP (<server-ip>), the token is only exploitable from within the same network
 - Risk level: MEDIUM (private network exposure) to HIGH (if repo becomes public)
 
 **Action**:
 1. **REQUIRED**: Rotate the Label Studio token immediately
    - Generate new token at Label Studio instance
    - Update local configuration files (not tracked in git)
-   - Invalidate old token `***REMOVED***`
+   - Invalidate old token `<REDACTED>`
 
 2. **OPTIONAL**: Clean git history
    - Use BFG Repo Cleaner or `git filter-branch` to remove token from history
@@ -52,7 +52,7 @@ The scan identified one leaked Label Studio API token in git history. The token 
 **Commands to clean history** (if needed):
 ```bash
 # Using BFG Repo Cleaner (recommended)
-bfg --replace-text <(echo '***REMOVED***==>REDACTED') .git
+bfg --replace-text <(echo '<REDACTED>==>REDACTED') .git
 git reflog expire --expire=now --all
 git gc --prune=now --aggressive
 
@@ -68,11 +68,11 @@ git push --force --tags
 **What**: Private IP addresses and internal infrastructure URLs in git history
 
 **Where**:
-- `.gitmodules`: Gitea server at `ssh://gitea@192.168.4.38:2222/zeroflow/watermeter-arrows.git` and `/zeroflow/watermeter-digits.git`
+- `.gitmodules`: Gitea server at `ssh://gitea@<gitea-host>:2222/zeroflow/watermeter-arrows.git` and `/zeroflow/watermeter-digits.git`
 - Historical config files and docs (before sanitization):
-  - `192.168.4.11` — MQTT broker
-  - `192.168.4.35` — Label Studio server, old watermeter service
-  - `192.168.5.136` — AI-on-the-edge device
+  - `<mqtt-broker-ip>` — MQTT broker
+  - `<server-ip>` — Label Studio server, old watermeter service
+  - `<camera-ip>` — AI-on-the-edge device
 
 **Status**:
 - Current `config.yaml` uses placeholder `192.168.x.x` with "Replace with your..." comments (good practice)
@@ -175,7 +175,7 @@ git push --force --tags
 
 **Files successfully removed**:
 - `flows.json` — Deleted in commit `1239304` (contained Label Studio token)
-- `server_detect.py` — Deleted in commit `3e8dccb` (contained hardcoded `SERVER_IP = "192.168.4.35"`, `SERVER_USER = "thomas"`)
+- `server_detect.py` — Deleted in commit `3e8dccb` (contained hardcoded `SERVER_IP = "<server-ip>"`, `SERVER_USER = "<user>"`)
 
 **Status**: Both files removed from working tree, still in git history
 
@@ -188,18 +188,18 @@ git push --force --tags
 ## Summary of Actions
 
 ### Immediate (REQUIRED)
-1. **Rotate Label Studio API token** `***REMOVED***`
+1. **Rotate Label Studio API token** `<REDACTED>`
    - Generate new token in Label Studio UI
    - Update local config files (`.env` or `config.yaml`)
    - Invalidate/delete old token
 
 ### Before Making Repository Public (RECOMMENDED)
 2. **Clean git history** using BFG Repo Cleaner to remove:
-   - Label Studio token `***REMOVED***`
+   - Label Studio token `<REDACTED>`
    - (Optional) Private IP addresses for defense-in-depth
 
 3. **Update `.gitmodules`** to remove private Gitea URLs:
-   - Replace `ssh://gitea@192.168.4.38:2222/zeroflow/*` with public URLs
+   - Replace `ssh://gitea@<gitea-host>:2222/zeroflow/*` with public URLs
    - Or remove submodules entirely and document alternative setup
 
 ### Optional (Repository Hygiene)
@@ -215,7 +215,7 @@ git push --force --tags
 - Manual inspection of:
   - Password/token patterns: `(password|passwd|secret|token|api_key|apikey|private_key|credential)`
   - HuggingFace tokens: `hf_[A-Za-z0-9]{20,}`
-  - Label Studio token: `***REMOVED***`
+  - Label Studio token: `<REDACTED>`
   - Private IPs: `192\.168\.|10\.`
   - MQTT credentials: `mqtt.*password|mqtt.*user`
   - Environment files: `git log --all --diff-filter=A -- .env`

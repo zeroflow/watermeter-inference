@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-REGISTRY="gitea.oberbergen.arthofer.dev/zeroflow"
+REGISTRY="${REGISTRY:?set REGISTRY, e.g. registry.example.com/user}"
 IMAGE="watermeter-inference"
 DATE=$(date +%Y-%m-%d)
 LABEL="${1:-main}"

@@ -33,16 +33,16 @@ docker-compose up -d
 
 **Problem 1: Submodules fail.** `.gitmodules` points to:
 ```
-ssh://gitea@192.168.4.38:2222/zeroflow/watermeter-arrows.git
-ssh://gitea@192.168.4.38:2222/zeroflow/watermeter-digits.git
+ssh://gitea@<gitea-host>:2222/zeroflow/watermeter-arrows.git
+ssh://gitea@<gitea-host>:2222/zeroflow/watermeter-digits.git
 ```
 This is a **private Gitea** on a LAN IP. Clone will fail for anyone outside this network.
 
 **Problem 2: docker-compose references a hardcoded huggingface cache path.**
 ```yaml
-- /home/thomas/.cache/huggingface:/app/.cache/huggingface
+- ~/.cache/huggingface:/app/.cache/huggingface
 ```
-This only works on `thomas`'s machine.
+This only works on one specific machine.
 
 **Problem 3: Intel GPU assumed.** docker-compose.yml unconditionally maps `/dev/dri/renderD128`. On a system without an Intel GPU, the container won't start. No fallback to CPU-only.
 
@@ -69,7 +69,7 @@ Good — placeholder IPs (`192.168.x.x`) with "Replace with your..." comments. T
 
 But then I look at **README.md line 167**:
 ```yaml
-LABEL_STUDIO_TOKEN: "***REMOVED***"
+LABEL_STUDIO_TOKEN: "<REDACTED>"
 ```
 That's a **real API token** committed to git since the initial commit. It's in git history forever.
 
@@ -127,13 +127,13 @@ And **2 Jupyter notebooks** tracked (`arrows/Arrows.ipynb`, `digits/Digits.ipynb
 
 2. **HuggingFace token in .env** — `.env` is gitignored (good), but no `.env.example` exists. Users won't know what env vars are needed.
 
-3. **Private Gitea SSH URLs in .gitmodules** — exposes internal infrastructure IPs. Anyone can see `192.168.4.38:2222`.
+3. **Private Gitea SSH URLs in .gitmodules** — exposes internal infrastructure IPs. Anyone can see `<gitea-host>:2222`.
 
 ### P1 — Blocks setup (fix to be usable)
 
 4. **Submodules point to private server** — `git clone --recursive` fails for everyone. Either make submodule repos public, host training data elsewhere, or remove submodules and document how to get ground truth data.
 
-5. **docker-compose.yml has hardcoded path** — `/home/thomas/.cache/huggingface` won't exist on any other machine. Use `${HOME}/.cache/huggingface` or a named volume.
+5. **docker-compose.yml has hardcoded path** — `~/.cache/huggingface` won't exist on any other machine. Use `${HOME}/.cache/huggingface` or a named volume.
 
 6. **docker-compose.yml assumes Intel GPU** — `/dev/dri/renderD128` and `group_add` will error on AMD/Nvidia/no-GPU systems. Need a CPU-only profile or conditional.
 
