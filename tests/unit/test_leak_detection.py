@@ -28,6 +28,7 @@ for _name in ["watermeter_service", "watermeter.watermeter_service"]:
 from watermeter.confirmation import ConfirmationManager  # noqa: E402
 from watermeter.leak_detector import LeakDetector  # noqa: E402
 from watermeter.meter_state import MeterState  # noqa: E402
+from watermeter.mqtt_publisher import MqttPublisher  # noqa: E402
 from watermeter.rate_tracker import RateTracker  # noqa: E402
 from watermeter.watermeter_service import WatermeterService  # noqa: E402
 
@@ -67,16 +68,19 @@ def service():
     svc._leak_detector = LeakDetector(rate_tracker=svc._rate_tracker, config=svc.config)
     svc._state = MeterState(ha_publish_enabled=False)
 
-    class _MqttMock:
-        mqtt_client = None
-        loop = None
-
-    svc._mqtt = _MqttMock()
     svc._confirmation_manager = ConfirmationManager(
         config=svc.config,
         rate_tracker=svc._rate_tracker,
         meter_state=svc._state,
         state_store=None,
+    )
+    svc._mqtt = MqttPublisher(
+        config=svc.config,
+        meter_state=svc._state,
+        rate_tracker=svc._rate_tracker,
+        confirmation_manager=svc._confirmation_manager,
+        on_trigger=MagicMock(),
+        on_reset=MagicMock(),
     )
 
     # Set state attributes via properties (which delegate to _state/_mqtt/_confirmation_manager)

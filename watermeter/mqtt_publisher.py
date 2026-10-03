@@ -354,6 +354,7 @@ class MqttPublisher:
             "last_update": datetime.now().astimezone().isoformat(),
             "mqtt_connected": True,
             "processing": False,
+            "confirmation_pending": self._confirmation_manager._pending_confirmation is not None,
             "inference_duration": inference_dur,
             "processing_duration": processing_dur,
             "active_digits_model": digits_model,

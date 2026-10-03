@@ -1041,76 +1041,8 @@ class WatermeterService:
         leak_warning: bool = False,
         raw_value: Optional[float] = None,
     ) -> None:
-        """Publish a full-state JSON payload to the shared HA state topic.
-
-        The payload keys match the ``object_id`` values in ``_HA_ENTITIES`` so
-        that each entity's ``value_template`` can extract its own value.
-
-        Args:
-            value: Meter reading (floored / rounded).
-            warnings: List of warning strings.
-            predictions: Prediction results dict (keyed by image id).
-            leak_warning: Whether a leak is currently detected.
-            raw_value: Unrounded meter reading.  Falls back to *value* if not
-                provided (e.g. manual-set path where no raw value exists).
-        """
-        if not self.ha_publish_enabled:
-            logger.info("HA publishing disabled - skipping MQTT publish")
-            return
-
-        if not self.mqtt_client or not self.mqtt_client.is_connected():
-            logger.warning("MQTT client not connected - skipping publish")
-            return
-
-        ha_config = self.config["homeassistant"]
-
-        # Minimum confidence across all predictions (percent)
-        if predictions:
-            min_conf = min(p["confidence"] for p in predictions.values()) * 100
-            min_conf = round(min_conf, 1)
-        else:
-            min_conf = None
-
-        # Average consumption rate
-        avg_rate = self._rate_tracker.average_rate_per_hour
-
-        # Last rejected reason — may be a list; join if so
-        rejected_reasons = self.current_state.get("last_rejected_reasons") or []
-        if isinstance(rejected_reasons, list):
-            last_rejected_reason = "; ".join(rejected_reasons) if rejected_reasons else ""
-        else:
-            last_rejected_reason = str(rejected_reasons)
-
-        payload = {
-            "water_usage": round(value, 4),
-            "water_usage_raw": round(raw_value, 6) if raw_value is not None else round(value, 4),
-            "leak_warning": leak_warning,
-            "min_confidence": min_conf,
-            "status": self.current_state.get("status", "idle"),
-            "consecutive_rejections": self.consecutive_rejections,
-            "last_rejected_value": self.current_state.get("last_rejected_value"),
-            "last_rejected_reason": last_rejected_reason,
-            "average_rate": round(avg_rate, 4) if avg_rate is not None else None,
-            "last_update": datetime.now().astimezone().isoformat(),
-            "mqtt_connected": True,
-            "processing": False,
-            "confirmation_pending": self._pending_confirmation is not None,
-            "inference_duration": self._last_inference_duration_ms,
-            "processing_duration": self._last_processing_duration_s,
-            "active_digits_model": self._get_active_model_name("digits"),
-            "active_arrows_model": self._get_active_model_name("arrows"),
-            # Pipeline-health fields (Task 4): keep dashboard + HA in lockstep.
-            # NOTE: Mirror these three pipeline-health fields in
-            # MqttPublisher.publish_to_mqtt. Both publish paths exist during the
-            # publisher migration; remove this site once the migration completes.
-            "pipeline_status": self.current_state.get("pipeline_status", "OK"),
-            "consecutive_alignment_failures": self.consecutive_alignment_failures,
-            "last_alignment_error": self.current_state.get("last_alignment_error"),
-        }
-
-        topic = ha_config["publish_topic"]
-        self.mqtt_client.publish(topic, json.dumps(payload), qos=2, retain=True)
-        logger.info(f"Published to MQTT: {topic}")
+        """Delegate to MqttPublisher."""
+        await self._mqtt.publish_to_mqtt(value, warnings, predictions, leak_warning=leak_warning, raw_value=raw_value)
 
     def reset_previous_value(self) -> None:
         """Reset the previous value (for meter replacement or stuck state)."""
