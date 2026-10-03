@@ -705,7 +705,7 @@
 ## Config Structure (`config.yaml`)
 
 ```
-images:         # Sources (process_separate, src, digits[], arrows[])
+images:         # Sources (process_separate, src, timeout, fetch_delay, digits[], arrows[])
 detection:      # ROI (rotation, fisheye_correction, digits{count,rois}, analogs{count,rois}, markers[])
 trigger:        # Mode (mqtt|cyclic|both, cyclic_interval)
 mqtt:           # Broker (broker, port, client_id, topics)
