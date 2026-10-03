@@ -37,10 +37,6 @@ def pytest_addoption(parser):
 def sample_config_yaml():
     """Minimal valid YAML config string."""
     return """\
-# AI-on-the-edge device settings
-aiote:
-  host: "192.168.1.100"
-
 images:
   process_separate: false
   src: "http://192.168.1.100/img_tmp/raw.jpg"

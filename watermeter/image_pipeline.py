@@ -94,6 +94,10 @@ def rotate_image_full(img, rotation_degrees):
     return cv2.warpAffine(img, matrix, (new_w, new_h))
 
 
+DEFAULT_FETCH_TIMEOUT = 30  # seconds
+DEFAULT_FETCH_DELAY = 0.1  # seconds between individual image fetches
+
+
 class ImagePipeline:
     """Handles image fetching, rotation, marker alignment, and ROI extraction."""
 
@@ -112,14 +116,17 @@ class ImagePipeline:
 
     async def fetch_images(self) -> Dict[str, Tuple[bytes, str]]:
         """
-        Fetch all images from AI-on-the-edge device.
+        Fetch all images from the camera.
 
         Returns:
             Dict mapping ID to (image_bytes, image_class)
         """
         images = {}
-        aiote_config = self.config["aiote"]
-        base_url = f"http://{aiote_config['host']}{aiote_config['image_path']}"
+        images_cfg = self.config["images"]
+        # Individual images live next to the whole image: derive base URL from images.src
+        base_url = images_cfg["src"].rsplit("/", 1)[0]
+        timeout = images_cfg.get("timeout", DEFAULT_FETCH_TIMEOUT)
+        fetch_delay = images_cfg.get("fetch_delay", DEFAULT_FETCH_DELAY)
 
         # Collect all IDs with their class
         all_ids = []
@@ -128,13 +135,13 @@ class ImagePipeline:
         for id_name in self.config["images"]["arrows"]:
             all_ids.append((id_name, "arrows"))
 
-        logger.info(f"Fetching {len(all_ids)} images from AI-on-the-edge")
+        logger.info(f"Fetching {len(all_ids)} images from camera")
 
-        async with httpx.AsyncClient(timeout=aiote_config["timeout"]) as client:
+        async with httpx.AsyncClient(timeout=timeout) as client:
             for idx, (image_id, image_class) in enumerate(all_ids):
                 # Rate limiting - delay between fetches
                 if idx > 0:
-                    await asyncio.sleep(aiote_config["fetch_delay"])
+                    await asyncio.sleep(fetch_delay)
 
                 url = f"{base_url}/{image_id}.jpg"
                 try:
@@ -152,17 +159,17 @@ class ImagePipeline:
 
     async def fetch_whole_image(self) -> Optional[bytes]:
         """
-        Fetch the whole source image from AI-on-the-edge device.
+        Fetch the whole source image from the camera.
 
         Returns:
             Image bytes or None on failure
         """
-        aiote_config = self.config["aiote"]
         src_url = self.config["images"]["src"]
+        timeout = self.config["images"].get("timeout", DEFAULT_FETCH_TIMEOUT)
 
         logger.info(f"Fetching whole image from {src_url}")
 
-        async with httpx.AsyncClient(timeout=aiote_config["timeout"]) as client:
+        async with httpx.AsyncClient(timeout=timeout) as client:
             try:
                 response = await client.get(src_url)
                 response.raise_for_status()

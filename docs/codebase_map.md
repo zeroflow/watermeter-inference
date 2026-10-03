@@ -705,7 +705,6 @@
 ## Config Structure (`config.yaml`)
 
 ```
-aiote:          # Device (host, image_path, timeout, fetch_delay)
 images:         # Sources (process_separate, src, digits[], arrows[])
 detection:      # ROI (rotation, fisheye_correction, digits{count,rois}, analogs{count,rois}, markers[])
 trigger:        # Mode (mqtt|cyclic|both, cyclic_interval)

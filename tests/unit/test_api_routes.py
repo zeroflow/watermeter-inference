@@ -53,7 +53,7 @@ class TestConfigEndpoints:
 
     def test_save_missing_required_sections(self, test_client):
         resp = test_client.post("/api/config/save", json={
-            "content": "aiote:\n  host: x\n",
+            "content": "other:\n  host: x\n",
             "save_option": "saveonly"
         })
         assert resp.status_code == 400

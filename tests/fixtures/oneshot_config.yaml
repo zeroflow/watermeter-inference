@@ -2,13 +2,6 @@
 # Self-contained — no sed patches needed except the stub container name in images.src.
 # ROI coordinates match tests/fixtures/meter_snapshot.jpg.
 
-# AI-on-the-edge Device (unused in one-shot mode, kept for schema completeness)
-aiote:
-  host: "192.168.x.x"
-  image_path: "/img_tmp"
-  timeout: 30
-  fetch_delay: 0.1
-
 # Image source — sed-patched at test time to replace "watermeter-stub" with the actual stub container name
 images:
   process_separate: false

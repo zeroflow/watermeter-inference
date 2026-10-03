@@ -1,12 +1,5 @@
 # Water Meter AI Service Configuration
 
-# AI-on-the-edge Device
-aiote:
-  host: "192.168.x.x"  # Replace with your AI-on-the-edge device IP
-  image_path: "/img_tmp"
-  timeout: 30  # seconds
-  fetch_delay: 0.1  # seconds between image fetches
-
 # Image IDs
 images:
   process_separate: false  # true: fetch individual images, false: extract ROIs from whole image
@@ -50,7 +43,7 @@ alignment:
 
 # Trigger Mode
 trigger:
-  mode: "mqtt"  # "mqtt" (AIOTE triggers), "cyclic" (periodic polling), or "both"
+  mode: "mqtt"  # "mqtt" (external triggers), "cyclic" (periodic polling), or "both"
   cyclic_interval: 300  # seconds between readings in cyclic/both mode
 
 # MQTT Settings

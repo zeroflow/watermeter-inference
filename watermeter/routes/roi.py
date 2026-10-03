@@ -179,13 +179,8 @@ async def set_image_source(request: Request):
         # Update config
         config_path = Path("config.yaml")
 
-        host = f"{parsed.scheme}://{parsed.hostname}"
-        if parsed.port:
-            host += f":{parsed.port}"
-
         def _update(config):
             config.setdefault("images", {})["src"] = url
-            config.setdefault("aiote", {})["host"] = host
 
         config = config_utils.update_config(config_path, _update)
 

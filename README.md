@@ -57,7 +57,7 @@ Changes saved through the UI apply immediately without a container restart (hot 
 
 Key configuration sections:
 
-- **Camera** (`aiote`): image source URL, authentication, capture timeout, fetch delay
+- **Images** (`images`): image source URL (`src`), capture timeout, fetch delay
 - **ROI** (`detection`): digit and arrow regions, alignment markers, rotation — configure via `/roi-config`
 - **MQTT** (`mqtt`, `homeassistant`): broker host, port, credentials, HA discovery prefix
 - **Plausibility** (`plausibility`): reverse-reading guard, rate limits, consistency checks, leak detection thresholds

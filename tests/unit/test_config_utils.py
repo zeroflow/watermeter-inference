@@ -114,6 +114,17 @@ class TestUpdateConfig:
 class TestValidateConfig:
     """Tests for config validation."""
 
+    def test_legacy_aiote_section_still_loads(self, sample_config_yaml, tmp_path, caplog):
+        """A leftover (removed) 'aiote' section is ignored, not an error."""
+        legacy = "aiote:\n  host: 1.2.3.4\n  image_path: /img_tmp\n  timeout: 30\n  fetch_delay: 0.1\n" + sample_config_yaml
+        assert validate_config(legacy)['valid'] is True
+        path = tmp_path / "config.yaml"
+        path.write_text(legacy)
+        with caplog.at_level("WARNING"):
+            config = load_config(path)
+        assert config['images']['src']
+        assert 'deprecated' in caplog.text
+
     def test_valid_config(self, sample_config_yaml):
         result = validate_config(sample_config_yaml)
         assert result['valid'] is True
@@ -135,7 +146,7 @@ class TestValidateConfig:
         assert 'inference' in result['error']
 
     def test_missing_multiple_sections(self):
-        result = validate_config("aiote:\n  host: x\n")
+        result = validate_config("other:\n  host: x\n")
         assert result['valid'] is False
         assert 'images' in result['error']
         assert 'mqtt' in result['error']

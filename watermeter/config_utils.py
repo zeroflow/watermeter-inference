@@ -42,7 +42,13 @@ def load_config(path: Union[str, Path]) -> CommentedMap:
     """
     path = Path(path)
     with open(path, "r", encoding="utf-8") as f:
-        return _yaml.load(f)
+        config = _yaml.load(f)
+    if isinstance(config, dict) and "aiote" in config:
+        logger.warning(
+            "Config section 'aiote' is deprecated and ignored; "
+            "use images.src / images.timeout / images.fetch_delay instead"
+        )
+    return config
 
 
 def resolve_env_vars(value: Any) -> Any:
@@ -159,16 +165,6 @@ CONFIG_SCHEMA = {
     "type": "object",
     "required": ["images", "mqtt", "inference"],
     "properties": {
-        "aiote": {
-            "type": "object",
-            "description": "AI-on-the-edge device settings",
-            "properties": {
-                "host": {"type": "string", "description": "Device IP or hostname"},
-                "image_path": {"type": "string", "description": "Path to images on device"},
-                "timeout": {"type": "number", "description": "Request timeout in seconds"},
-                "fetch_delay": {"type": "number", "description": "Delay between image fetches"},
-            },
-        },
         "images": {
             "type": "object",
             "description": "Image source configuration",
@@ -179,6 +175,11 @@ CONFIG_SCHEMA = {
                     "description": "Fetch individual images (true) or extract ROIs from whole image (false)",
                 },
                 "src": {"type": "string", "description": "URL of the whole meter image"},
+                "timeout": {"type": "number", "description": "Image fetch timeout in seconds (default 30)"},
+                "fetch_delay": {
+                    "type": "number",
+                    "description": "Delay between individual image fetches when process_separate is true (default 0.1)",
+                },
                 "digits": {"type": "array", "description": "List of digit image IDs", "items": {"type": "string"}},
                 "arrows": {
                     "type": "array",
@@ -253,7 +254,7 @@ CONFIG_SCHEMA = {
                 "mode": {
                     "type": "string",
                     "enum": ["mqtt", "cyclic", "both"],
-                    "description": "Trigger mode: mqtt (AIOTE triggers), cyclic (periodic polling), or both",
+                    "description": "Trigger mode: mqtt (external triggers), cyclic (periodic polling), or both",
                 },
                 "cyclic_interval": {
                     "type": "integer",

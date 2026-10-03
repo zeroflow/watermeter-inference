@@ -43,12 +43,6 @@ from watermeter.oneshot import run_one_shot  # noqa: E402
 def _make_minimal_config() -> dict:
     """Return a minimal valid config dict that the pipeline expects."""
     return {
-        "aiote": {
-            "host": "192.168.1.100",
-            "image_path": "/img",
-            "timeout": 10,
-            "fetch_delay": 0.1,
-        },
         "images": {
             "process_separate": False,
             "src": "http://192.168.1.100/img/whole.jpg",
