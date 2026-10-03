@@ -23,8 +23,15 @@ detection:
     rois: []
   markers: []
 
-# Marker-based image alignment (cv2.matchTemplate)
+# Image alignment against the reference frame (fail-closed)
 alignment:
+  # "template": locate the configured markers via cv2.matchTemplate (needs >= 2 markers).
+  # "features": match AKAZE keypoints of the whole meter face against the reference image
+  #   (ROIs excluded) and fit a homography; falls back to "template" if markers exist.
+  method: "template"
+  # Feature alignment: minimum homography inliers and inlier share of matches.
+  min_inliers: 30
+  min_inlier_ratio: 0.3
   # Minimum normalized cross-correlation score for cv2.matchTemplate.
   # Default 0.5 is loose; 0.7-0.8 is conventional for TM_CCOEFF_NORMED.
   # See docs/decisions.md and scripts/replay_marker_confidence.py.

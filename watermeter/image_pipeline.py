@@ -15,6 +15,8 @@ import cv2
 import httpx
 import numpy as np
 
+from .feature_alignment import FeatureAligner
+
 logger = logging.getLogger(__name__)
 
 
@@ -30,6 +32,10 @@ class AlignmentResult:
     is one of: ``"insufficient_markers"``, ``"templates_missing"``,
     ``"search_region_too_small"``, ``"low_confidence"``, ``"transform_failed"``.
     ``failed_marker`` is 1-indexed when a single marker is at fault, else None.
+
+    ``method`` is ``"features"``, ``"template"`` or ``"none"`` (nothing to align
+    against). For ``"features"``, ``marker_confidences`` holds ``[inlier_ratio]``
+    and the feature error reasons from ``feature_alignment.AlignmentOutcome`` apply.
     """
 
     success: bool
@@ -37,6 +43,10 @@ class AlignmentResult:
     error_reason: Optional[str] = None
     failed_marker: Optional[int] = None
     marker_confidences: List[float] = field(default_factory=list)
+    method: str = "template"
+    inliers: int = 0
+    inlier_ratio: Optional[float] = None
+    homography: Optional[np.ndarray] = None
 
 
 def apply_fisheye_correction(image, k1):
@@ -104,6 +114,7 @@ class ImagePipeline:
     # Alignment constants (internal tuning, not user-facing)
     SEARCH_MARGIN = 0.15  # +/-15% of image dimensions for search window
     DEFAULT_CONFIDENCE_THRESHOLD = 0.5  # cv2.TM_CCOEFF_NORMED min match score (back-compat default)
+    REFERENCE_PATH = Path("/data/reference_raw.jpg")  # raw frame the ROIs were drawn on
 
     def __init__(self, config: dict):
         self.config = config
@@ -113,6 +124,9 @@ class ImagePipeline:
         )
         # Cached marker templates for alignment (loaded lazily)
         self._marker_templates: Optional[List[np.ndarray]] = None
+        # Cached feature aligner + the inputs it was built from (rebuilt when they change)
+        self._feature_aligner: Optional[FeatureAligner] = None
+        self._feature_aligner_key: Optional[tuple] = None
 
     async def fetch_images(self) -> Dict[str, Tuple[bytes, str]]:
         """
@@ -201,31 +215,16 @@ class ImagePipeline:
 
         detection = self.config.get("detection", {})
 
-        # 1. Apply fisheye correction if configured
-        fisheye_k1 = detection.get("fisheye_correction", 0)
-        if fisheye_k1 != 0:
-            img = apply_fisheye_correction(img, fisheye_k1)
-            logger.debug(f"Applied fisheye correction: k1={fisheye_k1}")
+        # 1+2. Fisheye correction and rotation (same geometry as the feature reference)
+        img = self._apply_geometry(img)
 
-        # 2. Apply rotation if configured (expand canvas to avoid cropping corners)
-        rotation = detection.get("rotation", 0)
-        if rotation != 0:
-            img = rotate_image_full(img, rotation)
-            height, width = img.shape[:2]
-            logger.debug(f"Applied rotation: {rotation}° (expanded canvas to {width}x{height})")
-
-        # 3. Marker-based alignment if markers are configured (fail-closed)
-        markers = detection.get("markers", [])
-        if len(markers) >= 2:
-            alignment = self._align_with_markers(img, markers)
-            if not alignment.success:
-                # Fail-closed: do NOT proceed with the misaligned image.
-                return None, alignment
-            img = alignment.image
-            height, width = img.shape[:2]  # Update dimensions after alignment
-        else:
-            # No markers configured — treat as trivially aligned for caller.
-            alignment = AlignmentResult(success=True, image=img, marker_confidences=[])
+        # 3. Alignment (fail-closed)
+        alignment = self._align(img, detection.get("markers", []))
+        if not alignment.success:
+            # Fail-closed: do NOT proceed with the misaligned image.
+            return None, alignment
+        img = alignment.image
+        height, width = img.shape[:2]  # Update dimensions after alignment
 
         # 4. Extract ROIs
         images = {}
@@ -259,6 +258,104 @@ class ImagePipeline:
         logger.info(f"Extracted {len(images)} ROIs from whole image")
         return images, alignment
 
+    def _apply_geometry(self, img: np.ndarray) -> np.ndarray:
+        """Apply configured fisheye correction, then rotation (expanded canvas)."""
+        detection = self.config.get("detection", {})
+        fisheye_k1 = detection.get("fisheye_correction", 0)
+        if fisheye_k1 != 0:
+            img = apply_fisheye_correction(img, fisheye_k1)
+            logger.debug(f"Applied fisheye correction: k1={fisheye_k1}")
+        rotation = detection.get("rotation", 0)
+        if rotation != 0:
+            img = rotate_image_full(img, rotation)
+            logger.debug(f"Applied rotation: {rotation}° (expanded canvas to {img.shape[1]}x{img.shape[0]})")
+        return img
+
+    def _align(self, img: np.ndarray, markers: List[Dict]) -> AlignmentResult:
+        """Pick the alignment method from config, falling back from features to templates."""
+        method = self.config.get("alignment", {}).get("method", "template")
+        if method == "features":
+            result = self._align_with_features(img)
+            if result is not None and result.success:
+                return result
+            if len(markers) >= 2:
+                reason = result.error_reason if result is not None else "reference_missing"
+                logger.warning(f"Feature alignment unavailable ({reason}); falling back to marker templates")
+                return self._align_with_markers(img, markers)
+            if result is not None:
+                return result
+        elif len(markers) >= 2:
+            return self._align_with_markers(img, markers)
+        # Nothing to align against: treat as trivially aligned for caller.
+        return AlignmentResult(success=True, image=img, marker_confidences=[], method="none")
+
+    def _get_feature_aligner(self) -> Optional[FeatureAligner]:
+        """Return a FeatureAligner for the current reference/config, or None if no usable reference."""
+        try:
+            stat = self.REFERENCE_PATH.stat()
+        except OSError:
+            logger.warning(f"Feature alignment: reference image not found at {self.REFERENCE_PATH}")
+            return None
+
+        detection = self.config.get("detection", {})
+        alignment_cfg = self.config.get("alignment", {})
+        rois = list(detection.get("digits", {}).get("rois", [])) + list(detection.get("analogs", {}).get("rois", []))
+        min_inliers = int(alignment_cfg.get("min_inliers", 30))
+        min_inlier_ratio = float(alignment_cfg.get("min_inlier_ratio", 0.3))
+        key = (
+            stat.st_mtime_ns,
+            stat.st_size,
+            detection.get("fisheye_correction", 0),
+            detection.get("rotation", 0),
+            repr(rois),
+            min_inliers,
+            min_inlier_ratio,
+        )
+        if self._feature_aligner is not None and key == self._feature_aligner_key:
+            return self._feature_aligner
+
+        reference = cv2.imread(str(self.REFERENCE_PATH), cv2.IMREAD_COLOR)
+        if reference is None:
+            logger.warning(f"Feature alignment: failed to read reference image {self.REFERENCE_PATH}")
+            return None
+        try:
+            aligner = FeatureAligner(
+                self._apply_geometry(reference),
+                exclude_rois=rois,
+                min_inliers=min_inliers,
+                min_inlier_ratio=min_inlier_ratio,
+            )
+        except ValueError as e:
+            logger.warning(f"Feature alignment: unusable reference ({e})")
+            return None
+        self._feature_aligner, self._feature_aligner_key = aligner, key
+        logger.info(f"Feature aligner built from reference ({len(aligner.reference_keypoints)} keypoints)")
+        return aligner
+
+    def _align_with_features(self, img: np.ndarray) -> Optional[AlignmentResult]:
+        """Align via AKAZE + homography. Returns None when no usable reference exists."""
+        aligner = self._get_feature_aligner()
+        if aligner is None:
+            return None
+        outcome = aligner.align(img)
+        ratio = outcome.inlier_ratio
+        if not outcome.success:
+            logger.error(
+                f"Feature alignment failed: {outcome.error_reason} (inliers={outcome.inliers}, ratio={ratio:.2f})"
+            )
+        else:
+            logger.debug(f"Feature alignment ok (inliers={outcome.inliers}, ratio={ratio:.2f})")
+        return AlignmentResult(
+            success=outcome.success,
+            image=outcome.image,
+            error_reason=outcome.error_reason,
+            marker_confidences=[ratio],
+            method="features",
+            inliers=outcome.inliers,
+            inlier_ratio=ratio,
+            homography=outcome.homography,
+        )
+
     def _load_marker_templates(self, marker_count: int) -> Optional[List[np.ndarray]]:
         """
         Load marker template images from disk, with caching.
@@ -289,8 +386,10 @@ class ImagePipeline:
         return self._marker_templates
 
     def invalidate_marker_cache(self):
-        """Clear cached marker templates so they are reloaded on next alignment."""
+        """Clear cached marker templates and feature aligner so they are rebuilt on next alignment."""
         self._marker_templates = None
+        self._feature_aligner = None
+        self._feature_aligner_key = None
 
     def _align_with_markers(self, img: np.ndarray, markers: List[Dict]) -> AlignmentResult:
         """
@@ -333,9 +432,10 @@ class ImagePipeline:
             template = templates[i]
             th, tw = template.shape[:2]
 
-            # Reference center: where the marker should be
-            ref_cx = (marker["x"] + marker["width"] / 2) * width
-            ref_cy = (marker["y"] + marker["height"] / 2) * height
+            # Reference center: where the marker should be. Templates are cut at the
+            # integer pixel origin (routes/roi.py), so use the same grid here.
+            ref_cx = int(marker["x"] * width) + int(marker["width"] * width) / 2
+            ref_cy = int(marker["y"] * height) + int(marker["height"] * height) / 2
             ref_centers.append([ref_cx, ref_cy])
 
             # Search region: +/-SEARCH_MARGIN around expected position

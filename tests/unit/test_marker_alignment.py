@@ -573,3 +573,30 @@ class TestAlignmentResult:
         assert all(c >= 0.5 for c in result.marker_confidences)
         assert result.error_reason is None
         assert result.failed_marker is None
+
+
+class TestFractionalMarkerPosition:
+    """Templates are cut at int(x*W) (routes/roi.py); the reference centre must use the same pixel grid."""
+
+    def test_fractional_marker_position_does_not_shift_image(self):
+        svc = make_service()
+        width, height = 640, 480
+        img = make_synthetic_image(width, height, seed=11)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+        # Normalised markers whose pixel positions/sizes are fractional (x*W = 120.7, w*W = 40.6)
+        markers = [
+            {"x": 120.7 / width, "y": 90.6 / height, "width": 40.6 / width, "height": 40.6 / height},
+            {"x": 480.7 / width, "y": 350.6 / height, "width": 40.6 / width, "height": 40.6 / height},
+        ]
+        templates = []
+        for m in markers:
+            x, y = int(m["x"] * width), int(m["y"] * height)
+            w, h = int(m["width"] * width), int(m["height"] * height)
+            templates.append(gray[y : y + h, x : x + w].copy())
+        svc._image_pipeline._marker_templates = templates
+
+        result = svc._image_pipeline._align_with_markers(img, markers)
+        assert result.success is True
+        mean_diff = np.abs(result.image.astype(np.float32) - img.astype(np.float32)).mean()
+        assert mean_diff < 5.0, f"unshifted image was moved by alignment (mean pixel diff {mean_diff:.2f})"

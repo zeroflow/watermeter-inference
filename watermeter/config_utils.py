@@ -537,6 +537,43 @@ CONFIG_SCHEMA = {
                 "state_file": {"type": "string", "description": "Path to state file"},
             },
         },
+        "alignment": {
+            "type": "object",
+            "description": "Image alignment against the reference frame",
+            "additionalProperties": False,
+            "properties": {
+                "method": {
+                    "type": "string",
+                    "enum": ["template", "features"],
+                    "description": "template: marker matchTemplate; features: AKAZE keypoints + homography vs reference",
+                },
+                "min_inliers": {
+                    "type": "integer",
+                    "minimum": 8,
+                    "description": "Feature alignment: minimum homography inlier matches",
+                },
+                "min_inlier_ratio": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Feature alignment: minimum inlier share of ratio-test matches",
+                },
+                "marker_confidence_threshold": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Template alignment: minimum matchTemplate score",
+                },
+                "archive_raw_images": {"type": "boolean", "description": "Archive every fetched whole image"},
+                "archive_dir": {"type": "string", "description": "Raw image archive directory"},
+                "archive_max_age_days": {"type": "integer", "minimum": 1, "description": "Archive retention in days"},
+                "max_consecutive_failures": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Consecutive alignment failures before pipeline goes STALE",
+                },
+            },
+        },
         "dashboard": {
             "type": "object",
             "description": "Web dashboard settings",

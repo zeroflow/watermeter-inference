@@ -279,3 +279,46 @@ class TestDataCollectionDefaults:
         }
         result = validate_config_schema(config)
         assert result["valid"] is False
+
+
+class TestAlignmentSchema:
+    """alignment section: method selection and feature-alignment thresholds."""
+
+    BASE = {
+        "images": {"digits": [], "arrows": []},
+        "mqtt": {"broker": "x", "port": 1883},
+        "inference": {"confidence_threshold": 0.5},
+    }
+
+    def _validate(self, alignment):
+        return validate_config_schema({**self.BASE, "alignment": alignment})
+
+    def test_shipped_alignment_keys_pass(self):
+        result = self._validate(
+            {
+                "method": "features",
+                "min_inliers": 30,
+                "min_inlier_ratio": 0.3,
+                "marker_confidence_threshold": 0.5,
+                "archive_raw_images": False,
+                "archive_dir": "/data/raw_archive",
+                "archive_max_age_days": 7,
+                "max_consecutive_failures": 10,
+            }
+        )
+        assert result["valid"] is True, result["error"]
+
+    def test_unknown_method_fails(self):
+        result = self._validate({"method": "sift"})
+        assert result["valid"] is False
+        assert "sift" in result["error"]
+
+    def test_inlier_ratio_above_one_fails(self):
+        result = self._validate({"min_inlier_ratio": 1.5})
+        assert result["valid"] is False
+        assert "1.5" in result["error"]
+
+    def test_min_inliers_below_minimum_fails(self):
+        result = self._validate({"min_inliers": 3})
+        assert result["valid"] is False
+        assert "minimum" in result["error"].lower() or "3" in result["error"]
