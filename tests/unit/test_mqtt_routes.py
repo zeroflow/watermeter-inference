@@ -1,8 +1,6 @@
 """Unit tests for MQTT config API routes."""
 
-import sys
-from unittest.mock import MagicMock, patch, call
-from types import ModuleType
+from unittest.mock import MagicMock
 
 
 class TestMqttGetConfig:

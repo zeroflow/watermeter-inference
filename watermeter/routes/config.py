@@ -8,8 +8,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from .. import config_utils
-from .. import watermeter_service
+from .. import config_utils, watermeter_service
 
 logger = logging.getLogger(__name__)
 

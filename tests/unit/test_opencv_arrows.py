@@ -232,9 +232,10 @@ class TestOpenCVArrowDetector:
 
     def test_predict_from_file_path(self):
         """predict() from file path should match predict_from_bytes()."""
-        import cv2
         import tempfile
         from pathlib import Path
+
+        import cv2
 
         from watermeter.opencv_arrows import OpenCVArrowDetector
 
@@ -253,6 +254,7 @@ class TestOpenCVArrowDetector:
     def test_confidence_reflects_angular_concentration(self):
         """A clean arrow should have high confidence (R close to 1.0)."""
         import cv2
+
         from watermeter.opencv_arrows import OpenCVArrowDetector
 
         detector = OpenCVArrowDetector()
@@ -317,9 +319,10 @@ def _load_inference_create_arrows_backend():
     """
     import importlib.util
     import io
-    import yaml
     from pathlib import Path
     from unittest.mock import patch
+
+    import yaml
 
     inference_path = (
         Path(__file__).resolve().parents[2] / "watermeter" / "inference.py"

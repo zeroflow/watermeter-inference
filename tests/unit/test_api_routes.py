@@ -4,10 +4,7 @@ These tests use mocked services so they can run without Docker.
 They test HTTP-level behavior: status codes, response structure, validation.
 """
 
-import json
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 
 class TestConfigEndpoints:

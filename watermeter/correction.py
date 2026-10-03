@@ -7,9 +7,9 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
+from .meter_state import MeterState
 from .position_utils import get_position_ids
 from .rate_tracker import RateTracker
-from .meter_state import MeterState
 
 logger = logging.getLogger(__name__)
 

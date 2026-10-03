@@ -1,9 +1,6 @@
 """Unit tests for persistence.py - StateStore."""
 
-import json
 from datetime import datetime
-
-import pytest
 
 from watermeter.persistence import StateStore
 

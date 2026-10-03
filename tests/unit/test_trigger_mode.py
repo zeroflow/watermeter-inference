@@ -9,15 +9,12 @@ We use importlib to load the real source file for method-level tests.
 """
 
 import asyncio
-import importlib.util
 import sys
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from watermeter.config_utils import get_config_schema, load_config_string, validate_config
-
 
 # ---------------------------------------------------------------------------
 # Load the REAL WatermeterService class (bypassing the conftest mock).
@@ -29,9 +26,9 @@ for _name in ['watermeter_service', 'watermeter.watermeter_service']:
     if _name in sys.modules:
         _ws_mock_backup[_name] = sys.modules.pop(_name)
 
-from watermeter.watermeter_service import WatermeterService  # noqa: E402
-from watermeter.scheduling import SchedulingManager  # noqa: E402
 from watermeter.mqtt_publisher import MqttPublisher  # noqa: E402
+from watermeter.scheduling import SchedulingManager  # noqa: E402
+from watermeter.watermeter_service import WatermeterService  # noqa: E402
 
 # Keep a reference to the real module (for patching module-level names like `mqtt`)
 _real_ws_module = sys.modules['watermeter.watermeter_service']

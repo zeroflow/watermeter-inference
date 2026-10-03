@@ -8,8 +8,8 @@ We follow the same unmocking strategy as test_synthetic_transforms.py.
 import sys
 from unittest.mock import MagicMock
 
-import pytest
 import numpy as np
+import pytest
 from PIL import Image
 
 # ---------------------------------------------------------------------------
@@ -37,8 +37,8 @@ for _mod_name in list(sys.modules.keys()):
         del sys.modules[_mod_name]
 
 # Now import SyntheticGenerator and photo_master -- they will see the real cv2
-from watermeter.synthetic_generator import SyntheticGenerator
 import watermeter.photo_master  # noqa: F401 -- pre-import so it caches real cv2
+from watermeter.synthetic_generator import SyntheticGenerator
 
 # Restore the conftest mock so other test files are not affected
 if _saved_cv2_mock is not None:
@@ -174,8 +174,9 @@ class TestPhotoBasedGeneration:
 class TestPhotoBasedDigitGeneration:
     def test_uses_compositor_when_backgrounds_available(self, tmp_path):
         """If digits/reference/background/ has images, use DigitCompositor."""
-        from watermeter.synthetic_generator import SyntheticGenerator as SG
         from PIL import Image
+
+        from watermeter.synthetic_generator import SyntheticGenerator as SG
 
         # Create background directory with a fake background
         bg_dir = tmp_path / "digits" / "reference" / "background"

@@ -1,7 +1,7 @@
 """Config API integration tests."""
 
-import yaml
 import pytest
+import yaml
 
 pytestmark = pytest.mark.integration
 

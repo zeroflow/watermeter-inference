@@ -7,12 +7,10 @@ consistency improvement checks, signal scoring, and the correction engine.
 from datetime import datetime, timedelta
 
 import numpy as np
-import pytest
 
 from watermeter.correction import CorrectionEngine
-from watermeter.rate_tracker import RateTracker
 from watermeter.meter_state import MeterState
-
+from watermeter.rate_tracker import RateTracker
 
 # ---------------------------------------------------------------------------
 # Standalone predict / predict_detailed implementations for testing.

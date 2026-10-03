@@ -4,9 +4,8 @@ Bug: Using plain PyYAML (yaml.dump) strips comments from config files.
 Fix: Using ruamel.yaml with comment preservation.
 """
 
-import pytest
 
-from watermeter.config_utils import load_config, save_config, load_config_string, dump_config_string
+from watermeter.config_utils import dump_config_string, load_config, load_config_string, save_config
 
 
 def test_inline_comment_preserved():

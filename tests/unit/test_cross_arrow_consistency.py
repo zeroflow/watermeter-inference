@@ -5,9 +5,8 @@ into the correct_predictions() correction engine (Signal 4).
 """
 
 from watermeter.correction import CorrectionEngine
-from watermeter.rate_tracker import RateTracker
 from watermeter.meter_state import MeterState
-
+from watermeter.rate_tracker import RateTracker
 
 # ---------------------------------------------------------------------------
 # Helpers

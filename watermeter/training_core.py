@@ -10,10 +10,10 @@ Extracts common training/benchmark logic to avoid duplication:
 - Image preprocessing for inference/benchmarking
 """
 
-import random
 import logging
+import random
 from pathlib import Path
-from typing import Tuple, List
+from typing import List, Tuple
 
 import numpy as np
 import torch

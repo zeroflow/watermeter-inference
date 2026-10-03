@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict
 
-from .image_hash import compute_dhash, HashCache
+from .image_hash import HashCache, compute_dhash
 
 logger = logging.getLogger(__name__)
 

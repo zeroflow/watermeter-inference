@@ -1,9 +1,7 @@
 """Tests for WatermeterService.reload_config() method."""
 import sys
-import yaml
-import pytest
-from unittest.mock import MagicMock, patch
 from copy import deepcopy
+from unittest.mock import MagicMock
 
 # Load the real WatermeterService class (bypassing conftest mocks)
 _ws_mock_backup = {}

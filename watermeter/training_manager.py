@@ -2,15 +2,15 @@
 Training Manager - Orchestrates model training and benchmarking
 """
 
+import logging
 import threading
 import time
 import traceback
 import uuid
-from pathlib import Path
-from typing import Dict, List, Optional, Any
 from datetime import datetime
 from enum import Enum
-import logging
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from .model_manager import get_model_manager
 
@@ -315,20 +315,7 @@ class TrainingManager:
             job.add_log("Starting training execution")
 
             config = job.config
-            model_type = config["model_type"]
-            architecture = config["architecture"]
-            architecture_display = config.get("architecture_display", "")
-            resolution = config["resolution"]
             seeds = config.get("seeds", [42])
-            epochs = config.get("epochs", 20)
-            batch_size = config.get("batch_size", 16)
-            learning_rate = config.get("learning_rate", 3e-4)
-
-            # For arrows, we may have step_size
-            step_size = config.get("step_size", 1.0) if model_type == "arrows" else None
-
-            # Training mode: "discrete" (classification) or "continuous" (regression)
-            training_mode = config.get("training_mode", "discrete")
 
             # Calculate total configurations
             total_configs = len(seeds)
@@ -589,15 +576,14 @@ class TrainingManager:
         device,
     ):
         """Load dataset and create train/val DataLoaders."""
-        import torch
-        from torchvision.datasets import ImageFolder
         from torch.utils.data import DataLoader, Subset
+        from torchvision.datasets import ImageFolder
 
         from .training_core import (
-            worker_init_fn,
+            compute_class_weights,
             create_transforms,
             stratified_split,
-            compute_class_weights,
+            worker_init_fn,
         )
 
         train_transform, val_transform = create_transforms(resolution)
@@ -669,8 +655,8 @@ class TrainingManager:
         epochs: int,
     ):
         """Create timm model, AdamW optimizer, cosine scheduler, and loss criterion."""
-        import torch
         import timm
+        import torch
 
         if model_type == "arrows" and training_mode == "continuous":
             model = timm.create_model(architecture, pretrained=True, num_classes=1)
@@ -883,9 +869,8 @@ class TrainingManager:
         if loop_result is None:
             return None
 
-        import shutil
         import json
-        import torch
+        import shutil
 
         from .training_core import export_to_openvino
 
@@ -1098,8 +1083,8 @@ class TrainingManager:
 
     def _create_arrow_dataset(self, ground_truth_dir: Path, dataset_dir: Path, step: float, job: TrainingJob):
         """Create subsampled arrow dataset from ground_truth."""
-        import shutil
         import math
+        import shutil
 
         # Remove existing dataset folder
         if dataset_dir.exists():
@@ -1232,11 +1217,12 @@ class TrainingManager:
         Uses logic from benchmark_digits.py and benchmark_arrows.py.
         Supports both classification (discrete) and regression (continuous) modes.
         """
-        import openvino as ov
-        import numpy as np
         from collections import defaultdict
 
-        from .training_core import preprocess_image, softmax_predict, regression_predict, circular_error
+        import numpy as np
+        import openvino as ov
+
+        from .training_core import circular_error, preprocess_image, regression_predict, softmax_predict
 
         model_type = job.model_type
 

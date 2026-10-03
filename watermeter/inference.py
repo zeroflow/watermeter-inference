@@ -1,11 +1,12 @@
 import json
-import openvino as ov
+import logging
+import re
+import threading
+from pathlib import Path
+
 import cv2
 import numpy as np
-from pathlib import Path
-import re
-import logging
-import threading
+import openvino as ov
 
 from watermeter.opencv_arrows import OpenCVArrowDetector
 

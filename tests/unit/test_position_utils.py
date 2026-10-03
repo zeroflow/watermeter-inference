@@ -1,5 +1,4 @@
 """Tests for position ID utility functions."""
-import pytest
 from watermeter.position_utils import get_position_ids
 
 

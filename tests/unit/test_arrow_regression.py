@@ -15,14 +15,12 @@ See docs/tasks/2026_02_14_BL08_ArrowRegression.md, WP5 for full spec.
 import importlib
 import importlib.util
 import io
-import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 import yaml
-
 
 # ---------------------------------------------------------------------------
 # Load real inference.py symbols (bypassing the conftest mock).
@@ -182,7 +180,8 @@ class TestStratifiedSplitRegression:
     def _import_deps(self):
         pytest.importorskip('torch')
         from watermeter.training_core import (
-            RegressionArrowDataset, stratified_split_regression,
+            RegressionArrowDataset,
+            stratified_split_regression,
         )
         self.RegressionArrowDataset = RegressionArrowDataset
         self.stratified_split_regression = stratified_split_regression

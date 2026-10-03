@@ -1,7 +1,6 @@
 """Tests for export_to_openvino() -- verifies models with ONNX sequence ops export correctly."""
+
 import pytest
-import torch
-from pathlib import Path
 
 
 @pytest.mark.slow
@@ -16,6 +15,7 @@ class TestExportToOpenvino:
         which OpenVINO cannot consume. The export function must handle this.
         """
         import timm
+
         from watermeter.training_core import export_to_openvino
 
         resolution = 32  # Small for fast test
@@ -46,6 +46,7 @@ class TestExportToOpenvino:
     def test_standard_model_still_works(self, tmp_path):
         """Verify a standard model (resnet18) still exports correctly after the fix."""
         import timm
+
         from watermeter.training_core import export_to_openvino
 
         resolution = 32
@@ -70,6 +71,7 @@ class TestExportToOpenvino:
     def test_return_paths_are_correct(self, tmp_path):
         """Verify the returned paths match the expected naming convention."""
         import timm
+
         from watermeter.training_core import export_to_openvino
 
         model = timm.create_model("resnet18", pretrained=False, num_classes=5)

@@ -1,10 +1,7 @@
 """Unit tests for BL-02: ground-truth pruning logic."""
 import json
-import numpy as np
-import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
-
+from unittest.mock import patch
 
 # ---------------------------------------------------------------------------
 # Tests for cluster_images_by_hash
@@ -201,7 +198,7 @@ class TestComputePrunePreview:
         self._make_class_images(gt_base / "0", 10, hash_base=0)
         self._make_class_images(gt_base / "1", 10, hash_base=10000)
 
-        with patch('watermeter.image_hash.compute_dhash') as mock_dhash:
+        with patch('watermeter.image_hash.compute_dhash'):
             # scan_and_update will be called but hashes are already in cache
             from watermeter.image_hash import compute_prune_preview
             preview = compute_prune_preview(gt_base, threshold=10)

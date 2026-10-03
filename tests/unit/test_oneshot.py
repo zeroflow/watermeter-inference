@@ -24,10 +24,10 @@ The oneshot module must expose:
   (async coroutine; returns 0 on success, 1 on any failure)
 """
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-import tempfile
 import os
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 import yaml
 
 # ---------------------------------------------------------------------------

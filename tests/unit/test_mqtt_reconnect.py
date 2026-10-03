@@ -1,6 +1,5 @@
 """Unit tests for MQTT reconnection logic."""
 
-import threading
 import time
 from unittest.mock import MagicMock, patch
 
@@ -164,7 +163,6 @@ class TestMqttReconnect:
         publisher = self._make_publisher()
 
         call_count = {"value": 0}
-        original_reconnect = publisher.mqtt_client.reconnect
 
         def counting_reconnect():
             call_count["value"] += 1

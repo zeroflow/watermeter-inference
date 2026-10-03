@@ -1,13 +1,11 @@
 """Unit tests for BL-03: mislabel detection (scan + confirm)."""
 
-import json
-import shutil
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-import watermeter.mislabel_detector as mislabel_mod
 
+import watermeter.mislabel_detector as mislabel_mod
 
 # ---------------------------------------------------------------------------
 # Helper to create ground truth fixtures
@@ -428,8 +426,9 @@ class TestMakeThumbnailBase64:
     """Test the base64 thumbnail helper."""
 
     def test_valid_file(self, tmp_path):
-        from watermeter.mislabel_detector import _make_thumbnail_base64
         import base64
+
+        from watermeter.mislabel_detector import _make_thumbnail_base64
 
         img = tmp_path / "test.jpg"
         img.write_bytes(b'\xff\xd8\xff\xe0some_jpeg')
@@ -564,7 +563,7 @@ class TestMislabelAPIEndpoints:
     def test_scan_stores_result_for_confirm(self, test_client, tmp_path):
         """After scan, the result is stored so confirm can validate paths."""
         gt_base = tmp_path / "training" / "digits" / "ground_truth"
-        img_path = _make_gt_image(gt_base / "3", "suspect.jpg")
+        _make_gt_image(gt_base / "3", "suspect.jpg")
 
         import watermeter.routes.models as models_mod
         models_mod._mislabel_scans.clear()
@@ -651,7 +650,7 @@ class TestMislabelAPIEndpoints:
     def test_confirm_clears_scan(self, test_client, tmp_path):
         """After confirm, the stored scan is cleared."""
         gt_base = tmp_path / "training" / "digits" / "ground_truth"
-        img_path = _make_gt_image(gt_base / "1", "img.jpg")
+        _make_gt_image(gt_base / "1", "img.jpg")
 
         import watermeter.routes.models as models_mod
 

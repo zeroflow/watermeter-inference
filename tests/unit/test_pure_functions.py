@@ -5,8 +5,6 @@ Tests functions that don't require Docker or heavy deps:
 - training_manager._generate_arrow_classes / _round_to_arrow_class
 """
 
-import math
-from pathlib import Path
 
 import pytest
 
@@ -47,6 +45,7 @@ class TestSafeSubpath:
 # so we patch model_manager to use a temp dir.
 
 from unittest.mock import patch
+
 from watermeter.training_manager import TrainingManager
 
 

@@ -16,10 +16,9 @@ We temporarily remove the mock to import the real WatermeterService class.
 
 import json
 import sys
-import time
 import threading
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -31,11 +30,11 @@ for _name in ['watermeter_service', 'watermeter.watermeter_service']:
     if _name in sys.modules:
         _ws_mock_backup[_name] = sys.modules.pop(_name)
 
-from watermeter.watermeter_service import WatermeterService  # noqa: E402
-from watermeter.mqtt_publisher import MqttPublisher  # noqa: E402
-from watermeter.meter_state import MeterState  # noqa: E402
-from watermeter.rate_tracker import RateTracker  # noqa: E402
 from watermeter.confirmation import ConfirmationManager  # noqa: E402
+from watermeter.meter_state import MeterState  # noqa: E402
+from watermeter.mqtt_publisher import MqttPublisher  # noqa: E402
+from watermeter.rate_tracker import RateTracker  # noqa: E402
+from watermeter.watermeter_service import WatermeterService  # noqa: E402
 
 # Restore the mocks so other test files still work
 for _name, _mock in _ws_mock_backup.items():

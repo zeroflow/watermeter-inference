@@ -6,8 +6,6 @@ Previously, code used 'N' instead of 'NAN', causing misclassification.
 
 from unittest.mock import patch
 
-import pytest
-
 from watermeter.training_manager import TrainingManager
 
 

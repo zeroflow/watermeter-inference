@@ -8,8 +8,8 @@ We follow the same unmocking strategy as test_marker_alignment.py.
 import sys
 from unittest.mock import MagicMock
 
-import pytest
 import numpy as np
+import pytest
 from PIL import Image, ImageDraw
 
 # ---------------------------------------------------------------------------

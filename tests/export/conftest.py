@@ -6,6 +6,7 @@ but export tests need the real PyTorch/timm/OpenVINO modules.
 This conftest uses an autouse fixture to remove mocks before each test runs.
 """
 import sys
+
 import pytest
 
 

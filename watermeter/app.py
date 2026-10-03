@@ -6,9 +6,9 @@ Route handlers are organized in watermeter/routes/.
 """
 
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
-import logging
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -159,16 +159,16 @@ app.mount("/static", StaticFiles(directory=str(_pkg_dir / "static")), name="stat
 
 # Include route modules (imported here to avoid circular imports at module level;
 # safe_subpath and other shared objects are defined above these imports)
-from .routes.pages import router as pages_router  # noqa: E402
-from .routes.service import router as service_router  # noqa: E402
 from .routes.config import router as config_router  # noqa: E402
-from .routes.roi import router as roi_router  # noqa: E402
 from .routes.label import router as label_router  # noqa: E402
-from .routes.training import router as training_router  # noqa: E402
-from .routes.models import router as models_router  # noqa: E402
-from .routes.synthetic import router as synthetic_router  # noqa: E402
-from .routes.mqtt import router as mqtt_router  # noqa: E402
 from .routes.metrics import router as metrics_router  # noqa: E402
+from .routes.models import router as models_router  # noqa: E402
+from .routes.mqtt import router as mqtt_router  # noqa: E402
+from .routes.pages import router as pages_router  # noqa: E402
+from .routes.roi import router as roi_router  # noqa: E402
+from .routes.service import router as service_router  # noqa: E402
+from .routes.synthetic import router as synthetic_router  # noqa: E402
+from .routes.training import router as training_router  # noqa: E402
 
 app.include_router(pages_router)
 app.include_router(service_router)

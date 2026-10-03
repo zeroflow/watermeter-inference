@@ -5,7 +5,6 @@ and provides compositing utilities to place a pointer at any angle.
 """
 
 import logging
-import math
 from typing import Optional
 
 import cv2

@@ -12,12 +12,11 @@ watermeter_service.
 """
 
 import sys
-from types import ModuleType
-from unittest.mock import MagicMock, patch
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
-import pytest
 import numpy as np
+import pytest
 
 # ---------------------------------------------------------------------------
 # The unit conftest.py mocks cv2 in sys.modules (with spec=ModuleType) BEFORE
@@ -91,11 +90,10 @@ for _ws_name in ["watermeter_service", "watermeter.watermeter_service", "waterme
         del sys.modules[_ws_name]
 
 # Now import the real module -- it will see the real cv2 and numpy, mocked everything else
-from watermeter.watermeter_service import WatermeterService  # noqa: E402
+import watermeter.image_pipeline as _ip_mod
 
 # Keep a reference to the real module for patch.object targets
-import watermeter.watermeter_service as _ws_mod
-import watermeter.image_pipeline as _ip_mod
+from watermeter.watermeter_service import WatermeterService  # noqa: E402
 
 assert hasattr(_ip_mod.cv2, "cvtColor"), "image_pipeline.cv2 is still a mock -- alignment tests cannot run"
 

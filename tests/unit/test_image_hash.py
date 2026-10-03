@@ -1,9 +1,8 @@
 """Unit tests for image_hash module."""
 import json
+from unittest.mock import patch
+
 import numpy as np
-import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 
 class TestComputeDhash:

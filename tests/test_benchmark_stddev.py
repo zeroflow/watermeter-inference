@@ -1,7 +1,6 @@
 """Tests for StdDev computation in benchmark results (continuous mode)."""
 
 import numpy as np
-import pytest
 
 
 def circular_error(pred: float, true: float) -> float:

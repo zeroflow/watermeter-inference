@@ -37,8 +37,12 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install -r requirements-docker.txt
-          pip install pytest pytest-cov
+          # CPU-only torch first, same as the Dockerfile
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements-docker.txt -r requirements-dev.txt
+          # openvino comes from the base image in Docker; install it explicitly here
+          pip install "openvino>=2025.0.0,<2026.0.0"
+          pip install pytest-cov
 
       - name: Run unit tests
         run: pytest tests/unit/ -x -q

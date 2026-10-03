@@ -92,14 +92,13 @@ def _docker_rm(container):
 def _wait_healthy(url, timeout=90):
     """Poll /health until 200 or timeout."""
     deadline = time.monotonic() + timeout
-    last_err = None
     while time.monotonic() < deadline:
         try:
             r = httpx.get(f"{url}/health", timeout=5)
             if r.status_code == 200:
                 return True
-        except httpx.HTTPError as exc:
-            last_err = exc
+        except httpx.HTTPError:
+            pass
         time.sleep(2)
     return False
 

@@ -1,7 +1,7 @@
 """Unit tests for DataCollector — quota counter logic and persistence."""
 
 import json
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from watermeter.data_collector import DataCollector
 

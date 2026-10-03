@@ -75,7 +75,7 @@ def test_benchmark_digits(api):
     if not model_id:
         pytest.skip("No benchmarkable digits model found")
 
-    gt_total = _skip_if_not_enough_gt(api, "digits")
+    _skip_if_not_enough_gt(api, "digits")
 
     result, job_id = _run_benchmark(api, "digits", model_id)
 

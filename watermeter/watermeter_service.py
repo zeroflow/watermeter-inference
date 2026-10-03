@@ -4,6 +4,8 @@ Combines image fetching, OpenVINO inference, consistency checks, and MQTT publis
 """
 
 import asyncio
+import base64
+import json
 import logging
 import logging.handlers
 import os
@@ -13,28 +15,25 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-import json
-import base64
 
-import cv2
-import numpy as np
-import httpx
 import yaml
-from .inference import get_inference_service
-from .metrics import PipelineMetrics
-from .persistence import StateStore, FailureStore
-from .image_pipeline import AlignmentResult, ImagePipeline
-from .position_utils import calculate_total as _calculate_total_impl, get_position_ids
-from .low_confidence_capture import LowConfidenceCapture
-from .scheduling import SchedulingManager
-from .rate_tracker import RateTracker
-from .leak_detector import LeakDetector
-from .plausibility import PlausibilityChecker
-from .meter_state import MeterState
+
 from .confirmation import ConfirmationManager
-from .mqtt_publisher import MqttPublisher
 from .correction import CorrectionEngine
 from .data_collector import DataCollector
+from .image_pipeline import AlignmentResult, ImagePipeline
+from .inference import get_inference_service
+from .leak_detector import LeakDetector
+from .low_confidence_capture import LowConfidenceCapture
+from .meter_state import MeterState
+from .metrics import PipelineMetrics
+from .mqtt_publisher import MqttPublisher
+from .persistence import FailureStore, StateStore
+from .plausibility import PlausibilityChecker
+from .position_utils import calculate_total as _calculate_total_impl
+from .position_utils import get_position_ids
+from .rate_tracker import RateTracker
+from .scheduling import SchedulingManager
 
 logger = logging.getLogger(__name__)
 

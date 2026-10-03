@@ -7,7 +7,6 @@ from urllib.parse import urlparse
 
 import cv2
 import httpx
-import numpy as np
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel

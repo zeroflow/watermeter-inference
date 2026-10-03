@@ -1,6 +1,5 @@
-import pytest
-from torchvision import transforms
 from PIL import Image
+from torchvision import transforms
 
 
 class TestCreateTransforms:
