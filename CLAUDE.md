@@ -89,8 +89,8 @@ Running the app:
 
 ## Git
 
-- Remotes: `origin` = GitHub `zeroflow/watermeter-inference` (public, primary), `gitea` = local Gitea mirror. Push branches to both.
-- Branches: `main` is the release branch and only moves via PR/merge from `claude/main`, which the user approves. Work happens on `claude/main` directly, or on `claude/<feature>` for multi-file work, merged back into `claude/main`.
+- Remotes: `origin` = GitHub `zeroflow/watermeter-inference` (public, primary), `gitea` = local Gitea mirror. Always push to both.
+- Commit and push directly to `main` (user preference); no `claude/*` branches or PRs unless asked. Every push to `main` runs CI and publishes `ghcr.io/zeroflow/watermeter-inference:dev`.
+- Releases: tag `vX.Y.Z` on `main` and push the tag. The Docker workflow then publishes `:X.Y.Z`, `:X.Y` and `:latest`.
 - Commit messages start with `claude: `. The committer identity is set repo-locally to `zeroflow`.
-- PRs: `gh pr create --base main --head claude/main`.
 - The repo is public, so never commit real IPs, hostnames, credentials, or home paths. Configs use placeholders, and secrets come from `.env` (gitignored).

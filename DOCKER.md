@@ -37,7 +37,7 @@
 ### Option 1: Using docker compose (Recommended)
 
 Prebuilt images are published to `ghcr.io/zeroflow/watermeter-inference` (linux/amd64):
-`latest` and `X.Y.Z` for releases, `main` for the main branch, `dev` for the development branch.
+`latest` and `X.Y.Z` for releases, `dev` for the latest commit on `main`.
 Select a tag with `WATERMETER_TAG` in `.env` (default: `latest`).
 
 ```bash
