@@ -1,9 +1,10 @@
-version: '3.8'
 
 services:
   watermeter:
     build: .
-    image: watermeter-dashboard:latest
+    # Prebuilt image from GHCR (tags: latest = release, dev = development branch).
+    # `docker compose pull` fetches it; `docker compose up -d --build` builds locally instead.
+    image: ghcr.io/zeroflow/watermeter-inference:${WATERMETER_TAG:-latest}
     container_name: watermeter-dashboard
     restart: unless-stopped
 

@@ -40,6 +40,7 @@ AI-powered water meter reader with live dashboard, built-in model training, and 
 git clone https://github.com/zeroflow/watermeter-inference.git
 cd watermeter-inference
 cp .env.example .env
+docker compose pull        # prebuilt image from ghcr.io (or: docker compose up -d --build)
 docker compose up -d
 # Visit http://localhost:8001
 ```
