@@ -1,150 +1,96 @@
-# Claude Code Instructions
+# CLAUDE.md
 
-You are a **coordinator**. You do NOT read source code, write implementations, or explore the codebase yourself. You orchestrate subagents to do all of that.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Your Role
+AI water meter reader. A FastAPI service fetches camera images (AI-on-the-edge ESP32-CAM). It aligns them via marker templates, crops digit and arrow ROIs, and runs OpenVINO classifiers/regressors on the crops. It then validates the reading for plausibility and publishes it via MQTT to Home Assistant. The same container also hosts a dashboard, a labeling UI, and in-process PyTorch training.
 
-1. Receive goals from the user (direct requests, backlog items)
-2. Delegate planning, implementation, testing, and review to subagents
-3. Track progress, commit completed work, report results
-4. Keep your own context window clean — no code, no large file contents
+## Hard rules
 
-## Subagents
+- **Port 8001 / container `watermeter-dashboard-prod` is production: never stop, restart, rebuild, or exec into it.** Use the debug container instead (port 8002).
+- Never force-push or rewrite history without explicit user approval.
 
-Opus is reserved for **thinking roles** (planning, complex review). Sonnet handles **everything else**. Haiku only as last-resort fallback (e.g. rate limits, context issues).
+## Commands
 
-| Agent | Model | Use for |
-|-------|-------|---------|
-| `planner` | opus | Codebase exploration, task doc creation, architecture decisions |
-| `reviewer` | opus | Complex multi-file review, architecture validation, security audit |
-| `reviewer-light` | sonnet | Trivial/small-diff review: config changes, single-file fixes, typos |
-| `dev` | sonnet | All implementation: features, refactoring, API changes, routes, config, bug fixes |
-| `frontend` | sonnet | Templates (Jinja2), HTMX interactions, CSS styling |
-| `tester` | sonnet | Unit/regression tests, browser testing (Playwright on port 8002) |
-| `debugger` | sonnet | Test failures, stack traces, runtime errors |
-| `researcher` | sonnet | Library docs, API research, best practices, web search |
-
-**Fallback rule:** If `dev` fails at a complex implementation after 2 attempts, the coordinator may escalate to a one-time opus agent. This is the exception, not the rule.
-
-**Model tier discipline:** Call out when dispatching the wrong model tier. Lookups on Opus = waste. Architecture on Sonnet = underpowered. Quick nudge, not a lecture.
-
-## Token Budget Rules
-
-**Subagent output:** Subagents MUST return structured summaries, not raw code or full diffs. Format: what changed, which files, test results. The coordinator's context is precious — don't fill it with code.
-
-**Max turns per agent:** `dev`/`frontend` ≤ 15, `tester`/`debugger` ≤ 10, `researcher` ≤ 8, `planner` ≤ 12, `reviewer` ≤ 8. If an agent hits the limit, it returns what it has — don't let agents spin.
-
-**Skip the planner for clear-scope tasks.** If the change is obvious (known files, known pattern, ≤ 2 files), send `dev` directly with explicit instructions. Save Opus planning tokens for tasks that genuinely need exploration.
-
-**Fast path — trivial changes:** For typos, config tweaks, single-line fixes: skip planner, skip task doc, send `dev` directly, use `reviewer-light` (sonnet) instead of Opus reviewer. Full workflow is for real work only.
-
-## Codebase Map
-
-`docs/codebase_map.md` contains every function, class, route, and template with line numbers. **Every subagent prompt MUST start with:**
-
-> Read `docs/codebase_map.md` first. Use it to jump directly to the right file and line number — do NOT glob or grep to find things that are already in the map.
-
-This saves significant tokens by eliminating exploration overhead.
-
-## Workflow for Any Task
-
-### 1. Plan
-Send `planner` to explore the codebase and create a task document at `docs/tasks/YYYY_MM_DD_TaskName.md`. The planner returns a doc with work packages (WPs), each assigned to a specific agent.
-
-### 2. Implement
-For each WP, send the assigned agent with:
-- Instruction to read `docs/codebase_map.md` first
-- The WP description from the task doc (copy it into the prompt)
-- The task doc path for reference
-- Clear instruction to run tests after changes
-
-Run WPs sequentially if they depend on each other; run independent WPs in parallel.
-
-### 3. Test
-Send `tester` to run the full test suite and verify the changes. For UI changes, the tester uses Playwright against `http://localhost:8002` (the debug container).
-
-### 4. Review
-Send `reviewer` to check the diff for security issues, convention violations, architecture conformity, and bugs.
-
-### 5. Fix
-If reviewer or tester find issues, send `dev` or `frontend` to fix them. Re-test.
-
-### 6. Commit
-Commit the completed work yourself (you handle git directly).
-
-## Git — Branch Model
-
-**Never commit directly to `main`.** `main` is the release branch.
-
-### Branch Structure
-```
-main                  ← releases only, via PR from claude/main
-  ↑ PR (user merges)
-claude/main           ← persistent dev branch, small changes go here directly
-  ↑ merge
-claude/feature-x      ← large changes, branched from claude/main
-```
-
-### Rules
-- **`main`**: Read-only for Claude. Only receives merges via PR.
-- **`claude/main`**: Persistent development branch. Small fixes, typos, simple tasks commit here directly.
-- **`claude/<feature-name>`**: For large/multi-WP tasks. Branch from `claude/main`, merge back into `claude/main` when done.
-
-### What counts as "small" vs "large"?
-- **Small** (direct to `claude/main`): single-file fixes, typos, config tweaks, simple refactors
-- **Large** (feature branch): multi-file features, new routes, architecture changes, backlog items with 3+ WPs
-
-### Workflow — Small Change
-1. `git checkout claude/main`
-2. Implement, test, commit
-3. Push `claude/main`
-
-### Workflow — Large Change
-1. `git checkout claude/main && git checkout -b claude/<feature-name>`
-2. Implement WPs, commit after each
-3. Push feature branch, merge into `claude/main`
-4. Delete feature branch
-
-### Release (PR to main)
-When user requests a release or after significant work accumulates on `claude/main`:
 ```bash
-GITEA_TOKEN=$(cat /home/claude/.config/gitea/token)
-curl -s -X POST "http://192.168.4.38:3000/api/v1/repos/zeroflow/watermeter-inference/pulls" \
-  -H "Authorization: token $GITEA_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"title":"...","body":"...","head":"claude/main","base":"main"}'
+# Environment: uv-managed venv in .venv (setup.sh is stale, don't use it)
+.venv/bin/python -m pytest                          # default: excludes `integration` marker (pytest.ini)
+.venv/bin/python -m pytest tests/unit/test_foo.py::test_bar
+.venv/bin/python -m pytest tests/unit tests/regression -q   # what to run after changes
+.venv/bin/python -m pytest tests/integration --base-url=http://localhost:8002
+#   without --base-url (or WATERMETER_TEST_URL) the integration fixture builds the image and starts its own container
+
+uvx ruff check watermeter/ tests/                   # CI runs this
+uvx black watermeter/ tests/                        # line length 120, py310
 ```
-User reviews and merges the PR in Gitea.
 
-### Commit Rules
-- Prefix all commit messages with `claude: `
-- Never amend or force-push existing commits
-- Reference task docs in commit messages when relevant
+CI (`.github/workflows/ci.yml`, mirrored in `.gitea/`) runs ruff plus `pytest tests/unit` on push/PR to `main`.
 
-## Docker — Production is Sacred
+Running the app:
+- `./debug.sh --detach [--purge-models]`: builds the image and runs `watermeter-dashboard-debug` on **:8002**. It persists state in `config_debug/`, `data_debug/`, and `models_debug/`, and mounts `./digits` and `./arrows` as `/training/*`. Logs: `docker logs watermeter-dashboard-debug`.
+- `./debug_clean.sh`: an ephemeral first-boot test on **:8003**. An nginx sidecar serves `tests/fixtures/meter_snapshot.jpg` as the camera, and the container has no persistent volumes.
+- `./oneshot_test.sh`: tests the one-shot CLI (`python -m watermeter --one-shot --config <cfg>`, exit 0 = success) against the same stub.
+- Inside the container the app always listens on 8001 (`uvicorn watermeter.app:app`).
 
-- **Port 8001** → `watermeter-dashboard-prod` — NEVER touch, stop, restart, or modify
-- **Port 8002** → `watermeter-dashboard-debug` (via `debug.sh`) — safe for testing
-- Subagents must NEVER run commands that affect the production container
+## Architecture
 
-## Autonomous Backlog Mode
+**Startup** (`watermeter/app.py` lifespan): `WatermeterService` singleton → `InferenceService.initialize` (tolerates missing models) → MQTT → stats loop → cyclic trigger loop (if `trigger.mode` is cyclic/both) → initial reading. Routers live in `watermeter/routes/`, one per feature area.
 
-When told to "work through the backlog" or "autonomous mode":
+**`WatermeterService`** (`watermeter_service.py`) is a facade over focused modules:
+- `image_pipeline`
+- `meter_state`
+- `plausibility`
+- `confirmation`
+- `correction`
+- `rate_tracker`
+- `leak_detector`
+- `mqtt_publisher`
+- `low_confidence_capture`
+- `data_collector`
+- `persistence`
+- `metrics`
 
-1. Read `backlog.md` — pick the next `planned` item
-2. Send `planner` to create task doc `docs/tasks/YYYY_MM_DD_BL{NN}_{Name}.md`
-3. Set BL status to `in-progress`
-4. Execute WPs from the task doc using the assigned agents
-5. Commit after each WP on `claude/<feature>` branch
-6. After all WPs: merge feature branch into `claude/main`, push
-7. Set BL status to `done`, move to next item
-8. When user requests release: create PR from `claude/main` → `main`
+**Reading pipeline** (`process_reading`, serialized by an asyncio lock):
+1. Trigger: MQTT `trigger_topic`, the cyclic loop, or `POST /api/trigger`.
+2. Fetch from `images.src`: the whole image, or one image per ROI if `images.process_separate`.
+3. `image_pipeline`: fisheye/rotation, then marker alignment, then ROI crop. Alignment **fails closed**. Consecutive failures move the pipeline status through OK → DEGRADED → FAILED → STALE, with an MQTT notification on STALE.
+4. `inference.py`:
+   - Digits: an 11-class classifier (`0`–`9` plus `NAN`; it is `NAN`, never `N`).
+   - Arrows: a classifier or a sin/cos regressor. The mode comes from the model's `metadata.json` `training_mode`. Alternatively, `inference.arrows_mode: opencv` uses a classical detector.
+5. Total → cross-arrow consistency → optional correction → plausibility (max change, reverse flow, leak) → optional MQTT confirmation flow → persist → publish to Home Assistant.
+6. Rejections keep the previous value. `POST /api/reset` clears the baseline, e.g. after long downtime.
 
-**Resolving questions autonomously**:
-- Send `researcher` to investigate — do NOT stop and ask the user
-- Note questions and answers in the task doc
-- Only escalate to the user if truly unresolvable (requires explicit user preference with no sensible default)
+**Config:**
+- All config reads and writes go through `config_utils.py`, which uses ruamel.yaml so comments survive. New config fields must be added to its validation schema.
+- The repo-root `config.yaml` is the shipped default. The Dockerfile copies it to `/config_default`, and `docker-entrypoint.sh` copies it to `/config` on first run.
+- The entrypoint also:
+  - remaps the user to `PUID`/`PGID`;
+  - installs `pretrained/` models when `/app/models` is empty;
+  - drops privileges.
+- Credentials can come from the `MQTT_USERNAME`/`MQTT_PASSWORD` env vars.
+- The legacy `aiote:` section is ignored with a warning.
 
-**When stuck**: Log the problem in the task doc and move on after 3 failed attempts.
+**Storage:**
+- State, failure history, and metrics are JSON files under `/data`.
+- Models live in `/app/models/{digits,arrows}/<id>/`, each as `<id>.xml`/`.bin` (OpenVINO IR) plus `metadata.json`. The active model is the `.xml` path in `inference.{digits,arrows}_model`, and hot-reload happens via `reload_models`.
+- Training data is at `/training/{digits,arrows}/{input,ground_truth/<class>}`; ground truth is gitignored.
 
-**Context recovery**: `backlog.md` → active task doc → `git log --oneline -20`
+**Training** (`training_manager.py`, `training_core.py`):
+- Jobs run in daemon threads inside the service process: timm/PyTorch → ONNX → OpenVINO IR.
+- `HF_TOKEN` is needed only to download pretrained weights.
+- `train_*.py`, `benchmark_*.py`, and the notebooks are legacy standalone scripts.
+
+**Frontend:** Jinja2 templates plus HTMX polling plus vanilla JS per page (`watermeter/static/`), with no framework. Theming uses CSS variables in `style.css` (light/dark); avoid inline styles.
+
+## Conventions
+
+- Build any filesystem path from user input via `safe_subpath()` (`watermeter/app.py`), and validate model IDs with `_validate_model_id()` (`model_manager.py`).
+- No API auth and no SSRF protection are deliberate, documented decisions (`docs/decisions.md`). Don't "fix" them unasked.
+- Backlog: `backlog.md`, with items `BL-{id}` and status `idea → planned → in-progress → done`. Bump "Next ID" when adding items. Design docs for larger work go in `docs/plans/YYYY-MM-DD-name.md`.
+
+## Git
+
+- Remotes: `origin` = GitHub `zeroflow/watermeter-inference` (public, primary), `gitea` = local Gitea mirror. Push branches to both.
+- Branches: `main` is the release branch and only moves via PR/merge from `claude/main`, which the user approves. Work happens on `claude/main` directly, or on `claude/<feature>` for multi-file work, merged back into `claude/main`.
+- Commit messages start with `claude: `. The committer identity is set repo-locally to `zeroflow`.
+- PRs: `gh pr create --base main --head claude/main`.
+- The repo is public, so never commit real IPs, hostnames, credentials, or home paths. Configs use placeholders, and secrets come from `.env` (gitignored).

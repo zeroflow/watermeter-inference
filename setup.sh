@@ -1,58 +1,39 @@
 #!/bin/bash
 
 # Setup script for watermeter-inference
-# Creates a virtual environment and installs all dependencies
+# Creates a uv-managed virtual environment (.venv) and installs all dependencies
 
 set -e  # Exit on error
 
 echo "=== Watermeter Inference Setup ==="
 echo ""
 
-# Check if Python 3 is installed
-if ! command -v python3 &> /dev/null; then
-    echo "Error: Python 3 is not installed. Please install Python 3.8 or later."
+if ! command -v uv &> /dev/null; then
+    echo "Error: uv is not installed. See https://docs.astral.sh/uv/ for installation instructions."
     exit 1
 fi
+echo "Found: $(uv --version)"
 
-# Display Python version
-PYTHON_VERSION=$(python3 --version)
-echo "Found: $PYTHON_VERSION"
-echo ""
+VENV_DIR=".venv"
+echo "Creating virtual environment in '$VENV_DIR' (Python >=3.10)..."
+uv venv "$VENV_DIR" --python ">=3.10"
 
-# Check minimum Python version (3.8)
-PYTHON_MAJOR=$(python3 -c 'import sys; print(sys.version_info.major)')
-PYTHON_MINOR=$(python3 -c 'import sys; print(sys.version_info.minor)')
-
-if [ "$PYTHON_MAJOR" -lt 3 ] || ([ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -lt 8 ]); then
-    echo "Error: Python 3.8 or later is required."
+# Verify the interpreter version
+if ! "$VENV_DIR/bin/python" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)'; then
+    echo "Error: Python 3.10 or later is required."
     exit 1
 fi
-
-# Create virtual environment
-VENV_DIR="venv"
-echo "Creating virtual environment in '$VENV_DIR'..."
-python3 -m venv "$VENV_DIR"
-echo "Virtual environment created successfully."
+echo "Using: $("$VENV_DIR/bin/python" --version)"
 echo ""
 
-# Activate virtual environment
-echo "Activating virtual environment..."
-source "$VENV_DIR/bin/activate"
-
-# Upgrade pip
-echo "Upgrading pip..."
-pip install --upgrade pip
-echo ""
-
-# Install dependencies
-echo "Installing dependencies from requirements.txt..."
-pip install -r requirements.txt
+echo "Installing dependencies from requirements.txt and requirements-dev.txt..."
+uv pip install --python "$VENV_DIR/bin/python" -r requirements.txt -r requirements-dev.txt
 echo ""
 
 echo "=== Setup Complete ==="
 echo ""
+echo "Run tests with:"
+echo "  $VENV_DIR/bin/python -m pytest tests/unit -q"
+echo ""
 echo "To activate the virtual environment, run:"
 echo "  source $VENV_DIR/bin/activate"
-echo ""
-echo "To deactivate, run:"
-echo "  deactivate"

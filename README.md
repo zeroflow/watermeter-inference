@@ -37,8 +37,8 @@ AI-powered water meter reader with live dashboard, built-in model training, and 
 ## Quick Start
 
 ```bash
-git clone <repository-url>
-cd watermeter
+git clone https://github.com/zeroflow/watermeter-inference.git
+cd watermeter-inference
 cp .env.example .env
 docker compose up -d
 # Visit http://localhost:8001
@@ -81,19 +81,33 @@ See `/docs` (Swagger UI) or `/redoc` (ReDoc) for the complete API reference (45+
 
 ## Development
 
+### Local Environment
+
+The dev environment is a [uv](https://docs.astral.sh/uv/)-managed `.venv` (Python 3.10+):
+
+```bash
+./setup.sh
+# or manually:
+uv venv .venv && uv pip install -r requirements.txt -r requirements-dev.txt
+```
+
 ### Debug Container
 
 The debug container mounts source code directly and runs on port 8002:
 
 ```bash
-bash debug.sh --detach
+bash debug.sh --detach           # run in the background
+bash debug.sh --purge-models     # wipe the debug models directory first
 # Access at http://localhost:8002
 ```
 
-To reset debug container state:
+### Clean-Install Test Container
+
+`debug_clean.sh` tests the first-boot experience in an ephemeral container on port 8003. It has no persistent volumes, serves `tests/fixtures/meter_snapshot.jpg` through an nginx sidecar as the image source, and removes its containers and network on exit:
 
 ```bash
-bash debug_clean.sh
+bash debug_clean.sh              # foreground; cleans up on exit
+bash debug_clean.sh --detach     # background; stop manually (see script output)
 ```
 
 ### Tests
@@ -104,12 +118,9 @@ bash debug_clean.sh
 
 # Integration tests (requires running container)
 .venv/bin/python -m pytest tests/integration/ --base-url=http://localhost:8002
-
-# Browser tests with Playwright (requires debug container on port 8002)
-.venv/bin/python -m pytest tests/browser/
 ```
 
-The test suite includes 33 unit test files, 7 integration test files, 2 regression test files, and 1 export test file.
+The test suite includes 45 unit test files, 8 integration test files, 2 regression test files, and 1 export test file.
 
 ### Linting
 
@@ -120,10 +131,10 @@ uvx black watermeter/
 
 ### One-Shot Mode
 
-Run a single inference pass on a local image without starting the full service:
+Run a single inference pass without starting the full service. The image is fetched from `images.src` in the given config file:
 
 ```bash
-python -m watermeter --one-shot --config config.yaml --image meter.jpg
+python -m watermeter --one-shot --config config.yaml
 ```
 
 Exit code 0 on success, 1 on any failure. Prints the computed meter reading to stdout.
@@ -192,8 +203,8 @@ scripts/
 ├── tune_synthetic.py         # Synthetic generation tuning
 └── backfill_training_samples.py
 tests/
-├── unit/                     # 33 test files
-├── integration/              # 7 test files (needs running container)
+├── unit/                     # 45 test files
+├── integration/              # 8 test files (needs running container)
 ├── regression/               # 2 test files
 └── export/                   # 1 test file
 ```
@@ -229,9 +240,9 @@ If you do not have an existing MQTT broker, uncomment the `mosquitto` service bl
 
 | Script | Purpose |
 |--------|---------|
-| `debug.sh` | Launch the debug container on port 8002 with source volume mounts |
-| `debug_clean.sh` | Wipe debug container state (data, models, training dirs) |
-| `setup.sh` | Create the Python venv and install all dependencies via `uv` |
+| `debug.sh` | Launch the debug container on port 8002 with source volume mounts (`--detach`, `--purge-models`) |
+| `debug_clean.sh` | Ephemeral first-boot test container on port 8003 with an nginx stub image source; no volumes, cleaned up on exit |
+| `setup.sh` | Create `.venv` and install `requirements.txt` + `requirements-dev.txt` via `uv` |
 | `scripts/fetch_upstream_data.sh` | Download upstream training data from jomjol/AI-on-the-edge-device (see `DATA_PROVENANCE.md`) |
 
 ## Data Provenance

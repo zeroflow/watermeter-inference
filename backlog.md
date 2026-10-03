@@ -2,7 +2,7 @@
 
 Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
 
-Next ID: BL-48
+Next ID: BL-76
 
 See `backlog_archiv.md` for completed items (BL-01 through BL-25).
 
@@ -21,6 +21,27 @@ See `backlog_archiv.md` for completed items (BL-01 through BL-25).
   - ROI/model routes reload properly, general config editor does not
   - **Ref**: `routes/config.py:72-75` vs `routes/models.py:117-127`
   - **Effort**: M
+
+- **BL-48** `idea` — **HTTP API authentication**: all write endpoints (config save, model delete, training start, set-value) accept unauthenticated requests from any LAN host. `/api/config` returns plaintext MQTT credentials. Combined with `0.0.0.0` binding, full control from any host on the network.
+  - HTTP Basic Auth as minimum; token-based or session auth as stretch goal
+  - **Persona**: Priya, Dave, Marcus, Sam (4 personas) — unanimous Must-Fix
+  - **Ref**: all write routes, `routes/config.py` (credential exposure)
+  - **Effort**: L
+
+- **BL-49** `done` — **Fix placeholder git URL in README**: `git clone <repository-url>` is a literal placeholder in Quick Start. Four personas independently flagged this as first point of failure.
+  - Replace with actual Gitea URL or GitHub mirror URL
+  - **Persona**: Klaus, Priya, Sam, Linda
+  - **Effort**: S
+
+- **BL-50** `idea` — **Hardware requirements documentation**: never states that an AI-on-the-edge ESP32-CAM (or compatible IP camera) is required, that the stack is Intel x86-64 only, or what minimum CPU/RAM is needed.
+  - Add "What You Need" section before Quick Start: camera hardware, x86-64 requirement, min specs, pre-trained models ship included
+  - **Persona**: Klaus, Linda, Yuki, Priya, Maya, Alex (6 personas)
+  - **Effort**: S
+
+- **BL-51** `idea` — **Offline/demo mode**: setup requires a live camera feed; no way to evaluate, develop, or test against static images without hand-editing config.
+  - Add demo mode with bundled test images; allow `file://` or directory-based image source
+  - **Persona**: Priya, Sam, Alex, Jordan (4 personas)
+  - **Effort**: L
 
 ## P2 — Important
 
@@ -53,10 +74,69 @@ See `backlog_archiv.md` for completed items (BL-01 through BL-25).
   - **Ref**: `inference.py:108-115`, deferred in `docs/tasks/2026_02_14_BL08_ArrowRegression.md:1246-1249`
   - **Effort**: M
 
-- **BL-33** `idea` — **Regression confidence heuristic is weak**: `abs(sigmoid_val - 0.5) * 2.0` means edge values (0, 9.9) always appear confident, mid-range (4-6) always uncertain, regardless of actual model certainty
+- **BL-33** `idea` — **Regression confidence heuristic is semantically incorrect**: `abs(sigmoid_val - 0.5) * 2.0` conflates output magnitude with uncertainty; position 5.0 always reports low confidence regardless of actual model certainty. Affects every regression prediction.
   - Better approaches: MC Dropout, learned calibration, or ensemble variance
+  - **Persona**: Alex (ML Engineer), Yuki (Edge Engineer) — flagged as Must-Fix
   - **Ref**: `inference.py:100-104`, noted in `docs/tasks/2026_02_14_BL08_ArrowRegression.md:1240`
   - **Effort**: M
+
+- **BL-52** `idea` — **CONTRIBUTING.md + PR process documentation**: external contributors have no guidance on code style, test expectations, or review process. Backlog is rich but on-ramp is missing.
+  - **Persona**: Sam (OSS Contributor), Priya (IoT Startup Dev)
+  - **Effort**: S
+
+- **BL-53** `idea` — **Rate limiting on compute-heavy endpoints**: `/api/training/start`, `/api/synthetic/generate`, `/api/trigger` can be called without throttle. A single curl loop can saturate CPU and OOM the host.
+  - Simple token bucket or cooldown timer per endpoint
+  - **Persona**: Dave (Security), Priya (IoT Startup Dev)
+  - **Effort**: M
+
+- **BL-54** `idea` — **HTMX error/reconnect banner**: if server becomes unreachable, dashboard stops updating with no visible indication. Users see stale data and assume system is working.
+  - Add `htmx:sendError` handler showing "Dashboard offline — retrying..." banner
+  - **Persona**: Maya (UX), Marcus (DevOps)
+  - **Effort**: S
+
+- **BL-55** `idea` — **Remove German-language strings from JS**: `'Auto-refresh aktiviert'` in console, `'Fehler beim Einreichen'` shown to users on error. Breaks the English UI for non-German speakers.
+  - **Persona**: Maya (UX)
+  - **Effort**: S
+
+- **BL-56** `idea` — **Bundle Monaco editor locally**: Monaco loaded from CDN fails silently in LAN-only deployments. Config editor is a key feature that breaks entirely without internet — which is the expected deployment environment.
+  - Self-host Monaco JS/CSS or fall back to plain textarea
+  - **Persona**: Maya (UX), Klaus (HA Hobbyist)
+  - **Effort**: M
+
+- **BL-57** `idea` — **Async mislabel scan with job queue**: mislabel scan is synchronous and unbounded — blocks the API thread on large datasets. Scales poorly; thousands of images will timeout or hang the UI.
+  - Run as background task with progress polling (like training jobs)
+  - **Persona**: Jordan (Data Scientist), Alex (ML Engineer)
+  - **Effort**: M
+
+- **BL-58** `idea` — **Docker resource limits**: training and inference share one container with no memory ceiling. A training job can OOM the host and take down inference.
+  - Add `mem_limit` and `cpus` to docker-compose; document recommended values
+  - **Persona**: Marcus (DevOps), Dave (Security)
+  - **Effort**: S
+
+- **BL-59** `done` — **Fix hardcoded path in debug.sh**: the HF cache path was hardcoded to one user's home; other developers got silent bind-mount failure, re-downloading model weights on every container start.
+  - Use `$HOME/.cache/huggingface` or `${HF_HOME:-$HOME/.cache/huggingface}`
+  - **Ref**: `debug.sh`
+  - **Persona**: Marcus (DevOps), Sam (OSS Contributor)
+  - **Effort**: S
+
+- **BL-60** `done` (superseded: aiote section removed) — **Rename `aiote` to `camera` in config and UI**: "aiote" is an abbreviation of the upstream project name that no user recognizes. Four personas were confused by it.
+  - Rename config section, update all references, keep backward-compat alias during transition
+  - **Persona**: Klaus, Priya, Linda, Maya (4 personas)
+  - **Effort**: M
+
+- **BL-61** `idea` — **Add HEALTHCHECK to Dockerfile**: only compose deployments get health checks. Raw `docker run`, Kubernetes, and other orchestrators see no health metadata.
+  - Add `HEALTHCHECK CMD curl -f http://localhost:5000/health || exit 1`
+  - **Persona**: Marcus (DevOps)
+  - **Effort**: S
+
+- **BL-62** `idea` — **CORS policy + security headers**: no X-Frame-Options or CSP headers. Clickjacking via iframe possible; injected scripts would execute. No HTTPS means credentials travel in cleartext.
+  - Add CORS middleware, CSP header, X-Frame-Options
+  - **Persona**: Dave (Security)
+  - **Effort**: S
+
+- **BL-63** `idea` — **Log rotation in docker-compose**: long-running instances accumulate unbounded stdout logs. `json-file` driver with `max-size`/`max-file` should be the default.
+  - **Persona**: Marcus (DevOps)
+  - **Effort**: S
 
 ## P3 — Nice to Have
 
@@ -93,9 +173,69 @@ See `backlog_archiv.md` for completed items (BL-01 through BL-25).
   - **Ref**: `backlog_archiv.md` BL-05
   - **Effort**: XL
 
-- **BL-41** `idea` — **Deeper health check**: `/health` only checks service running + MQTT connected, not models loaded, camera reachable, or last reading success
-  - Add degraded states for monitoring/alerting
+- **BL-41** `idea` — **Deeper health check**: `/health` always returns 200 OK regardless of MQTT state, model availability, or inference failures. Orchestrators report healthy when service is non-functional.
+  - Add degraded states for monitoring/alerting: models loaded, camera reachable, last reading success
+  - **Persona**: Marcus (DevOps), Dave (Security) — flagged as Must-Fix
   - **Ref**: `routes/service.py:215-229`
+  - **Effort**: S
+
+- **BL-64** `idea` — **INT8 quantization export path**: 2-4x inference speedup on CPU, mandatory for peak iGPU throughput. OpenVINO supports it natively.
+  - Add INT8 calibration step after training using representative dataset
+  - **Persona**: Yuki (Edge Engineer)
+  - **Effort**: M
+
+- **BL-65** `idea` — **Class balance visualization + confidence histograms**: guide labeling effort and reveal which classes need more data. Currently requires manual API calls.
+  - Add charts to Explore & Tune page or training stats
+  - **Persona**: Jordan (Data Scientist)
+  - **Effort**: M
+
+- **BL-66** `idea` — **Per-class accuracy / confusion matrix in benchmarks**: aggregate accuracy hides systematic failures (e.g., "1" vs "7" confusion).
+  - Add per-class breakdown and confusion matrix to benchmark results
+  - **Persona**: Alex (ML Engineer), Jordan (Data Scientist)
+  - **Effort**: M
+
+- **BL-67** `idea` — **ONNX Runtime backend for ARM deployments**: ONNX files are already exported but unused. Would unlock Raspberry Pi, Jetson, and non-Intel platforms.
+  - Add ONNX Runtime as alternative inference backend alongside OpenVINO
+  - **Persona**: Yuki (Edge Engineer), Priya (IoT Startup Dev)
+  - **Effort**: L
+
+- **BL-68** `idea` — **Radial dial selector for arrow labeling**: typing "6.3" is error-prone for a 100-class problem. A visual click-to-set widget would reduce labeling errors.
+  - SVG or canvas-based dial picker for arrow label input
+  - **Persona**: Jordan (Data Scientist)
+  - **Effort**: M
+
+- **BL-69** `idea` — **Multi-meter / fleet management**: currently single-meter only. Multiple meters require separate Docker containers with no aggregation view.
+  - **Persona**: Priya (IoT Startup Dev)
+  - **Effort**: XL
+
+- **BL-70** `idea` — **Auto-train trigger when label count crosses threshold**: the active learning loop is manual at every step. An automatic trigger would close the feedback loop.
+  - Configurable threshold (e.g., "train when 50 new labels accumulated")
+  - **Persona**: Jordan (Data Scientist)
+  - **Effort**: S
+
+- **BL-71** `idea` — **Webhook / Prometheus metrics endpoint**: the only outbound channel is MQTT to Home Assistant. Non-HA users have no observability path beyond polling.
+  - `/metrics` endpoint with Prometheus format; optional webhook on reading
+  - **Persona**: Priya (IoT Startup Dev)
+  - **Effort**: M
+
+- **BL-72** `idea` — **Accessibility improvements (WCAG)**: multiple failures — skip-to-content link, focus-visible styles, accessible ROI canvas, non-color-only confidence indicators.
+  - WCAG 2.4.1, 1.4.1, 4.1.3 compliance
+  - **Persona**: Maya (UX)
+  - **Effort**: M
+
+- **BL-73** `idea` — **Mobile-friendly dashboard**: homeowners checking the meter on their phone is a primary use case. Current dashboard not responsive for small screens.
+  - Responsive breakpoints for dashboard, labeling, and training pages
+  - **Persona**: Klaus (HA Hobbyist), Linda (Homeowner)
+  - **Effort**: L
+
+- **BL-74** `idea` — **Data versioning / soft-delete for prune and mislabel operations**: destructive operations are permanent with no recovery path.
+  - Move to trash/archive instead of hard-delete; allow undo
+  - **Persona**: Jordan (Data Scientist)
+  - **Effort**: M
+
+- **BL-75** `idea` — **Ship a working mosquitto.conf template**: the mosquitto service is in compose but the config file must be created manually with no example provided.
+  - Include `mosquitto.conf.example` with sensible defaults
+  - **Persona**: Klaus (HA Hobbyist)
   - **Effort**: S
 
 ## P4 — Someday / Maybe
@@ -103,7 +243,9 @@ See `backlog_archiv.md` for completed items (BL-01 through BL-25).
 - **BL-42** `idea` — **Git LFS for model files**: binary .xml/.bin/.onnx inflate clone size; relevant if default models are ever shipped in repo
   - **Effort**: M
 
-- **BL-43** `idea` — **Learning rate scheduler**: fixed `1e-3` Adam; cosine annealing or reduce-on-plateau would improve convergence
+- **BL-43** `idea` — **Learning rate warmup + early stopping**: pretrained weights receive full LR from epoch 1, risking feature extractor destabilization. No mechanism to stop when validation plateaus. Add warmup schedule + early stopping.
+  - Cosine annealing or reduce-on-plateau for scheduler
+  - **Persona**: Alex (ML Engineer) — flagged as Should-Fix
   - **Ref**: `training_manager.py:566`
   - **Effort**: S
 
