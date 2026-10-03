@@ -44,7 +44,7 @@ The project is technically excellent -- every persona acknowledged the code qual
 | 11 | **Monaco editor loaded from CDN** -- fails silently in LAN-only deployments | Maya, Klaus | The config editor is a key feature; it breaks entirely without internet access, which is the expected deployment environment. |
 | 12 | **Mislabel scan is synchronous and unbounded** -- blocks the API thread on large datasets | Jordan, Alex | Scales poorly; a dataset with thousands of images will timeout or hang the UI with no progress feedback. |
 | 13 | **No Docker resource limits** -- training and inference share one container with no memory ceiling | Marcus, Dave | A training job can OOM the host and take down the inference service. Resource limits are commented out in compose. |
-| 14 | **`debug.sh` has hardcoded `/home/thomas/.cache/huggingface`** path | Marcus, Sam | Any developer who is not Thomas gets a silent bind-mount failure, re-downloading model weights on every container start. |
+| 14 | **`debug.sh` has hardcoded `~/.cache/huggingface`** path | Marcus, Sam | Any developer who is not Thomas gets a silent bind-mount failure, re-downloading model weights on every container start. |
 | 15 | **Rename `aiote` to `camera` throughout config and UI** | Klaus, Priya, Linda, Maya | "aiote" is an abbreviation of the upstream project name that no user recognizes. Four personas were confused by it. |
 | 16 | **No `HEALTHCHECK` in the Dockerfile** | Marcus | Only compose deployments get health checks. Raw `docker run`, Kubernetes, and other orchestrators see no health metadata. |
 | 17 | **No CORS policy or security headers** (X-Frame-Options, CSP) | Dave | Clickjacking via iframe is possible. No Content-Security-Policy means injected scripts would execute. |

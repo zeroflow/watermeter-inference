@@ -176,7 +176,7 @@ def mock_service():
     service = MagicMock()
     service.config = {
         "mqtt": {
-            "broker": "192.168.4.38",
+            "broker": "<gitea-host>",
             "port": 1883,
             "username": "${MQTT_USER}",
             "password": "${MQTT_PASS}",
@@ -217,7 +217,7 @@ class TestGetMqttConfig:
         assert resp.status_code == 200
         data = resp.json()
         assert "mqtt" in data
-        assert data["mqtt"]["broker"] == "192.168.4.38"
+        assert data["mqtt"]["broker"] == "<gitea-host>"
 
     def test_returns_trigger_section(self, client):
         resp = client.get("/api/mqtt/config")
@@ -279,7 +279,7 @@ class TestMqttConnectionTest:
             mock_client.connect.return_value = None
 
             resp = client.post("/api/mqtt/test", json={
-                "broker": "192.168.4.38",
+                "broker": "<gitea-host>",
                 "port": 1883,
             })
             assert resp.status_code == 200
@@ -294,7 +294,7 @@ class TestMqttConnectionTest:
             mock_client.connect.side_effect = ConnectionRefusedError("Connection refused")
 
             resp = client.post("/api/mqtt/test", json={
-                "broker": "192.168.4.38",
+                "broker": "<gitea-host>",
                 "port": 1883,
             })
             assert resp.status_code == 200

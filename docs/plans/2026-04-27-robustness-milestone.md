@@ -25,7 +25,7 @@ This is a multi-task feature. Per CLAUDE.md branch model: branch from `claude/ma
 - [ ] **Step 0.1: Create feature branch**
 
 ```bash
-cd /home/claude/watermeter-inference
+cd <repo>
 git checkout claude/main
 git pull --ff-only
 git checkout -b claude/robustness-milestone
@@ -2215,7 +2215,7 @@ git branch -d claude/robustness-milestone
 
 - [ ] **Step F.5: (User-triggered) PR to `main`**
 
-When the user signals release, open the PR via Gitea API per CLAUDE.md (token at `/home/claude/.config/gitea/token`).
+When the user signals release, open the PR via Gitea API per CLAUDE.md (token at `~/.config/gitea/token`).
 
 ---
 

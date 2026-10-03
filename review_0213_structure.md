@@ -103,7 +103,7 @@ Both `arrows/ground_truth_orig/` and `digits/ground_truth_orig/` appear in `git 
 - **Decision:**: Old files, keep at the memoent
 
 **F1.4 - Config file checked in with real infrastructure IPs**
-`config.yaml` in the repo root contains real IP addresses (192.168.5.136 for the meter, 192.168.4.11 for MQTT broker). This is fine for a private repo but would be a problem if ever shared.
+`config.yaml` in the repo root contains real IP addresses (<camera-ip> for the meter, <mqtt-broker-ip> for MQTT broker). This is fine for a private repo but would be a problem if ever shared.
 - **Suggestion**: Acceptable for private repo. Note: the `.env` file IS properly gitignored.
 - **Decision:**: remove for checked in version. Rev 1 will be squashed anyways.
 
@@ -193,7 +193,7 @@ These are only used during the training->export step, not at runtime. Docker inc
 - 5 volume mounts: config, data, models, training, huggingface cache
 - Intel GPU passthrough (renderD128)
 - Healthcheck using httpx
-- Hardcoded HuggingFace cache path: `/home/thomas/.cache/huggingface`
+- Hardcoded HuggingFace cache path: `~/.cache/huggingface`
 
 ### docker-entrypoint.sh (159 lines)
 - Parses model filenames to extract metadata (architecture, resolution, classes, seed)
@@ -215,7 +215,7 @@ The Dockerfile sets `USER root` and never drops privileges. The app runs as root
 - **Decision:**: Change to non-root user
 
 **F3.3 - Hardcoded host paths in docker-compose.yml**
-`/home/thomas/.cache/huggingface:/root/.cache/huggingface` is machine-specific.
+`~/.cache/huggingface:/root/.cache/huggingface` is machine-specific.
 - **Suggestion**: Use an environment variable: `${HF_CACHE:-~/.cache/huggingface}:/root/.cache/huggingface`
 
 **F3.4 - Smart entrypoint but complex**

@@ -15,7 +15,7 @@ Three blocking issues prevent newcomers from using this project after a fresh `g
 
 1. **Docker build fails** -- `Dockerfile` L45-46 runs `COPY digits/selected/` and `COPY arrows/selected/`, but these directories do not exist after a fresh clone. The `debug.sh` script creates them from `digits/ov_model/` and `arrows/ov_model/`, but those also require pre-trained models.
 
-2. **Git submodules unreachable** -- `.gitmodules` references `ssh://gitea@192.168.4.38:2222/...` (a private Gitea server). External users cannot clone the submodules, and `git clone --recursive` will fail.
+2. **Git submodules unreachable** -- `.gitmodules` references `ssh://gitea@<gitea-host>:2222/...` (a private Gitea server). External users cannot clone the submodules, and `git clone --recursive` will fail.
 
 3. **No graceful degradation** -- Without model files at the config-specified paths, the app crashes during startup:
    - `inference.py` L399-407: Module-level code reads `config.yaml`, creates `InferenceService`, and calls `initialize()` which calls `Classifier()` / `Regressor()` constructors (L176, L189, L203). These call `ov.Core().read_model(model_path)` which throws `RuntimeError` if the file doesn't exist.
@@ -134,8 +134,8 @@ No reading will be published if `process_reading()` fails or never runs.
    Also remove the `/app/digits/selected` and `/app/arrows/selected` mkdir from L30-37 if present (they are not -- the mkdir only creates `/app/models`).
 
 2. **`.gitmodules`** -- Delete this file entirely. It references:
-   - `arrows/ground_truth` -> `ssh://gitea@192.168.4.38:2222/zeroflow/watermeter-arrows.git`
-   - `digits/ground_truth` -> `ssh://gitea@192.168.4.38:2222/zeroflow/watermeter-digits.git`
+   - `arrows/ground_truth` -> `ssh://gitea@<gitea-host>:2222/zeroflow/watermeter-arrows.git`
+   - `digits/ground_truth` -> `ssh://gitea@<gitea-host>:2222/zeroflow/watermeter-digits.git`
 
 3. **Remove submodule git metadata:**
    ```bash

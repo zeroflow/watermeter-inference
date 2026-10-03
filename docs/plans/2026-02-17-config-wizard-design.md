@@ -43,7 +43,7 @@ New router: `watermeter/routes/mqtt.py`
 ```json
 {
   "mqtt": {
-    "broker": "192.168.4.38",
+    "broker": "<gitea-host>",
     "port": 1883,
     "username": "${MQTT_USER}",
     "password": "${MQTT_PASSWORD}",
@@ -115,7 +115,7 @@ def resolve_env_vars(value):
 │  Step 5: MQTT & Home Assistant                  │
 │                                                 │
 │  ── MQTT Broker ──────────────────────────────  │
-│  Broker:    [192.168.4.38        ]              │
+│  Broker:    [<gitea-host>        ]              │
 │  Port:      [1883                ]              │
 │  Username:  [${MQTT_USER}        ]  (optional)  │
 │  Password:  [${MQTT_PASSWORD}    ]  (optional)  │

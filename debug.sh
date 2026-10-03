@@ -67,7 +67,7 @@ if [[ $DETACH -eq 1 ]]; then
     -v $(pwd)/models_debug:/app/models \
     -v ./arrows/:/training/arrows \
     -v ./digits/:/training/digits \
-    -v /home/thomas/.cache/huggingface:/root/.cache/huggingface \
+    -v ${HF_HOME:-$HOME/.cache/huggingface}:/root/.cache/huggingface \
     ${HF_TOKEN:+-e HF_TOKEN="$HF_TOKEN"} \
     watermeter-dashboard
 
@@ -101,7 +101,7 @@ else
     -v $(pwd)/models_debug:/app/models \
     -v ./arrows/:/training/arrows \
     -v ./digits/:/training/digits \
-    -v /home/thomas/.cache/huggingface:/root/.cache/huggingface \
+    -v ${HF_HOME:-$HOME/.cache/huggingface}:/root/.cache/huggingface \
     ${HF_TOKEN:+-e HF_TOKEN="$HF_TOKEN"} \
     watermeter-dashboard
 fi
