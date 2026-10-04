@@ -2,7 +2,7 @@
 
 Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
 
-Next ID: BL-76
+Next ID: BL-80
 
 See `backlog_archiv.md` for completed items (BL-01 through BL-25).
 
@@ -236,6 +236,18 @@ See `backlog_archiv.md` for completed items (BL-01 through BL-25).
 - **BL-75** `idea` — **Ship a working mosquitto.conf template**: the mosquitto service is in compose but the config file must be created manually with no example provided.
   - Include `mosquitto.conf.example` with sensible defaults
   - **Persona**: Klaus (HA Hobbyist)
+  - **Effort**: S
+
+- **BL-76** `idea` — **sin/cos arrow regressor**: training uses MSE on sigmoid, so 9.9↔0.0 is not adjacent; use a 2-output sin/cos head with a circular loss and `training_mode: continuous_sincos`.
+  - **Effort**: M
+
+- **BL-77** `idea` — **OpenCV arrows: detect the dial centre per crop**: today the crop centre is assumed, so any ROI offset becomes an angle error.
+  - **Effort**: M
+
+- **BL-78** `idea` — **Held-out hand-labelled test set for this meter**: digit accuracy figures are on training data; newer arrow labels are biased by OpenCV pre-labelling.
+  - **Effort**: M
+
+- **BL-79** `idea` — **Correct DATA_PROVENANCE.md**: most ground truth looks like upstream (jomjol-style) data, not self-collected.
   - **Effort**: S
 
 ## P4 — Someday / Maybe

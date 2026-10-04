@@ -55,8 +55,9 @@ Running the app:
 3. `image_pipeline`: fisheye/rotation, then marker alignment, then ROI crop. Alignment **fails closed**. Consecutive failures move the pipeline status through OK → DEGRADED → FAILED → STALE, with an MQTT notification on STALE.
 4. `inference.py`:
    - Digits: an 11-class classifier (`0`–`9` plus `NAN`; it is `NAN`, never `N`).
-   - Arrows: a classifier or a sin/cos regressor. The mode comes from the model's `metadata.json` `training_mode`. Alternatively, `inference.arrows_mode: opencv` uses a classical detector.
+   - Arrows: a classifier or a single-output regressor (sigmoid·10; not circular). The mode comes from the model's `metadata.json` `training_mode`. Alternatively, `inference.arrows_mode: opencv` uses a classical detector.
 5. Total → cross-arrow consistency → optional correction → plausibility (max change, reverse flow, leak) → optional MQTT confirmation flow → persist → publish to Home Assistant.
+   Total: carry-aware cascade (`position_utils.calculate_total`) using the previous value; unresolvable readings are rejected.
 6. Rejections keep the previous value. `POST /api/reset` clears the baseline, e.g. after long downtime.
 
 **Config:**
