@@ -115,21 +115,26 @@ The cascade tolerates errors of up to ±0.5 dial units on each dial. An arrow wi
 
 ### B2. Integer part (digits) with previous-value context
 
-Let `D` be the classifier digits. `NAN` is a wildcard, `ERROR` makes the reading invalid. Let `f` be the resolved arrow fraction `Σ int[i]·10^-(i+1)`.
+Let `D` be the classifier digits. `NAN` is a wildcard, `ERROR` makes the reading invalid. Let `f` be the resolved arrow fraction `Σ int[i]·10^-(i+1)`. Let `ROLL_WINDOW = 0.2`, a module constant.
 
-1. **No `previous_value`** (first reading, or after reset):
+1. **No `previous_value`, or no arrows configured.** Without arrows, a legitimate step of the last digit cannot be told apart from a misread.
    - Use `D` as is.
-   - Any `NAN` makes the reading invalid (`total = None`, note `"unresolved NAN digit without previous value"`).
-2. **With `previous_value` P:**
+   - Any `NAN` makes the reading invalid (`total = None`, note `"unresolved NAN digit without carry context"`).
+2. **With `previous_value` P and at least one arrow:**
    1. Let `p_int = floor(P)` and `p_frac = P - p_int`.
    2. Arrow-derived integer: `I = p_int + 1` if `f < p_frac - 0.5` (the fraction wrapped past 0), else `I = p_int`.
       - The threshold is half a unit because `max_rate_per_reading` (0.15) is far below 0.5, so a fraction drop of more than 0.5 can only mean a wrap.
-   3. If `D`, treating `NAN` as a wildcard, matches one of `I-1, I, I+1` (zero-padded to the digit count), use `I`, with note `"integer part from carry context"` whenever it differs from the classifier reading.
-      - This covers early or late rolling wheels and `NAN`.
-   4. Otherwise, with no `NAN`, use `D`. This is a large real jump, e.g. after downtime, and plausibility decides.
-   5. Otherwise the reading is invalid.
+   3. Compare `D` with `I`, all zero-padded to the digit count and taken modulo `10^count`. `NAN` matches any digit.
+      - **`D` matches `I`:** use `I`.
+      - **`D` matches `I+1` and `f >= 1 - ROLL_WINDOW`:** the wheel is rolling early, while the 0.1 dial approaches 0. Use `I`.
+      - **`D` matches `I-1` and `f < ROLL_WINDOW`:** the wheel is rolling late, just after the wrap. Use `I`.
+      - **Otherwise, with no `NAN`:** use `D`. Either this is a large real jump (e.g. after downtime) or P itself is wrong. Plausibility, including re-anchoring, decides.
+      - **Otherwise:** the reading is invalid (note `"NAN digit inconsistent with previous value"`).
+   4. Whenever the result differs from `D`, add the note `"integer part from carry context: <D> → <I>"`.
 
-Note on the earlier draft: `transition_start` (8.0) is dropped. With the previous value available, B2 resolves early and late wheel rolls without a per-meter threshold. Without a previous value, a threshold cannot decide between the old and the new digit either.
+The roll window replaces the earlier `transition_start` (8.0): `f >= 0.8` means the same thing, the 0.1 dial standing at 8 or more. Without it, a wrong P would let `D = I-1` "correct" a true reading upwards. For example, P = 57.0 (wrong) and a true reading of 56.95 would give 57.95, which fails as too high and never re-anchors.
+
+**Arrows-only meters** (no digits): the total is `f`.
 
 ### B3. Callers
 
@@ -164,7 +169,9 @@ TDD with real code and no mocks of the logic under test.
 - **`tests/unit/test_calculate_total.py`:**
   - The B1 table cases, including the live case `5.2, 9.7, 0.3, 3.2` → 56.5003 and raw ≈ 56.50032, plus the wrap at the 0.1 dial.
   - `NAN` without a previous value makes the reading invalid; with a previous value it is resolved.
-  - An early-rolled and a late-rolled wheel.
+  - An early-rolled and a late-rolled wheel, each inside and outside the roll window.
+  - A wrong high P (57.0, true reading 56.95) keeps `D`.
+  - A digits-only meter steps its last digit.
   - A large jump keeps `D`.
   - `ERROR` makes the reading invalid.
 - **Service-level tests** in the existing style, which mocks the fetch:
