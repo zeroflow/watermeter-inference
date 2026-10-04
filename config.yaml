@@ -28,7 +28,8 @@ alignment:
   # "template": locate the configured markers via cv2.matchTemplate (needs >= 2 markers).
   # "features": match AKAZE keypoints of the whole meter face against the reference image
   #   (ROIs excluded) and fit a homography; falls back to "template" if markers exist.
-  method: "template"
+  # Configs without this key keep the legacy "template" behaviour.
+  method: "features"
   # Feature alignment: minimum homography inliers and inlier share of matches.
   min_inliers: 30
   min_inlier_ratio: 0.3
