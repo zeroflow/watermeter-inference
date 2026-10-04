@@ -2,7 +2,7 @@
 
 Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
 
-Next ID: BL-82
+Next ID: BL-83
 
 See `backlog_archiv.md` for completed items (BL-01 through BL-25).
 
@@ -256,6 +256,10 @@ See `backlog_archiv.md` for completed items (BL-01 through BL-25).
 
 - **BL-81** `idea` — **Informational notes count toward confirmation `min_warnings`**: jitter hold, re-anchor and arrow pair-consistency notes are warnings like any other, so with confirmation enabled every jitter reading can prompt the user. Consider excluding informational notes from the confirmation trigger.
   - **Ref**: `watermeter/confirmation.py` (`should_request`), `watermeter/watermeter_service.py` (`process_reading`)
+  - **Effort**: S
+
+- **BL-82** `idea` — **Mark the marker setup as optional in the UI**: with `alignment.method: features` (default for new installs) the AKAZE alignment needs only the reference image and ROIs; the two template markers serve solely as a fallback when feature alignment fails. The ROI setup/config wizard still presents marker selection as a required step. Label it "optional — fallback only" and allow finishing setup without markers.
+  - **Ref**: `watermeter/routes/roi.py` (marker endpoints), `watermeter/image_pipeline.py` (`_align`), ROI/config wizard templates
   - **Effort**: S
 
 ## P4 — Someday / Maybe
