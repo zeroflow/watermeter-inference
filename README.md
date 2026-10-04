@@ -20,6 +20,7 @@ AI-powered water meter reader with live dashboard, built-in model training, and 
 ## Features
 
 - **AI-Powered Reading**: Digit classification and analog arrow regression using OpenVINO inference; supports CPU and Intel GPU
+- **Calibrated Arrow Reading** (`inference.arrows_mode: calibrated`): geometric needle reading around the calibrated pivot (parallax-corrected), interpolated between the detected scale ticks — calibrated once from the raw-image archive via `POST /api/arrows/calibrate`
 - **Live Dashboard**: Real-time meter readings via HTMX polling, confidence color-coding, and per-position image previews
 - **Model Training**: Built-in web UI backed by PyTorch and timm; 16 architectures across 3 tiers; training queue with auto-benchmark after each job
 - **Smart Validation**: Multi-stage correction engine — spatial consistency checks, cross-arrow validation, temporal plausibility limits
@@ -62,7 +63,7 @@ Key configuration sections:
 - **ROI** (`detection`): digit and arrow regions, alignment markers, rotation — configure via `/roi-config`
 - **MQTT** (`mqtt`, `homeassistant`): broker host, port, credentials, HA discovery prefix
 - **Plausibility** (`plausibility`): reverse-reading guard, rate limits, consistency checks, leak detection thresholds
-- **Training** (`inference`): confidence threshold, inference device, model paths
+- **Training** (`inference`): confidence threshold, inference device, model paths, arrow backend (`arrows_mode`: `model`, `opencv` or `calibrated`)
 
 The full schema is available at `/api/config/schema.json`.
 
@@ -71,6 +72,8 @@ The full schema is available at `/api/config/schema.json`.
 ```
 GET  /api/status                          Current reading and system state (full JSON)
 POST /api/trigger                         Trigger an immediate reading cycle
+POST /api/arrows/calibrate                Calibrate the arrow dials from the raw-image archive
+GET  /api/arrows/calibration              Current arrow calibration and its report
 POST /api/set-value                       Manually override the meter value
 POST /api/training/start                  Enqueue a training job
 POST /api/models/{type}/{id}/activate     Set a model as active

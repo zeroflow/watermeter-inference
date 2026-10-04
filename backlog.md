@@ -2,7 +2,7 @@
 
 Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
 
-Next ID: BL-83
+Next ID: BL-84
 
 See `backlog_archiv.md` for completed items (BL-01 through BL-25).
 
@@ -241,8 +241,13 @@ See `backlog_archiv.md` for completed items (BL-01 through BL-25).
 - **BL-76** `idea` — **sin/cos arrow regressor**: training uses MSE on sigmoid, so 9.9↔0.0 is not adjacent; use a 2-output sin/cos head with a circular loss and `training_mode: continuous_sincos`.
   - **Effort**: M
 
-- **BL-77** `idea` — **OpenCV arrows: detect the dial centre per crop**: today the crop centre is assumed, so any ROI offset becomes an angle error.
+- **BL-77** `done` — **OpenCV arrows: detect the dial centre per crop**: superseded by BL-83. The dial (scale) centre is the wrong target: under the oblique camera the raised needle rotates around a pivot 15-20 px away from it (parallax). `arrows_mode: calibrated` calibrates the needle pivot instead.
   - **Effort**: M
+
+- **BL-83** `done` — **Calibrated arrows mode**: `inference.arrows_mode: calibrated` reads the needle tip around the calibrated pivot and interpolates between the detected scale ticks. Calibration (ticks, pivot via needle-axis intersection plus a radial parallax model for slow dials, offsets via cross-arrow consistency) comes from the raw archive via `POST /api/arrows/calibrate` or `scripts/calibrate_arrows.py`. On 875 debug frames, the cross-arrow MAE went from 0.146 (opencv) to 0.022 held-out.
+  - Open: UI button for calibration on the ROI page; recalibration hint in the dashboard when dials fall back to opencv.
+  - **Ref**: `docs/plans/2026-10-04-calibrated-arrows.md`, `watermeter/arrow_calibration.py`, `watermeter/calibrated_arrows.py`
+  - **Effort**: L
 
 - **BL-78** `idea` — **Held-out hand-labelled test set for this meter**: digit accuracy figures are on training data; newer arrow labels are biased by OpenCV pre-labelling.
   - **Effort**: M

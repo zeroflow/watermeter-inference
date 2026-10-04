@@ -159,6 +159,7 @@ app.mount("/static", StaticFiles(directory=str(_pkg_dir / "static")), name="stat
 
 # Include route modules (imported here to avoid circular imports at module level;
 # safe_subpath and other shared objects are defined above these imports)
+from .routes.calibration import router as calibration_router  # noqa: E402
 from .routes.config import router as config_router  # noqa: E402
 from .routes.label import router as label_router  # noqa: E402
 from .routes.metrics import router as metrics_router  # noqa: E402
@@ -180,6 +181,7 @@ app.include_router(models_router)
 app.include_router(synthetic_router)
 app.include_router(mqtt_router)
 app.include_router(metrics_router)
+app.include_router(calibration_router)
 
 
 def main():
