@@ -29,7 +29,7 @@ from .meter_state import MeterState
 from .metrics import PipelineMetrics
 from .mqtt_publisher import MqttPublisher
 from .persistence import FailureStore, StateStore
-from .plausibility import PlausibilityChecker
+from .plausibility import PlausibilityChecker, PlausibilityResult
 from .position_utils import calculate_total as _calculate_total_impl
 from .position_utils import get_position_ids
 from .rate_tracker import RateTracker
@@ -436,19 +436,13 @@ class WatermeterService:
         logger.info(f"Inference completed for {len(predictions)} images")
         return predictions
 
-    def calculate_total(self, predictions: Dict[str, Dict]) -> Tuple[float, Dict]:
-        """
-        Calculate total water meter reading from predictions.
+    def calculate_total(self, predictions: Dict[str, Dict]) -> Tuple[Optional[float], Dict]:
+        """Carry-aware total using the last accepted value as context (None if unresolvable)."""
+        return _calculate_total_impl(self.config, predictions, previous_value=self.previous_value)
 
-        Delegates to the shared standalone implementation in position_utils.
-
-        Args:
-            predictions: Dict of prediction results
-
-        Returns:
-            (total_value, raw_values_dict)
-        """
-        return _calculate_total_impl(self.config, predictions)
+    def evaluate_plausibility(self, new_value: float) -> PlausibilityResult:
+        """Plausibility verdict plus the baseline to adopt (held / new / re-anchored value)."""
+        return self._plausibility_checker.evaluate(new_value, self.previous_value, self.last_update_time)
 
     def check_consistency(self, predictions: Dict[str, Dict]) -> List[str]:
         """Check consistency between adjacent positions."""
@@ -767,22 +761,38 @@ class WatermeterService:
                     return self.current_state
                 self._last_inference_duration_ms = round((time.monotonic() - t_inf) * 1000)
 
-                # 3. Calculate total
+                # 3. Calculate total (carry-aware; None when the reading can't be resolved)
                 total_value, raw_values = self.calculate_total(predictions)
+                correction_warnings: List[str] = []
+                consistency_warnings: List[str] = []
+                resolution_notes = list(raw_values.get("notes", []))
 
-                # 3b. Value correction (BL-04)
-                correction_warnings = self.correct_predictions(predictions, total_value, raw_values)
-                if correction_warnings:
-                    total_value, raw_values = self.calculate_total(predictions)
-                    logger.info(f"Recalculated total after {len(correction_warnings)} correction(s): {total_value:.4f}")
+                if total_value is None:
+                    plausibility = PlausibilityResult(
+                        is_valid=False, warnings=resolution_notes or ["Reading could not be resolved"]
+                    )
+                    resolution_notes = []  # already carried as rejection reasons
+                else:
+                    # 3b. Value correction (BL-04)
+                    correction_warnings = self.correct_predictions(predictions, total_value, raw_values)
+                    if correction_warnings:
+                        total_value, raw_values = self.calculate_total(predictions)
+                        resolution_notes = list(raw_values.get("notes", []))
+                        logger.info(f"Recalculated total after {len(correction_warnings)} correction(s): {total_value}")
 
-                # 4. Consistency check
-                consistency_warnings = self.check_consistency(predictions)
+                    # 4. Consistency check
+                    consistency_warnings = self.check_consistency(predictions)
 
-                # 5. Plausibility check
-                is_valid, plausibility_warnings = self.validate_plausibility(total_value)
+                    # 5. Plausibility check
+                    if total_value is None:
+                        plausibility = PlausibilityResult(is_valid=False, warnings=resolution_notes)
+                        resolution_notes = []
+                    else:
+                        plausibility = self.evaluate_plausibility(total_value)
 
-                all_warnings = correction_warnings + consistency_warnings + plausibility_warnings
+                is_valid = plausibility.is_valid
+                plausibility_warnings = plausibility.warnings
+                all_warnings = resolution_notes + correction_warnings + consistency_warnings + plausibility_warnings
 
                 # Leak detection (sustained consumption check)
                 leak_msg = self._check_sustained_consumption()
@@ -857,25 +867,26 @@ class WatermeterService:
                     # Snapshot state before applying (needed for confirmation revert)
                     prev_value_before = self.previous_value
                     prev_time_before = self.last_update_time
+                    accepted_value = plausibility.baseline if plausibility.baseline is not None else total_value
 
-                    self.previous_value = total_value
+                    self.previous_value = accepted_value
                     self.last_update_time = datetime.now()
                     self.consecutive_rejections = 0  # Reset rejection counter
 
                     # Add to rate history for plausibility checks
-                    self._rate_tracker.add(total_value)
+                    self._rate_tracker.add(accepted_value)
 
                     # Persist state to disk
                     if self.state_store:
                         self.state_store.save(self.previous_value, self.last_update_time)
 
-                    self.current_state["total_value"] = total_value
+                    self.current_state["total_value"] = accepted_value
                     self.current_state["last_update"] = self.last_update_time.isoformat()
                     self.current_state["status"] = "warning" if all_warnings else "ok"
                     self.current_state["warnings"] = all_warnings
 
                     # Track last-published / clear last-rejected (BL-14)
-                    self.current_state["last_published_value"] = total_value
+                    self.current_state["last_published_value"] = accepted_value
                     self.current_state["last_published_timestamp"] = self.last_update_time.strftime("%H:%M")
                     # Full ISO timestamp for age computation (Issue #2)
                     self.current_state["last_published_iso"] = self.last_update_time.isoformat()
@@ -883,18 +894,18 @@ class WatermeterService:
                     self.current_state["last_rejected_timestamp"] = None
                     self.current_state["last_rejected_reasons"] = []
 
-                    logger.info(f"✓ Reading accepted: {total_value:.4f} m³")
+                    logger.info(f"✓ Reading accepted: {accepted_value:.4f} m³")
 
                     # Check if user confirmation is needed (BL-07)
                     confirmation_reason = self._should_request_confirmation(
-                        total_value,
+                        accepted_value,
                         all_warnings,
                         predictions,
                     )
                     if confirmation_reason:
                         # Hold HA publish -- store snapshots for revert on reject/timeout
                         self._pending_confirmation = {
-                            "value": total_value,
+                            "value": accepted_value,
                             "raw_values": raw_values,
                             "warnings": all_warnings,
                             "predictions": predictions,
@@ -904,7 +915,7 @@ class WatermeterService:
                             "last_update_time_before": prev_time_before,
                         }
                         self._publish_confirmation_request(
-                            total_value,
+                            accepted_value,
                             all_warnings,
                             predictions,
                             confirmation_reason,
@@ -915,7 +926,7 @@ class WatermeterService:
                         # Normal path -- publish immediately
                         raw_total = self._compute_raw_total(raw_values)
                         await self.publish_to_mqtt(
-                            total_value,
+                            accepted_value,
                             all_warnings,
                             predictions,
                             leak_warning=self.leak_warning,
@@ -941,15 +952,14 @@ class WatermeterService:
                     self.current_state["last_rejected_timestamp"] = datetime.now().strftime("%H:%M")
                     self.current_state["last_rejected_reasons"] = plausibility_warnings
 
-                    logger.error(
-                        f"✗ Reading rejected: {total_value:.4f} m³ (consecutive: {self.consecutive_rejections})"
-                    )
+                    shown = f"{total_value:.4f}" if total_value is not None else "unresolved"
+                    logger.error(f"✗ Reading rejected: {shown} m³ (consecutive: {self.consecutive_rejections})")
 
                     # Check for stuck state
                     if self.consecutive_rejections >= self.max_consecutive_rejections:
                         stuck_msg = (
                             f"STUCK: {self.consecutive_rejections} consecutive rejections. "
-                            f"Previous value: {self.previous_value:.4f}, Current: {total_value:.4f}. "
+                            f"Previous value: {self.previous_value:.4f}, Current: {shown}. "
                             f"Consider using /reset if previous value is incorrect."
                         )
                         all_warnings.append(stuck_msg)
@@ -1018,20 +1028,9 @@ class WatermeterService:
         except Exception:
             return None
 
-    def _compute_raw_total(self, raw_values: Dict) -> float:
-        """Compute the unrounded total from raw digit and arrow values.
-
-        Unlike ``calculate_total`` which floors each arrow value, this uses
-        the continuous arrow predictions to produce a higher-precision reading.
-        """
-        total = 0.0
-        digits = raw_values.get("digits", [])
-        arrows = raw_values.get("arrows", [])
-        for i, digit in enumerate(digits):
-            total += digit * (10 ** (len(digits) - 1 - i))
-        for i, arrow in enumerate(arrows):
-            total += arrow * (10 ** (-(i + 1)))
-        return total
+    def _compute_raw_total(self, raw_values: Dict) -> Optional[float]:
+        """Unrounded total from the continuous arrow predictions (computed by calculate_total)."""
+        return raw_values.get("raw_total")
 
     async def publish_to_mqtt(
         self,
@@ -1073,6 +1072,8 @@ class WatermeterService:
         self._state.published_high_water = None
         self._rate_tracker.reset()
         self.consecutive_rejections = 0
+        if hasattr(self, "_plausibility_checker"):
+            self._plausibility_checker.reset_reanchor()
         self.leak_warning = False
         self.current_state["leak_warning"] = False
 
@@ -1115,6 +1116,8 @@ class WatermeterService:
 
         # Reset plausibility tracking
         self.consecutive_rejections = 0
+        if hasattr(self, "_plausibility_checker"):
+            self._plausibility_checker.reset_reanchor()
         self.leak_warning = False
         self.current_state["leak_warning"] = False
 

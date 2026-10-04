@@ -62,6 +62,7 @@ for _ws_name in ["watermeter_service", "watermeter.watermeter_service", "waterme
 from watermeter.watermeter_service import WatermeterService  # noqa: E402, I001
 from watermeter.image_pipeline import AlignmentResult  # noqa: E402, I001
 from watermeter.meter_state import MeterState  # noqa: E402, I001
+from watermeter.plausibility import PlausibilityResult  # noqa: E402, I001
 
 
 def _make_service_with_alignment_failure(alignment_result):
@@ -198,7 +199,7 @@ def test_inference_exception_records_inference_failed():
     svc.calculate_total = MagicMock()
     svc.correct_predictions = MagicMock()
     svc.check_consistency = MagicMock()
-    svc.validate_plausibility = MagicMock()
+    svc.evaluate_plausibility = MagicMock()
 
     asyncio.run(svc.process_reading())
 
@@ -239,7 +240,7 @@ def test_post_inference_exception_does_not_record_inference_failed():
     svc.calculate_total = MagicMock(side_effect=RuntimeError("downstream boom"))
     svc.correct_predictions = MagicMock()
     svc.check_consistency = MagicMock()
-    svc.validate_plausibility = MagicMock()
+    svc.evaluate_plausibility = MagicMock()
 
     asyncio.run(svc.process_reading())
 
@@ -266,7 +267,9 @@ def test_plausibility_rejection_reports_rejected_not_failed():
     svc.calculate_total = MagicMock(return_value=(56.3624, {}))
     svc.correct_predictions = MagicMock(return_value=[])
     svc.check_consistency = MagicMock(return_value=[])
-    svc.validate_plausibility = MagicMock(return_value=(False, ["Reverse detected: 56.3682 → 56.3624"]))
+    svc.evaluate_plausibility = MagicMock(
+        return_value=PlausibilityResult(False, ["Reverse detected: 56.3682 → 56.3624"])
+    )
     svc._check_sustained_consumption = MagicMock(return_value=None)
     svc._data_collector = None
     svc.previous_value = 56.3682

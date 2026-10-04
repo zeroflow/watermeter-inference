@@ -61,6 +61,7 @@ for _ws_name in ["watermeter_service", "watermeter.watermeter_service", "waterme
 from watermeter.image_pipeline import AlignmentResult  # noqa: E402, I001
 from watermeter.meter_state import MeterState  # noqa: E402, I001
 from watermeter.watermeter_service import WatermeterService  # noqa: E402, I001
+from watermeter.plausibility import PlausibilityResult  # noqa: E402, I001
 
 
 def make_failing_service(*, max_failures=10):
@@ -169,7 +170,7 @@ def test_first_success_resets_counter_and_clears_stale():
     svc.calculate_total = MagicMock(return_value=(1.234, {"digits": [7], "arrows": []}))
     svc.correct_predictions = MagicMock(return_value=[])
     svc.check_consistency = MagicMock(return_value=[])
-    svc.validate_plausibility = MagicMock(return_value=(True, []))
+    svc.evaluate_plausibility = MagicMock(return_value=PlausibilityResult(True, [], baseline=1.234))
     svc._check_sustained_consumption = MagicMock(return_value=None)
     svc.save_low_confidence = AsyncMock()
     svc._compute_raw_total = MagicMock(return_value=1.234)

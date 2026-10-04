@@ -10,6 +10,8 @@ import sys
 from types import ModuleType
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 # ---------------------------------------------------------------------------
 # Save conftest mocks that we will temporarily replace, so we can restore them
 # after importing the real watermeter_service.
@@ -60,13 +62,13 @@ for _ws_name in ["watermeter_service", "watermeter.watermeter_service", "waterme
         del sys.modules[_ws_name]
 
 from watermeter.watermeter_service import WatermeterService  # noqa: E402, I001
-from watermeter.image_pipeline import AlignmentResult  # noqa: E402, I001, F401
+from watermeter.image_pipeline import AlignmentResult  # noqa: E402, I001
 from watermeter.meter_state import MeterState  # noqa: E402, I001
 
 
 from watermeter.persistence import StateStore  # noqa: E402, I001
-from watermeter.plausibility import PlausibilityChecker  # noqa: E402, I001, F401
-from watermeter.rate_tracker import RateTracker  # noqa: E402, I001, F401
+from watermeter.plausibility import PlausibilityChecker  # noqa: E402, I001
+from watermeter.rate_tracker import RateTracker  # noqa: E402, I001
 
 PLAUSIBILITY = {
     "enable_reverse_detection": True,
@@ -178,6 +180,116 @@ def test_meter_state_reset_clears_high_water():
     state.published_high_water = 1.0
     state.reset()
     assert state.published_high_water is None
+
+
+def _make_reading_service(previous_value):
+    """Service with real calculate_total + PlausibilityChecker; fetch/inference/publish mocked."""
+    svc = object.__new__(WatermeterService)
+    svc.config = {
+        "images": {"process_separate": False},
+        "alignment": {},
+        "inference": {"confidence_threshold": 0.6},
+        "low_confidence": {"save_path": "/tmp/lc"},
+        "plausibility": dict(PLAUSIBILITY),
+        "homeassistant": {"enabled": False},
+        "detection": {
+            "digits": {"count": 3, "rois": [{"x": 0.0, "y": 0.0, "width": 0.1, "height": 0.1}]},
+            "analogs": {"count": 4},
+        },
+    }
+    svc._state = MeterState(ha_publish_enabled=False)
+    svc._confirmation_manager = MagicMock()
+    svc._confirmation_manager._pending_confirmation = None
+    svc.processing_lock = asyncio.Lock()
+    svc._failure_store = MagicMock()
+    svc._metrics = MagicMock()
+    svc.consecutive_alignment_failures = 0
+    svc._stale_notified = False
+    svc._data_collector = None
+    svc._rate_tracker = RateTracker(max_size=25)
+    svc._plausibility_checker = PlausibilityChecker(config=svc.config, rate_tracker=svc._rate_tracker)
+    svc._state_store = None
+    align_ok = AlignmentResult(success=True, image=MagicMock(), marker_confidences=[0.9])
+    svc._image_pipeline = MagicMock()
+    svc._image_pipeline.process_whole_image = MagicMock(return_value=({"x": (b"", "digits")}, align_ok))
+    svc.fetch_whole_image = AsyncMock(return_value=b"jpeg")
+    svc.publish_to_mqtt = AsyncMock()
+    svc._archive_raw_image = MagicMock()
+    svc._notify_stale = MagicMock()
+    svc.correct_predictions = MagicMock(return_value=[])
+    svc.check_consistency = MagicMock(return_value=[])
+    svc._check_sustained_consumption = MagicMock(return_value=None)
+    svc._should_request_confirmation = MagicMock(return_value=None)
+    svc.previous_value = previous_value
+    return svc
+
+
+def _live_predictions(digits=("0", "5", "6"), arrows=("5.2", "9.7", "0.3", "3.2")):
+    p = {}
+    for i, d in enumerate(digits):
+        p[f"digit_{i + 1}"] = {
+            "id": f"digit_{i + 1}",
+            "class": d,
+            "confidence": 0.99,
+            "model": "digits",
+            "image_bytes": b"",
+        }
+    for i, a in enumerate(arrows):
+        p[f"analog_{i + 1}"] = {
+            "id": f"analog_{i + 1}",
+            "class": a,
+            "confidence": 0.9,
+            "model": "arrows",
+            "image_bytes": b"",
+        }
+    return p
+
+
+def test_live_stuck_sequence_reanchors_after_six_readings():
+    """2026-10-04: baseline 56.5999 wrong, true 56.5003 -> 5 rejections, re-anchor on the 6th."""
+    svc = _make_reading_service(previous_value=56.5999)
+    svc.run_inference = AsyncMock(return_value=_live_predictions())
+    statuses = []
+    for _ in range(6):
+        asyncio.run(svc.process_reading())
+        statuses.append(svc.current_state["status"])
+    assert statuses[:5] == ["rejected"] * 5
+    assert statuses[5] == "warning"
+    assert svc.previous_value == pytest.approx(56.5003)
+    assert svc.consecutive_rejections == 0
+    assert svc.publish_to_mqtt.call_args.args[0] == pytest.approx(56.5003)
+
+
+def test_jitter_holds_previous_value():
+    svc = _make_reading_service(previous_value=56.5004)
+    svc.run_inference = AsyncMock(return_value=_live_predictions())  # reads 56.5003
+    asyncio.run(svc.process_reading())
+    assert svc.current_state["status"] == "warning"
+    assert svc.previous_value == pytest.approx(56.5004)
+
+
+def test_unresolvable_reading_is_rejected_without_crash():
+    """Review focus 4: NAN that can't be resolved -> rejected; STUCK message must not crash on None."""
+    svc = _make_reading_service(previous_value=56.5000)
+    svc.consecutive_rejections = 10  # beyond max -> STUCK message path
+    svc.run_inference = AsyncMock(
+        return_value=_live_predictions(digits=("0", "8", "NAN"), arrows=("1.0", "0.0", "0.0", "0.0"))
+    )
+    asyncio.run(svc.process_reading())
+    assert svc.current_state["status"] == "rejected"
+    assert any("inconsistent" in w for w in svc.current_state["last_rejected_reasons"])
+    assert any("STUCK" in w for w in svc.current_state["warnings"])
+
+
+def test_reset_clears_reanchor_candidates():
+    svc = _make_reading_service(previous_value=56.5999)
+    svc.run_inference = AsyncMock(return_value=_live_predictions())
+    for _ in range(5):  # one short of re-anchoring
+        asyncio.run(svc.process_reading())
+    svc._plausibility_checker.reset_reanchor()
+    svc.previous_value = 56.5999
+    asyncio.run(svc.process_reading())
+    assert svc.current_state["status"] == "rejected"
 
 
 # ---------------------------------------------------------------------------
