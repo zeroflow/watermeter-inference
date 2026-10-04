@@ -729,3 +729,16 @@ class TestCorrectionEngine:
         assert '0.40' in msg               # old confidence
         assert '0.35' in msg               # new confidence
         assert 'signals=' in msg           # signal count label
+
+
+def test_recalculate_with_replacement_logs_quietly(caplog):
+    """Minor: correction hypotheses log "Calculated total" at DEBUG, not INFO."""
+    import logging
+
+    engine = make_engine()
+    predictions = {f'digit_{i}': {'class': '1', 'confidence': 0.95, 'model': 'digits'} for i in (1, 2, 3)}
+    predictions.update({f'analog_{i}': {'class': '3.0', 'confidence': 0.40, 'model': 'arrows'} for i in (1, 2, 3, 4)})
+    with caplog.at_level(logging.DEBUG, logger="watermeter.position_utils"):
+        engine._recalculate_with_replacement(predictions, 'analog_1', '7.0', {})
+    levels = [r.levelno for r in caplog.records if "Calculated total" in r.message]
+    assert levels and all(level == logging.DEBUG for level in levels)

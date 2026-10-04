@@ -1,5 +1,7 @@
 """Carry-aware total: arrows resolved finest→coarsest, digits resolved with previous-value context."""
 
+import logging
+
 import pytest
 
 from watermeter.position_utils import calculate_total, resolve_arrows
@@ -227,3 +229,17 @@ class TestDiscreteClassifierArrows:
         total, raw = calculate_total(CONFIG, preds([0, 5, 6], [5.2, 9.7, 0.3, 3.2]))
         assert total == pytest.approx(56.5003)
         assert raw["arrows"] == [5.2, 9.7, 0.3, 3.2]
+
+
+class TestCalculatedTotalLogLevel:
+    """Minor: correction hypotheses must not spam the INFO "Calculated total" line (replay parses it)."""
+
+    def test_default_logs_info(self, caplog):
+        with caplog.at_level(logging.DEBUG, logger="watermeter.position_utils"):
+            calculate_total(CONFIG, preds([0, 5, 6], [5.2, 9.7, 0.3, 3.2]))
+        assert [r.levelno for r in caplog.records if "Calculated total" in r.message] == [logging.INFO]
+
+    def test_log_level_override(self, caplog):
+        with caplog.at_level(logging.DEBUG, logger="watermeter.position_utils"):
+            calculate_total(CONFIG, preds([0, 5, 6], [5.2, 9.7, 0.3, 3.2]), log_level=logging.DEBUG)
+        assert [r.levelno for r in caplog.records if "Calculated total" in r.message] == [logging.DEBUG]

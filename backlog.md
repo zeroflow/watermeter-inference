@@ -2,7 +2,7 @@
 
 Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
 
-Next ID: BL-80
+Next ID: BL-82
 
 See `backlog_archiv.md` for completed items (BL-01 through BL-25).
 
@@ -248,6 +248,14 @@ See `backlog_archiv.md` for completed items (BL-01 through BL-25).
   - **Effort**: M
 
 - **BL-79** `idea` — **Correct DATA_PROVENANCE.md**: most ground truth looks like upstream (jomjol-style) data, not self-collected.
+  - **Effort**: S
+
+- **BL-80** `idea` — **Correction engine without previous-value context**: `CorrectionEngine._recalculate_with_replacement` evaluates alternatives via `calculate_total` without `previous_value` (deliberately, so carry context doesn't mask the replacement). A NAN digit that the main path resolved from context then makes every alternative `None`, and signal 1 (rate plausibility) may mis-score. Consider passing context for digit resolution only, or skipping correction when the main total needed carry context.
+  - **Ref**: `watermeter/correction.py`, `watermeter/position_utils.py`
+  - **Effort**: S
+
+- **BL-81** `idea` — **Informational notes count toward confirmation `min_warnings`**: jitter hold, re-anchor and arrow pair-consistency notes are warnings like any other, so with confirmation enabled every jitter reading can prompt the user. Consider excluding informational notes from the confirmation trigger.
+  - **Ref**: `watermeter/confirmation.py` (`should_request`), `watermeter/watermeter_service.py` (`process_reading`)
   - **Effort**: S
 
 ## P4 — Someday / Maybe

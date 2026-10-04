@@ -5,9 +5,9 @@ Usage:
 
 Reads every "Calculated total: X m³" line in chronological order (log files sorted
 oldest first) and feeds them through PlausibilityChecker.evaluate with a simulated
-baseline and published high-water mark. Reports acceptance rate, re-anchor count,
-the largest accepted downward step of the baseline, and of the published value
-(must be 0).
+baseline. Reports acceptance rate, re-anchor count and the largest accepted downward
+step of the baseline outside re-anchors. (The published high-water clamp is covered by
+service-level tests; replaying it here would be 0 by construction.)
 """
 
 from __future__ import annotations
@@ -42,9 +42,9 @@ def read_totals(paths: list[Path]) -> list[tuple[datetime, float]]:
 def replay(rows, plausibility_cfg: dict) -> dict:
     config = {"plausibility": plausibility_cfg}
     checker = PlausibilityChecker(config=config, rate_tracker=RateTracker(max_size=25))
-    previous, last_time, high_water = None, None, None
+    previous, last_time = None, None
     accepted = reanchors = 0
-    max_baseline_drop = max_published_drop = 0.0
+    max_baseline_drop = 0.0
     for ts, value in rows:
         result = checker.evaluate(value, previous, last_time)
         if not result.is_valid:
@@ -54,17 +54,12 @@ def replay(rows, plausibility_cfg: dict) -> dict:
         if previous is not None and result.baseline < previous and not result.reanchored:
             max_baseline_drop = max(max_baseline_drop, previous - result.baseline)
         previous, last_time = result.baseline, ts
-        published = previous if high_water is None else max(high_water, previous)
-        if high_water is not None:
-            max_published_drop = max(max_published_drop, high_water - published)
-        high_water = published
     return {
         "readings": len(rows),
         "accepted": accepted,
         "accept_rate_pct": round(100 * accepted / max(1, len(rows)), 1),
         "reanchors": reanchors,
         "max_baseline_drop_without_reanchor": round(max_baseline_drop, 4),
-        "max_published_drop": round(max_published_drop, 4),
     }
 
 

@@ -140,7 +140,11 @@ def resolve_digits(
 
 
 def calculate_total(
-    config: Dict, predictions: Dict[str, Dict], previous_value: Optional[float] = None
+    config: Dict,
+    predictions: Dict[str, Dict],
+    previous_value: Optional[float] = None,
+    *,
+    log_level: int = logging.INFO,
 ) -> Tuple[Optional[float], Dict]:
     """
     Calculate the meter total, carry-aware (see docs/plans/2026-10-04-reading-plausibility-cascade-design.md).
@@ -153,6 +157,8 @@ def calculate_total(
             predictions also carry "bin_width" (their class is the floor of the needle position) and are
             centred by half a bin; continuous (regressor/OpenCV) predictions are used as-is.
         previous_value: Last accepted reading, used to resolve NAN digits and rolling wheels.
+        log_level: Level of the "Calculated total" line (INFO on the main path, which replay scripts
+            parse; hypothesis evaluation such as the correction engine passes DEBUG).
 
     Returns:
         (total or None if unresolvable,
@@ -232,5 +238,5 @@ def calculate_total(
     else:
         raw_total = float(integer)
 
-    logger.info(f"Calculated total: {total:.4f} m³")
+    logger.log(log_level, f"Calculated total: {total:.4f} m³")
     return total, {"digits": digits, "arrows": arrows, "notes": notes, "raw_total": raw_total}

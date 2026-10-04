@@ -5,7 +5,8 @@ Run inside the DEBUG container (has OpenVINO + models), never production:
         --archive-dir /data/raw_archive --config /config/config.yaml
 
 For each frame (chronological): align + crop, infer, then compute the legacy total
-(floor per arrow, NAN->0) and the cascade total (previous = last cascade total).
+(floor per arrow, NAN->0) and the cascade total (previous = running maximum of the
+cascade totals so far, like the published high-water mark).
 Reports how often they differ, NAN/unresolved counts, and backward steps
 (> 0.002 m³) in each sequence — fewer backward steps means fewer rejections.
 """
@@ -56,6 +57,8 @@ def main() -> int:
         for image_id, (roi_bytes, model_type) in rois.items():
             result = inference.predict_from_bytes(model_type, roi_bytes)
             predictions[image_id] = {"id": image_id, "class": result["class"], "model": model_type}
+            if "bin_width" in result:  # discrete classifier arrows are centred by calculate_total
+                predictions[image_id]["bin_width"] = result["bin_width"]
         stats["frames"] += 1
         stats["nan_frames"] += int(any(p["class"] == "NAN" for p in predictions.values()))
 
@@ -72,7 +75,8 @@ def main() -> int:
             stats["back_legacy"] += 1
         if prev_cascade is not None and cascade < prev_cascade - 0.002:
             stats["back_cascade"] += 1
-        prev_legacy, prev_cascade = legacy, max(prev_cascade or cascade, cascade)
+        prev_legacy = legacy
+        prev_cascade = cascade if prev_cascade is None else max(prev_cascade, cascade)
 
     print(stats)
     for name, legacy, cascade in examples:

@@ -57,7 +57,7 @@ class CorrectionEngine:
         replaced = {
             pid: (dict(p, **{"class": replace_class}) if pid == replace_id else p) for pid, p in predictions.items()
         }
-        total, _ = calculate_total(self.config, replaced)
+        total, _ = calculate_total(self.config, replaced, log_level=logging.DEBUG)
         return total
 
     def _check_consistency_improvement(self, predictions: Dict[str, Dict], replace_id: str, replace_class: str) -> bool:
