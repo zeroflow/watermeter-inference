@@ -82,17 +82,30 @@ HA reads any decrease of a `total_increasing` sensor as a meter reset.
 
 ### B1. Arrows, finest to coarsest
 
-Let `a[0..n-1]` be the continuous arrow values, 0.1 dial first, each in [0, 10).
+Let `a[0..n-1]` be the continuous arrow values, 0.1 dial first, each in [0, 10). Each dial should read its integer plus the *resolved* value of the next finer dial divided by 10:
 
 ```
+res[n-1] = a[n-1]
 int[n-1] = floor(a[n-1])
 for i = n-2 .. 0:
-    int[i] = round(a[i] - a[i+1] / 10) mod 10
+    int[i] = round(a[i] - res[i+1] / 10) mod 10
+    res[i] = int[i] + res[i+1] / 10
 ```
 
-The idea is that a dial should read `int + finer/10`. Some examples:
+The resolved value `res[i+1]` must be used, not the raw `a[i+1]`. The raw value of a dial that has just rolled over (e.g. 9.7 when it really sits at 0.03) would push the next coarser dial down by one.
 
-| `a[i]` | `a[i+1]` | Today, `floor` | Cascade |
+Live case from 2026-10-04, with arrows `5.2, 9.7, 0.3, 3.2`:
+
+| Method | Result |
+|---|---|
+| Visual reading | ≈ 56.5003 |
+| `floor` per dial (today) | 56.5903 |
+| Cascade with raw `a[i+1]` | 56.4003 |
+| Cascade with resolved `res[i+1]` | 56.5003 ✓ |
+
+Some simpler examples:
+
+| `a[i]` | `res[i+1]` | Today, `floor` | Cascade |
 |---|---|---|---|
 | 5.95 | 9.5 | 5 | 5 |
 | 5.9 | 0.2 (just rolled) | 5 ✗ | 6 ✓ |
@@ -126,7 +139,7 @@ Note on the earlier draft: `transition_start` (8.0) is dropped. With the previou
   - Notes are appended to the warnings.
 - **`oneshot.py`:** Without a previous value it prints the notes and exits 1 if `total is None`.
 - **`CorrectionEngine._recalculate_with_replacement`:** Delegates to `calculate_total` with the replaced prediction, so hypothetical totals use the same cascade instead of a duplicated flooring loop.
-- **`_compute_raw_total`:** Receives the resolved digits, so a `NAN` no longer shows up as 0.
+- **`_compute_raw_total` (`water_usage_raw`):** Today it adds every arrow's continuous value (`Σ a[i]·10^-(i+1)`). Each arrow already contains the finer dials' share, so it double-counts, and it is not carry-aware. In the live case it reported 56.6176 for a true value of about 56.5003. New formula: resolved digits + `Σ int[i]·10^-(i+1)` for the coarser dials + `res[n-1]·10^-n` for the finest dial. In the live case that gives 56.50032. `calculate_total` returns this as `raw_values["raw_total"]`, so the logic lives in one place.
 
 ## Config & schema
 
@@ -149,7 +162,7 @@ TDD with real code and no mocks of the logic under test.
   - `reanchor_after: 0` disables re-anchoring.
 - **`tests/unit/test_plausibility.py`:** Extended with the jitter band, its boundaries, and that a reverse beyond the tolerance still rejects.
 - **`tests/unit/test_calculate_total.py`:**
-  - The B1 table cases, plus the wrap at the 0.1 dial.
+  - The B1 table cases, including the live case `5.2, 9.7, 0.3, 3.2` → 56.5003 and raw ≈ 56.50032, plus the wrap at the 0.1 dial.
   - `NAN` without a previous value makes the reading invalid; with a previous value it is resolved.
   - An early-rolled and a late-rolled wheel.
   - A large jump keeps `D`.
