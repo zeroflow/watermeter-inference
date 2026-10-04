@@ -340,7 +340,7 @@ CONFIG_SCHEMA = {
                     "properties": {
                         "calibration_file": {
                             "type": "string",
-                            "description": "Calibration JSON written by POST /api/arrows/calibrate",
+                            "description": "Calibration JSON written by POST /api/arrows/calibrate (must be inside /data)",
                             "default": "/data/arrow_calibration.json",
                         },
                         "tip_percentile": {

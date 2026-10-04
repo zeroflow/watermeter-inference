@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from .. import watermeter_service
 from ..arrow_calibration import CalibrationError, calibrate_from_archive, save_calibration
-from ..calibrated_arrows import DEFAULT_CALIBRATION_FILE
+from ..calibrated_arrows import calibration_path
 from ..inference import get_inference_service
 
 logger = logging.getLogger(__name__)
@@ -26,11 +26,6 @@ class CalibrateRequest(BaseModel):
     """Optional parameters for a calibration run."""
 
     max_frames: int = Field(300, ge=20, le=2000, description="Archive frames to use, spread over the archive")
-
-
-def _calibration_file(config: dict) -> Path:
-    cal_cfg = config.get("inference", {}).get("calibrated_arrows", {}) or {}
-    return Path(cal_cfg.get("calibration_file", DEFAULT_CALIBRATION_FILE))
 
 
 @router.post(
@@ -49,6 +44,10 @@ async def calibrate_arrows(request: Optional[CalibrateRequest] = None):
         return JSONResponse({"success": False, "message": "Calibration already running"}, status_code=409)
     async with _calibration_lock:
         config = watermeter_service.get_service().config
+        try:
+            path = calibration_path(config)
+        except ValueError as e:
+            return JSONResponse({"success": False, "message": str(e)}, status_code=400)
         archive_dir = Path(config.get("alignment", {}).get("archive_dir", "/data/raw_archive"))
         max_frames = (request or CalibrateRequest()).max_frames
         try:
@@ -60,7 +59,6 @@ async def calibrate_arrows(request: Optional[CalibrateRequest] = None):
             logger.error(f"Arrow calibration error: {e}")
             return JSONResponse({"success": False, "message": f"Error: {e}"}, status_code=500)
 
-        path = _calibration_file(config)
         save_calibration(path, dials, report)
         reloaded = config.get("inference", {}).get("arrows_mode") == "calibrated"
         if reloaded:
@@ -77,7 +75,10 @@ async def calibrate_arrows(request: Optional[CalibrateRequest] = None):
 )
 async def get_arrow_calibration():
     """Return the calibration file contents, or 404 if none was computed yet."""
-    path = _calibration_file(watermeter_service.get_service().config)
+    try:
+        path = calibration_path(watermeter_service.get_service().config)
+    except ValueError as e:
+        return JSONResponse({"success": False, "message": str(e)}, status_code=400)
     if not path.exists():
         return JSONResponse({"success": False, "message": f"No calibration at {path}"}, status_code=404)
     try:

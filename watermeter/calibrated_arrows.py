@@ -9,6 +9,7 @@ changed since calibrating -- it falls back to ``OpenCVArrowDetector`` with the s
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -24,10 +25,25 @@ from watermeter.opencv_arrows import OpenCVArrowDetector
 
 logger = logging.getLogger(__name__)
 
+CALIBRATION_DIR = Path("/data")  # the calibration file is written by an API call: keep it inside /data
 DEFAULT_CALIBRATION_FILE = "/data/arrow_calibration.json"
 _CROP_SIZE_TOLERANCE = 2  # px
 _RECALIBRATE_HINT = "re-run the calibration (POST /api/arrows/calibrate)"
 _NAN_RESULT = {"class": "NaN", "confidence": 0.0}
+
+
+def calibration_path(config: dict) -> Path:
+    """Resolved ``calibrated_arrows.calibration_file``; relative names live in CALIBRATION_DIR.
+
+    Raises:
+        ValueError: the path leaves CALIBRATION_DIR or is not a .json file.
+    """
+    cal_cfg = config.get("inference", {}).get("calibrated_arrows", {}) or {}
+    name = str(cal_cfg.get("calibration_file", DEFAULT_CALIBRATION_FILE))
+    resolved = (CALIBRATION_DIR / name).resolve()  # an absolute name replaces the base
+    if not resolved.is_relative_to(CALIBRATION_DIR.resolve()) or resolved.suffix != ".json":
+        raise ValueError(f"calibration_file must be a .json file inside {CALIBRATION_DIR}: {name}")
+    return resolved
 
 
 def _same_roi(a: dict, b: dict) -> bool:
@@ -64,14 +80,14 @@ class CalibratedArrowDetector:
         inference_cfg = config.get("inference", {})
         color_cfg = inference_cfg.get("opencv_arrows", {}) or {}
         cal_cfg = inference_cfg.get("calibrated_arrows", {}) or {}
-        path = cal_cfg.get("calibration_file", DEFAULT_CALIBRATION_FILE)
         try:
+            path = calibration_path(config)
             calibrations = load_calibration(path)
         except FileNotFoundError:
             logger.warning(f"No arrow calibration at {path} -- using opencv arrows until you {_RECALIBRATE_HINT}")
             calibrations = {}
         except Exception as e:
-            logger.warning(f"Arrow calibration {path} unreadable ({e}) -- using opencv arrows")
+            logger.warning(f"Arrow calibration unusable ({e}) -- using opencv arrows")
             calibrations = {}
         rois = None
         if not config.get("images", {}).get("process_separate", False):

@@ -3,9 +3,19 @@
 import json
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def data_dir(tmp_path, monkeypatch):
+    """Let the route accept calibration files under tmp_path (production: /data)."""
+    from watermeter.routes.calibration import calibration_path
+
+    monkeypatch.setitem(calibration_path.__globals__, "CALIBRATION_DIR", tmp_path)
+
 
 def _setup(mock_service, tmp_path, mode="calibrated"):
-    cal = tmp_path / "cal.json"
+    cal = (tmp_path / "cal.json").resolve()
     mock_service.config = {
         "alignment": {"archive_dir": str(tmp_path / "archive")},
         "inference": {"arrows_mode": mode, "calibrated_arrows": {"calibration_file": str(cal)}},
@@ -74,3 +84,13 @@ def test_get_calibration_returns_file(test_client, mock_service, tmp_path):
     cal.write_text('{"version": 1, "dials": {}}')
     resp = test_client.get("/api/arrows/calibration")
     assert resp.status_code == 200 and resp.json()["calibration"]["version"] == 1
+
+
+def test_calibrate_endpoint_rejects_path_outside_data_dir(test_client, mock_service, tmp_path):
+    _setup(mock_service, tmp_path)
+    mock_service.config["inference"]["calibrated_arrows"]["calibration_file"] = "/etc/evil.json"
+    with patch("watermeter.routes.calibration.calibrate_from_archive") as run:
+        resp = test_client.post("/api/arrows/calibrate")
+    assert resp.status_code == 400
+    run.assert_not_called()
+    assert test_client.get("/api/arrows/calibration").status_code == 400

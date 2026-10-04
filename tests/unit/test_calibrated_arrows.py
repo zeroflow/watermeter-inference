@@ -144,19 +144,21 @@ def test_no_needle_is_nan(mods, cv2):
     assert res == {"class": "NaN", "confidence": 0.0}
 
 
-def test_missing_calibration_file_falls_back(mods, tmp_path):
+def test_missing_calibration_file_falls_back(mods, tmp_path, monkeypatch):
     _, ca, _ = mods
+    monkeypatch.setattr(ca, "CALIBRATION_DIR", tmp_path)
     cfg = {
         "images": {"process_separate": False},
         "detection": {"analogs": {"rois": [ROI]}},
-        "inference": {"arrows_mode": "calibrated", "calibrated_arrows": {"calibration_file": str(tmp_path / "x")}},
+        "inference": {"arrows_mode": "calibrated", "calibrated_arrows": {"calibration_file": str(tmp_path / "x.json")}},
     }
     det = ca.CalibratedArrowDetector.from_config(cfg)
     assert det.calibrated_ids == []
 
 
-def test_from_config_loads_file_and_settings(mods, tmp_path):
+def test_from_config_loads_file_and_settings(mods, tmp_path, monkeypatch):
     ac, ca, _ = mods
+    monkeypatch.setattr(ca, "CALIBRATION_DIR", tmp_path)
     path = tmp_path / "cal.json"
     ac.save_calibration(path, {"analog_1": _dial(ac)}, {})
     cfg = {
@@ -172,6 +174,28 @@ def test_from_config_loads_file_and_settings(mods, tmp_path):
     assert det.tip_percentile == 90 and det.saturation_min == 60
 
 
+@pytest.mark.parametrize("name", ["../etc/x.json", "/etc/cal.json", "cal.txt"])
+def test_calibration_path_must_stay_in_data_dir(mods, tmp_path, monkeypatch, name):
+    _, ca, _ = mods
+    monkeypatch.setattr(ca, "CALIBRATION_DIR", tmp_path)
+    with pytest.raises(ValueError):
+        ca.calibration_path({"inference": {"calibrated_arrows": {"calibration_file": name}}})
+
+
+def test_calibration_path_relative_name_and_default(mods, tmp_path, monkeypatch):
+    _, ca, _ = mods
+    monkeypatch.setattr(ca, "CALIBRATION_DIR", tmp_path)
+    cfg = {"inference": {"calibrated_arrows": {"calibration_file": "cal.json"}}}
+    assert ca.calibration_path(cfg) == (tmp_path / "cal.json").resolve()
+
+
+def test_traversal_calibration_file_falls_back(mods, tmp_path, monkeypatch):
+    _, ca, _ = mods
+    monkeypatch.setattr(ca, "CALIBRATION_DIR", tmp_path)
+    cfg = {"inference": {"calibrated_arrows": {"calibration_file": "/etc/passwd.json"}}}
+    assert ca.CalibratedArrowDetector.from_config(cfg).calibrated_ids == []
+
+
 def _load_real_inference(cv2):
     """Real watermeter.inference (conftest mocks it); OpenVINO faked."""
     path = Path(__file__).resolve().parents[2] / "watermeter" / "inference.py"
@@ -183,8 +207,9 @@ def _load_real_inference(cv2):
     return mod
 
 
-def test_inference_service_passes_image_id(mods, cv2, tmp_path):
+def test_inference_service_passes_image_id(mods, cv2, tmp_path, monkeypatch):
     ac, ca, _ = mods
+    monkeypatch.setattr(ca, "CALIBRATION_DIR", tmp_path)
     inference = _load_real_inference(cv2)
     path = tmp_path / "cal.json"
     ac.save_calibration(path, {"analog_2": _dial(ac)}, {})
