@@ -85,6 +85,8 @@ def _make_mock_inference_service(models_loaded: bool = True) -> MagicMock:
     svc.initialize = MagicMock()
     # predict(model_type: str, image_path: str) -> {"class": str, "confidence": float}
     svc.predict = MagicMock(return_value={"class": "5", "confidence": 0.95})
+    # oneshot calls predict_from_bytes; an unconfigured MagicMock result makes every ROI an inference ERROR
+    svc.predict_from_bytes = MagicMock(return_value={"class": "5", "confidence": 0.95})
     # predict_detailed returns list of {"class": str, "confidence": float}
     svc.predict_detailed = MagicMock(return_value=[{"class": "5", "confidence": 0.95}])
     return svc
@@ -153,6 +155,29 @@ class TestOneShotSuccess:
             result = await run_one_shot(config_path)
 
         assert result == 0, f"Expected 0 on success, got {result}"
+
+    @pytest.mark.asyncio
+    async def test_returns_one_when_total_unresolvable(self, tmp_path):
+        """A NAN digit without previous value makes the reading unresolvable -> exit 1."""
+        config = _make_minimal_config()
+        config_path = _write_config_yaml(str(tmp_path), config)
+
+        mock_svc = _make_mock_inference_service(models_loaded=True)
+        # Digits read NAN; arrows read a valid value so only the digit is unresolved.
+        mock_svc.predict_from_bytes = MagicMock(
+            side_effect=lambda model_type, _bytes: (
+                {"class": "NAN", "confidence": 0.9} if model_type == "digits" else {"class": "5.0", "confidence": 0.9}
+            )
+        )
+        mock_pipeline = _make_mock_image_pipeline()
+
+        with (
+            patch("watermeter.oneshot.get_inference_service", return_value=mock_svc),
+            patch("watermeter.oneshot.ImagePipeline", return_value=mock_pipeline),
+        ):
+            result = await run_one_shot(config_path)
+
+        assert result == 1, f"Expected 1 when total is unresolvable, got {result}"
 
     @pytest.mark.asyncio
     async def test_calls_fetch_whole_image(self, tmp_path):

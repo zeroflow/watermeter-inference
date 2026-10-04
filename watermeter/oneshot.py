@@ -114,8 +114,11 @@ async def run_one_shot(config_path: str) -> int:
                 "error": str(e),
             }
 
-    # Step 7: Calculate total
+    # Step 7: Calculate total (no previous value in one-shot mode)
     total, raw_values = _calculate_total(config, predictions)
+    if total is None:
+        print(f"Meter reading unresolved: {'; '.join(raw_values['notes'])}")
+        return 1
 
     print(f"Meter reading: {total:.4f} m³  (digits={raw_values['digits']}, arrows={raw_values['arrows']})")
     return 0

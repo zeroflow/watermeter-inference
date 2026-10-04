@@ -6,7 +6,8 @@ that was previously spread across multiple methods in WatermeterService.
 """
 
 import logging
-from typing import Dict, List, Tuple
+import math
+from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -43,55 +44,172 @@ def get_position_ids(config: Dict) -> Tuple[List[str], List[str]]:
     return digit_ids, arrow_ids
 
 
-def calculate_total(config: Dict, predictions: Dict[str, Dict]) -> Tuple[float, Dict]:
-    """
-    Calculate total meter reading from predictions.
+# A wheel showing the next/previous integer is only an early/late roll when the
+# arrow fraction is this close to the wrap (0.1 dial at >= 8 or < 2).
+ROLL_WINDOW = 0.2
 
-    Shared implementation used by WatermeterService and the one-shot CLI mode.
+
+def _round_half_up(x: float) -> int:
+    return int(math.floor(x + 0.5))
+
+
+def resolve_arrows(arrows: List[float]) -> List[int]:
+    """Carry-aware integer per dial (0.1 dial first), resolved finest to coarsest.
+
+    Each dial should read ``int + resolved_finer / 10``; using the *resolved* finer
+    value (not its raw reading) keeps a just-rolled-over dial from dragging the
+    next coarser one down by a unit.
+    """
+    if not arrows:
+        return []
+    ints = [0] * len(arrows)
+    resolved = arrows[-1]
+    ints[-1] = int(math.floor(arrows[-1])) % 10
+    for i in range(len(arrows) - 2, -1, -1):
+        ints[i] = _round_half_up(arrows[i] - resolved / 10) % 10
+        resolved = ints[i] + resolved / 10
+    return ints
+
+
+# Diagnostic only: a dial deviating this much from its cascade expectation contradicts its finer neighbour.
+PAIR_INCONSISTENCY = 0.35
+
+
+def arrow_pair_deviations(arrows: List[float], ints: List[int]) -> List[float]:
+    """Circular deviation of each dial from ``int[i] + resolved_finer / 10``, one per adjacent pair."""
+    deviations: List[float] = []
+    resolved = arrows[-1] if arrows else 0.0
+    for i in range(len(arrows) - 2, -1, -1):
+        expected = ints[i] + resolved / 10
+        diff = abs(arrows[i] - expected) % 10
+        deviations.append(min(diff, 10 - diff))
+        resolved = expected
+    return list(reversed(deviations))
+
+
+def _to_digits(value: int, count: int) -> List[int]:
+    value %= 10**count
+    return [int(c) for c in str(value).zfill(count)]
+
+
+def _matches(raw_digits: List[Optional[int]], candidate: List[int]) -> bool:
+    return all(r is None or r == c for r, c in zip(raw_digits, candidate))
+
+
+def resolve_digits(
+    raw_digits: List[Optional[int]],
+    frac: float,
+    previous_value: Optional[float],
+    has_arrows: bool,
+    notes: List[str],
+) -> Optional[List[int]]:
+    """Resolve the integer part. ``None`` entries are NAN digits. Returns None if unresolvable."""
+    count = len(raw_digits)
+    if count == 0:
+        return []
+    has_nan = any(d is None for d in raw_digits)
+
+    if previous_value is None or not has_arrows:
+        if has_nan:
+            notes.append("unresolved NAN digit without carry context")
+            return None
+        return [int(d) for d in raw_digits if d is not None]
+
+    p_int = int(math.floor(previous_value))
+    p_frac = previous_value - p_int
+    expected = p_int + 1 if frac < p_frac - 0.5 else p_int
+
+    chosen: Optional[int] = None
+    if _matches(raw_digits, _to_digits(expected, count)):
+        chosen = expected
+    elif frac >= 1 - ROLL_WINDOW and _matches(raw_digits, _to_digits(expected + 1, count)):
+        chosen = expected
+    elif frac < ROLL_WINDOW and expected > 0 and _matches(raw_digits, _to_digits(expected - 1, count)):
+        chosen = expected
+
+    if chosen is not None:
+        resolved = _to_digits(chosen, count)
+        if resolved != raw_digits:
+            shown = "".join("?" if d is None else str(d) for d in raw_digits)
+            notes.append(f"integer part from carry context: {shown} → {''.join(map(str, resolved))}")
+        return resolved
+    if has_nan:
+        notes.append("NAN digit inconsistent with previous value")
+        return None
+    return [int(d) for d in raw_digits if d is not None]
+
+
+def calculate_total(
+    config: Dict, predictions: Dict[str, Dict], previous_value: Optional[float] = None
+) -> Tuple[Optional[float], Dict]:
+    """
+    Calculate the meter total, carry-aware (see docs/plans/2026-10-04-reading-plausibility-cascade-design.md).
+
+    Shared implementation used by WatermeterService, CorrectionEngine and the one-shot CLI.
 
     Args:
         config: The watermeter configuration dict.
-        predictions: Dict mapping position IDs to prediction result dicts.
-            Each prediction must have at least "class" (str) and optionally "error".
+        predictions: Position ID -> prediction dict with at least "class".
+        previous_value: Last accepted reading, used to resolve NAN digits and rolling wheels.
 
     Returns:
-        (total_value, {"digits": list[int], "arrows": list[float]})
+        (total or None if unresolvable,
+         {"digits": resolved digits, "arrows": raw arrow floats, "notes": [...], "raw_total": float or None})
     """
     digit_ids, arrow_ids = get_position_ids(config)
+    notes: List[str] = []
+    invalid = False
 
-    digits = []
-    arrows = []
-
+    raw_digits: List[Optional[int]] = []
     for image_id in digit_ids:
-        if image_id in predictions:
-            pred = predictions[image_id]
-            if pred["class"] != "NAN" and pred["class"] != "ERROR":
-                digits.append(int(pred["class"]))
-            else:
-                logger.warning(f"{image_id} has invalid class: {pred['class']}")
-                digits.append(0)
+        if image_id not in predictions:
+            continue
+        cls = predictions[image_id]["class"]
+        if cls == "ERROR":
+            notes.append(f"{image_id}: inference error")
+            invalid = True
+        elif cls == "NAN":
+            logger.warning(f"{image_id} is NAN (wheel between digits)")
+            raw_digits.append(None)
+        else:
+            raw_digits.append(int(cls))
 
+    arrows: List[float] = []
+    used_arrow_ids: List[str] = []
     for image_id in arrow_ids:
-        if image_id in predictions:
-            pred = predictions[image_id]
-            if pred["class"] != "ERROR":
-                arrows.append(float(pred["class"]))
-            else:
-                logger.warning(f"{image_id} has error")
-                arrows.append(0.0)
+        if image_id not in predictions:
+            continue
+        cls = predictions[image_id]["class"]
+        if cls == "ERROR":
+            notes.append(f"{image_id}: inference error")
+            invalid = True
+        else:
+            arrows.append(float(cls))
+            used_arrow_ids.append(image_id)
 
-    total = 0.0
+    def unresolved() -> Tuple[None, Dict]:
+        logger.warning(f"Reading unresolved: {'; '.join(notes)}")
+        return None, {"digits": [], "arrows": arrows, "notes": notes, "raw_total": None}
 
-    # Digits contribution: first digit has highest place value
-    for i, digit in enumerate(digits):
-        multiplier = 10 ** (len(digits) - 1 - i)
-        total += digit * multiplier
+    if invalid:
+        return unresolved()
 
-    # Arrows contribution: 0.1, 0.01, 0.001, ...
-    for i, arrow in enumerate(arrows):
-        multiplier = 10 ** (-(i + 1))
-        total += int(arrow) * multiplier
+    ints = resolve_arrows(arrows)
+    for i, dev in enumerate(arrow_pair_deviations(arrows, ints)):
+        if dev > PAIR_INCONSISTENCY:
+            notes.append(f"{used_arrow_ids[i]}/{used_arrow_ids[i + 1]} inconsistent ({dev:.2f})")
+    frac = sum(v * 10 ** (-(i + 1)) for i, v in enumerate(ints))
+    digits = resolve_digits(raw_digits, frac, previous_value, bool(arrows), notes)
+    if digits is None:
+        return unresolved()
 
-    raw_values = {"digits": digits, "arrows": arrows}
+    integer = sum(d * 10 ** (len(digits) - 1 - i) for i, d in enumerate(digits))
+    total = round(integer + frac, len(arrows))
+    if arrows:
+        coarse = sum(v * 10 ** (-(i + 1)) for i, v in enumerate(ints[:-1]))
+        raw_total = integer + coarse + arrows[-1] * 10 ** (-len(arrows))
+    else:
+        raw_total = float(integer)
+
     logger.info(f"Calculated total: {total:.4f} m³")
-    return total, raw_values
+    return total, {"digits": digits, "arrows": arrows, "notes": notes, "raw_total": raw_total}
