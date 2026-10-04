@@ -112,6 +112,9 @@ plausibility:
   enable_rate_limit: true
   max_rate_per_hour: 1.5  # m³/hour - checked against history average
   max_rate_per_reading: 0.15  # m³ - maximum change per single reading (immediate rejection)
+  reverse_tolerance: 0.002     # m³ - smaller decreases are jitter: previous value is held, not rejected
+  reanchor_after: 6            # re-anchor baseline after N consistent lower readings (0 = never)
+  reanchor_max_spread: 0.01    # m³ - max spread of those readings
   rate_history_size: 25  # Number of readings to keep for hourly rate averaging
   enable_consistency_check: false  # Check half/upper consistency between adjacent positions
   enable_leak_detection: true            # Detect sustained consumption (leak warning)

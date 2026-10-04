@@ -322,3 +322,28 @@ class TestAlignmentSchema:
         result = self._validate({"min_inliers": 3})
         assert result["valid"] is False
         assert "minimum" in result["error"].lower() or "3" in result["error"]
+
+
+class TestPlausibilityReanchorSchema:
+    BASE = {
+        "images": {"digits": [], "arrows": []},
+        "mqtt": {"broker": "x", "port": 1883},
+        "inference": {"confidence_threshold": 0.5},
+    }
+
+    def _validate(self, plaus):
+        return validate_config_schema({**self.BASE, "plausibility": plaus})
+
+    def test_new_fields_pass(self):
+        result = self._validate({"reverse_tolerance": 0.002, "reanchor_after": 6, "reanchor_max_spread": 0.01})
+        assert result["valid"] is True, result["error"]
+
+    def test_negative_tolerance_fails(self):
+        result = self._validate({"reverse_tolerance": -0.1})
+        assert result["valid"] is False
+        assert "-0.1" in result["error"]
+
+    def test_negative_reanchor_after_fails(self):
+        result = self._validate({"reanchor_after": -1})
+        assert result["valid"] is False
+        assert "-1" in result["error"]

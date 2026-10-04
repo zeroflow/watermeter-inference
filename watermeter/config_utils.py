@@ -394,6 +394,21 @@ CONFIG_SCHEMA = {
                 "max_rate_per_hour": {"type": "number", "description": "Maximum m³/hour rate"},
                 "max_rate_per_reading": {"type": "number", "description": "Maximum change per reading"},
                 "rate_history_size": {"type": "integer", "description": "Number of readings for rate averaging"},
+                "reverse_tolerance": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "Decreases up to this many m³ are treated as jitter (held, not rejected)",
+                },
+                "reanchor_after": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Re-anchor baseline after this many consistent lower readings (0 = off)",
+                },
+                "reanchor_max_spread": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "Max spread (m³) of the lower readings that may trigger re-anchoring",
+                },
                 "enable_consistency_check": {
                     "type": "boolean",
                     "description": "Check half/upper consistency between positions",

@@ -161,3 +161,74 @@ class TestValidatePlausibility:
         )
         assert is_valid is True
         assert warnings == []
+
+
+class TestEvaluateJitterAndReanchor:
+    """Jitter band (reverse_tolerance) and re-anchoring after consistent lower readings."""
+
+    @pytest.fixture
+    def cfg(self, config):
+        config['plausibility'].update({'reverse_tolerance': 0.002, 'reanchor_after': 3, 'reanchor_max_spread': 0.01})
+        return config
+
+    @pytest.fixture
+    def chk(self, cfg, rate_tracker):
+        return PlausibilityChecker(config=cfg, rate_tracker=rate_tracker)
+
+    def test_small_decrease_is_held_not_rejected(self, chk):
+        r = chk.evaluate(56.5990, 56.5999, datetime.now())
+        assert r.is_valid is True
+        assert r.baseline == 56.5999
+        assert any("jitter" in w for w in r.warnings)
+
+    def test_decrease_at_tolerance_boundary_is_held(self, chk):
+        r = chk.evaluate(0.998, 1.0, datetime.now())  # exactly 0.002 lower (1.0 - 0.002 == 0.998 in float)
+        assert r.is_valid is True
+        assert r.baseline == 1.0
+
+    def test_decrease_beyond_tolerance_rejected(self, chk):
+        r = chk.evaluate(56.5903, 56.5999, datetime.now())
+        assert r.is_valid is False
+        assert any("Reverse" in w for w in r.warnings)
+
+    def test_forward_reading_baseline_is_new_value(self, chk):
+        r = chk.evaluate(56.6010, 56.5999, datetime.now() - timedelta(hours=1))
+        assert r.is_valid is True
+        assert r.baseline == 56.6010
+        assert r.reanchored is False
+
+    def test_reanchors_after_consistent_lower_readings(self, chk, rate_tracker):
+        rate_tracker.add(56.59)
+        rate_tracker.add(56.5999)
+        results = [chk.evaluate(56.5003, 56.5999, datetime.now()) for _ in range(3)]
+        assert [r.is_valid for r in results] == [False, False, True]
+        last = results[-1]
+        assert last.reanchored is True
+        assert last.baseline == 56.5003
+        assert any("Re-anchoring" in w for w in last.warnings)
+        assert len(rate_tracker) == 0  # rate history reset on re-anchor
+
+    def test_inconsistent_lower_readings_do_not_reanchor(self, chk):
+        values = [56.50, 56.53, 56.50, 56.53]
+        results = [chk.evaluate(v, 56.5999, datetime.now()) for v in values]
+        assert not any(r.is_valid for r in results)
+
+    def test_accepted_reading_resets_reanchor_sequence(self, chk):
+        chk.evaluate(56.5003, 56.5999, datetime.now())
+        chk.evaluate(56.5003, 56.5999, datetime.now())
+        chk.evaluate(56.6100, 56.5999, datetime.now() - timedelta(hours=1))  # accepted
+        r = chk.evaluate(56.5003, 56.6100, datetime.now())
+        assert r.is_valid is False
+
+    def test_reanchor_disabled_with_zero(self, chk, cfg):
+        cfg['plausibility']['reanchor_after'] = 0
+        results = [chk.evaluate(56.5003, 56.5999, datetime.now()) for _ in range(10)]
+        assert not any(r.is_valid for r in results)
+
+    def test_missing_new_keys_use_defaults(self, checker):
+        # fixture config has no reverse_tolerance/reanchor keys -> defaults 0.002 / 6 / 0.01
+        r = checker.evaluate(99.999, 100.0, datetime.now())
+        assert r.is_valid is True and r.baseline == 100.0
+
+    def test_validate_plausibility_wrapper_still_returns_tuple(self, chk):
+        assert chk.validate_plausibility(56.5990, 56.5999, datetime.now())[0] is True
