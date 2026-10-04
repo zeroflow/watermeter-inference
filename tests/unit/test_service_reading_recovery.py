@@ -295,6 +295,19 @@ def test_unresolvable_reading_is_rejected_without_crash():
     assert any("STUCK" in w for w in svc.current_state["warnings"])
 
 
+def test_unresolvable_readings_without_previous_value_reach_stuck_without_crash():
+    """Final review I3: first boot / after reset, a NAN digit is unresolvable and previous_value is None."""
+    svc = _make_reading_service(previous_value=None)
+    svc.run_inference = AsyncMock(
+        return_value=_live_predictions(digits=("0", "5", "NAN"), arrows=("1.0", "0.0", "0.0", "0.0"))
+    )
+    for _ in range(svc.max_consecutive_rejections + 1):
+        asyncio.run(svc.process_reading())
+        assert svc.current_state["status"] == "rejected"
+    stuck = [w for w in svc.current_state["warnings"] if "STUCK" in w]
+    assert stuck and "Previous value: none" in stuck[0]
+
+
 def test_reset_clears_reanchor_candidates():
     svc = _make_reading_service(previous_value=56.5999)
     svc.run_inference = AsyncMock(return_value=_live_predictions())

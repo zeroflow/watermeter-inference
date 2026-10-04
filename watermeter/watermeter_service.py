@@ -971,9 +971,10 @@ class WatermeterService:
 
                     # Check for stuck state
                     if self.consecutive_rejections >= self.max_consecutive_rejections:
+                        prev_shown = f"{self.previous_value:.4f}" if self.previous_value is not None else "none"
                         stuck_msg = (
                             f"STUCK: {self.consecutive_rejections} consecutive rejections. "
-                            f"Previous value: {self.previous_value:.4f}, Current: {shown}. "
+                            f"Previous value: {prev_shown}, Current: {shown}. "
                             f"Consider using /reset if previous value is incorrect."
                         )
                         all_warnings.append(stuck_msg)
