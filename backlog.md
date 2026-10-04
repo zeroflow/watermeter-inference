@@ -2,7 +2,7 @@
 
 Format: `BL-{id}` | status: `idea` → `planned` → `in-progress` → `done`
 
-Next ID: BL-84
+Next ID: BL-85
 
 See `backlog_archiv.md` for completed items (BL-01 through BL-25).
 
@@ -248,6 +248,10 @@ See `backlog_archiv.md` for completed items (BL-01 through BL-25).
   - Open: UI button for calibration on the ROI page; recalibration hint in the dashboard when dials fall back to opencv.
   - **Ref**: `docs/plans/2026-10-04-calibrated-arrows.md`, `watermeter/arrow_calibration.py`, `watermeter/calibrated_arrows.py`
   - **Effort**: L
+
+- **BL-84** `idea` — **Calibrated arrows: angle-dependent (harmonic) self-calibration**: after the offset fit, the cross-arrow residual still varies with the needle angle (sinusoidal, up to ~0.06-0.1 at some positions). That is a first-harmonic signature of a small pivot or needle-shape error. Fit offset + cos/sin terms per dial from the consistency residuals, only where the archive covers enough angles. With 2 days of archive (slow dials cover 1-3 of 10 sectors) the held-out gain was marginal (MAE 0.023 -> 0.021, P95 0.075 -> 0.057), so retry with 1-2 weeks of archive.
+  - Caveat: the cross-arrow metric cannot see whole-unit errors on the slowest dial; verify it against digit roll-overs or history.
+  - **Effort**: M
 
 - **BL-78** `idea` — **Held-out hand-labelled test set for this meter**: digit accuracy figures are on training data; newer arrow labels are biased by OpenCV pre-labelling.
   - **Effort**: M
