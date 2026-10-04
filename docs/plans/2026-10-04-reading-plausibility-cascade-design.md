@@ -111,6 +111,8 @@ Some simpler examples:
 | 5.9 | 0.2 (just rolled) | 5 ✗ | 6 ✓ |
 | 0.05 | 9.5 | 0 ✗ | 9 ✓ |
 
+**Discrete classifier arrows:** training labels are floored, so class `k.0` with step `w` means the needle is somewhere in `[k, k+w)`. Such predictions carry `bin_width = w`, and the value used is the bin centre `(k + w/2) mod 10`. Without centring, the coarser dial comes out one too low whenever the finer dial stands in its upper half. Regressor and OpenCV values are continuous and are used as they are.
+
 The cascade tolerates errors of up to ±0.5 dial units on each dial. An arrow with `ERROR` makes the reading invalid (`total = None`) instead of counting as 0.0.
 
 ### B1b. Pair consistency check (diagnostic)
