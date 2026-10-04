@@ -125,6 +125,54 @@ def test_high_water_survives_restart(tmp_path):
     assert _published(restarted) == 56.5999
 
 
+def _init_mark(tmp_path, content=None):
+    svc = _make_publish_service(tmp_path)
+    if content is not None:
+        (tmp_path / "state.json").write_text(content)
+    svc._state.previous_value, svc._state.last_update_time = svc._state_store.load()
+    svc._init_published_high_water()
+    return svc._state.published_high_water
+
+
+def test_init_high_water_old_state_file_falls_back_to_previous_value(tmp_path):
+    assert _init_mark(tmp_path, '{"previous_value": 56.5999, "last_update_time": null}') == 56.5999
+
+
+def test_init_high_water_uses_persisted_value(tmp_path):
+    content = '{"previous_value": 56.5999, "last_update_time": null, "published_value": 57.0}'
+    assert _init_mark(tmp_path, content) == 57.0
+
+
+def test_init_high_water_no_file(tmp_path):
+    assert _init_mark(tmp_path) is None
+
+
+def _make_manual_service(tmp_path):
+    svc = _make_publish_service(tmp_path)
+    svc._mqtt.mqtt_client = None  # MQTT not connected -> publish_to_mqtt never called
+    svc._rate_tracker = MagicMock()
+    svc._cancel_confirmation_timer = MagicMock()
+    svc._confirmation_manager = MagicMock()
+    return svc
+
+
+def test_manual_set_lowers_high_water_without_mqtt(tmp_path):
+    svc = _make_manual_service(tmp_path)
+    asyncio.run(svc.publish_to_mqtt(56.5999, [], {}))
+    assert svc._state.published_high_water == 56.5999
+    asyncio.run(svc.set_manual_value(40.0))
+    assert svc._state.published_high_water == 40.0
+    assert svc._state_store.load_published_value() == 40.0
+
+
+def test_reset_previous_value_clears_high_water(tmp_path):
+    svc = _make_manual_service(tmp_path)
+    asyncio.run(svc.publish_to_mqtt(56.5999, [], {}))
+    svc.reset_previous_value()
+    assert svc._state.published_high_water is None
+    assert svc._state_store.load_published_value() is None
+
+
 def test_meter_state_reset_clears_high_water():
     state = MeterState()
     state.published_high_water = 1.0

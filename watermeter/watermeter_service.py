@@ -70,7 +70,7 @@ class WatermeterService:
             self.state_store = StateStore(persistence_config["state_file"])
             # Load previous state
             self._state.previous_value, self._state.last_update_time = self.state_store.load()
-            self._state.published_high_water = self.state_store.load_published_value()
+            self._init_published_high_water()
             # Populate last_published from persisted state (BL-14)
             if self._state.previous_value is not None:
                 self._state.current_state["last_published_value"] = self._state.previous_value
@@ -1058,6 +1058,13 @@ class WatermeterService:
             high_water, warnings, predictions, leak_warning=leak_warning, raw_value=raw_value
         )
 
+    def _init_published_high_water(self) -> None:
+        """Load the published high-water mark; old state files fall back to previous_value."""
+        mark = self.state_store.load_published_value()
+        if mark is None:
+            mark = self._state.previous_value
+        self._state.published_high_water = mark
+
     def reset_previous_value(self) -> None:
         """Reset the previous value (for meter replacement or stuck state)."""
         logger.info("Resetting previous value, rate history, and rejection counter")
@@ -1116,8 +1123,11 @@ class WatermeterService:
         self._pending_confirmation = None
 
         # Persist state
+        # A manual set is authoritative: it may lower the HA high-water mark even when
+        # MQTT is down (publish_to_mqtt is then never called).
+        self._state.published_high_water = value
         if self.state_store:
-            self.state_store.save(self.previous_value, self.last_update_time)
+            self.state_store.save(self.previous_value, self.last_update_time, published_value=value)
 
         # Update current_state for UI
         self.current_state["total_value"] = value
