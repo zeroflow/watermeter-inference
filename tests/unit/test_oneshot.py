@@ -112,9 +112,10 @@ def _make_mock_image_pipeline(
         pipeline.fetch_whole_image = AsyncMock(return_value=fetch_bytes)
 
     if rois is None:
-        # Default: two ROIs matching real return format Dict[str, Tuple[bytes, str]]
+        # Default: ROIs for every configured position, matching real return format Dict[str, Tuple[bytes, str]]
         rois = {
             "digit_1": (b"DIGIT1JPG", "digits"),
+            "digit_2": (b"DIGIT2JPG", "digits"),
             "analog_1": (b"ANALOG1JPG", "arrows"),
         }
 
@@ -163,7 +164,7 @@ class TestOneShotSuccess:
         config_path = _write_config_yaml(str(tmp_path), config)
 
         mock_svc = _make_mock_inference_service(models_loaded=True)
-        # Digits read NAN; arrows read a valid value so only the digit is unresolved.
+        # Digits read NAN; arrows read a valid value so only the digit is unresolved (a NaN arrow would also be unresolved).
         mock_svc.predict_from_bytes = MagicMock(
             side_effect=lambda model_type, _bytes: (
                 {"class": "NAN", "confidence": 0.9} if model_type == "digits" else {"class": "5.0", "confidence": 0.9}

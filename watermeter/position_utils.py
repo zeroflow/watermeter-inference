@@ -163,6 +163,8 @@ def calculate_total(
     raw_digits: List[Optional[int]] = []
     for image_id in digit_ids:
         if image_id not in predictions:
+            notes.append(f"{image_id}: missing prediction")
+            invalid = True
             continue
         cls = predictions[image_id]["class"]
         if cls == "ERROR":
@@ -171,20 +173,33 @@ def calculate_total(
         elif cls == "NAN":
             logger.warning(f"{image_id} is NAN (wheel between digits)")
             raw_digits.append(None)
-        else:
+        elif isinstance(cls, str) and cls.isascii() and cls.isdigit() and len(cls) == 1:
             raw_digits.append(int(cls))
+        else:
+            notes.append(f"{image_id}: no reading ({cls})")
+            invalid = True
 
     arrows: List[float] = []
     used_arrow_ids: List[str] = []
     for image_id in arrow_ids:
         if image_id not in predictions:
+            notes.append(f"{image_id}: missing prediction")
+            invalid = True
             continue
         cls = predictions[image_id]["class"]
         if cls == "ERROR":
             notes.append(f"{image_id}: inference error")
             invalid = True
+            continue
+        try:
+            value = float(cls)
+        except (TypeError, ValueError):
+            value = math.nan
+        if not math.isfinite(value):
+            notes.append(f"{image_id}: no reading ({cls})")
+            invalid = True
         else:
-            arrows.append(float(cls))
+            arrows.append(value)
             used_arrow_ids.append(image_id)
 
     def unresolved() -> Tuple[None, Dict]:

@@ -142,3 +142,34 @@ class TestPairConsistency:
 
         # 0.1 dial reads 9.95, expected 0.05 (int 0 + 0.5/10) -> distance 0.1, not 9.9
         assert arrow_pair_deviations([9.95, 0.5], [0, 0]) == pytest.approx([0.1])
+
+
+class TestUnreadablePositions:
+    def test_arrow_nan_capitalised_is_unresolved(self):
+        total, raw = calculate_total(CONFIG, preds([0, 5, 6], [5.0, "NaN", 0.0, 0.0]))
+        assert total is None
+        assert raw["raw_total"] is None
+        assert "analog_2: no reading (NaN)" in raw["notes"]
+
+    def test_arrow_nan_lowercase_is_unresolved(self):
+        total, _ = calculate_total(CONFIG, preds([0, 5, 6], [5.0, 0.0, "nan", 0.0]))
+        assert total is None
+
+    def test_digit_garbage_is_unresolved(self):
+        total, raw = calculate_total(CONFIG, preds([0, "X", 6], [5.0, 0.0, 0.0, 0.0]))
+        assert total is None
+        assert "digit_2: no reading (X)" in raw["notes"]
+
+    def test_missing_digit_is_unresolved(self):
+        p = preds([0, 5, 6], [5.0, 0.0, 0.0, 0.0])
+        del p["digit_2"]
+        total, raw = calculate_total(CONFIG, p)
+        assert total is None
+        assert "digit_2: missing prediction" in raw["notes"]
+
+    def test_missing_arrow_is_unresolved(self):
+        p = preds([0, 5, 6], [5.0, 0.0, 0.0, 0.0])
+        del p["analog_3"]
+        total, raw = calculate_total(CONFIG, p)
+        assert total is None
+        assert "analog_3: missing prediction" in raw["notes"]
