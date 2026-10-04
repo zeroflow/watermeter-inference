@@ -27,6 +27,7 @@
   | `plausibility.reanchor_after` | `6` (`0` disables) |
   | `plausibility.reanchor_max_spread` | `0.01` |
   | `ROLL_WINDOW` (constant) | `0.2` |
+  | `PAIR_INCONSISTENCY` (constant) | `0.35` (diagnostic note only, never rejects) |
 
 - `NAN` is never counted as 0. An `ERROR` arrow or digit makes the reading invalid.
 - `water_usage` published to HA never decreases, except through `/api/reset` or a manual set.
@@ -510,6 +511,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 **Interfaces:**
 - Produces:
   - `ROLL_WINDOW: float = 0.2`
+  - `PAIR_INCONSISTENCY: float = 0.35`
+  - `arrow_pair_deviations(arrows: List[float], ints: List[int]) -> List[float]`: deviation of dial `i` from `int[i] + res[i+1]/10` (circular, period 10), one entry per adjacent pair, 0.1 dial first.
   - `resolve_arrows(arrows: List[float]) -> List[int]`: carry-aware integer per dial, 0.1 dial first.
   - `resolve_digits(raw_digits: List[Optional[int]], frac: float, previous_value: Optional[float], has_arrows: bool, notes: List[str]) -> Optional[List[int]]`
   - `calculate_total(config: Dict, predictions: Dict[str, Dict], previous_value: Optional[float] = None) -> Tuple[Optional[float], Dict]`
@@ -641,6 +644,28 @@ class TestOtherMeterShapes:
         cfg = {"images": {"process_separate": False}, "detection": {"digits": {"count": 0}, "analogs": {"count": 2}}}
         total, _ = calculate_total(cfg, preds([], [5.9, 0.2]))
         assert total == pytest.approx(0.60)
+
+
+class TestPairConsistency:
+    def test_live_case_pairs_are_consistent(self):
+        from watermeter.position_utils import arrow_pair_deviations
+
+        devs = arrow_pair_deviations([5.2, 9.7, 0.3, 3.2], [5, 0, 0, 3])
+        assert devs == pytest.approx([0.1968, 0.332, 0.02], abs=1e-3)
+        _, raw = calculate_total(CONFIG, preds([0, 5, 6], [5.2, 9.7, 0.3, 3.2]))
+        assert not any("inconsistent" in n for n in raw["notes"])
+
+    def test_inconsistent_pair_adds_note_but_keeps_total(self):
+        # 0.1 dial at 4.5 while 0.01 dial at 9.0 -> expected 4.9, deviation 0.4
+        total, raw = calculate_total(CONFIG, preds([0, 5, 6], [4.5, 9.0, 0.0, 0.0]))
+        assert total == pytest.approx(56.49)
+        assert any(n.startswith("analog_1/analog_2 inconsistent (0.40)") for n in raw["notes"])
+
+    def test_deviation_is_circular(self):
+        from watermeter.position_utils import arrow_pair_deviations
+
+        # 0.1 dial reads 9.95, expected 0.05 (int 0 + 0.5/10) -> distance 0.1, not 9.9
+        assert arrow_pair_deviations([9.95, 0.5], [0, 0]) == pytest.approx([0.1])
 ```
 
 Append to `tests/unit/test_oneshot.py`, inside the class that holds `test_returns_zero_on_success`. Mirror that test's setup exactly: same helpers, same patches. The only change is that the inference mock returns `NAN` for a digit:
@@ -687,6 +712,22 @@ def resolve_arrows(arrows: List[float]) -> List[int]:
         ints[i] = _round_half_up(arrows[i] - resolved / 10) % 10
         resolved = ints[i] + resolved / 10
     return ints
+
+
+# Diagnostic only: a dial deviating this much from its cascade expectation contradicts its finer neighbour.
+PAIR_INCONSISTENCY = 0.35
+
+
+def arrow_pair_deviations(arrows: List[float], ints: List[int]) -> List[float]:
+    """Circular deviation of each dial from ``int[i] + resolved_finer / 10``, one per adjacent pair."""
+    deviations: List[float] = []
+    resolved = arrows[-1] if arrows else 0.0
+    for i in range(len(arrows) - 2, -1, -1):
+        expected = ints[i] + resolved / 10
+        diff = abs(arrows[i] - expected) % 10
+        deviations.append(min(diff, 10 - diff))
+        resolved = expected
+    return list(reversed(deviations))
 
 
 def _to_digits(value: int, count: int) -> List[int]:
@@ -777,6 +818,7 @@ def calculate_total(
             raw_digits.append(int(cls))
 
     arrows: List[float] = []
+    used_arrow_ids: List[str] = []
     for image_id in arrow_ids:
         if image_id not in predictions:
             continue
@@ -786,6 +828,7 @@ def calculate_total(
             invalid = True
         else:
             arrows.append(float(cls))
+            used_arrow_ids.append(image_id)
 
     def unresolved() -> Tuple[None, Dict]:
         logger.warning(f"Reading unresolved: {'; '.join(notes)}")
@@ -795,6 +838,9 @@ def calculate_total(
         return unresolved()
 
     ints = resolve_arrows(arrows)
+    for i, dev in enumerate(arrow_pair_deviations(arrows, ints)):
+        if dev > PAIR_INCONSISTENCY:
+            notes.append(f"{used_arrow_ids[i]}/{used_arrow_ids[i + 1]} inconsistent ({dev:.2f})")
     frac = sum(v * 10 ** (-(i + 1)) for i, v in enumerate(ints))
     digits = resolve_digits(raw_digits, frac, previous_value, bool(arrows), notes)
     if digits is None:
@@ -835,7 +881,7 @@ Expected: all pass.
 ```bash
 uvx ruff check watermeter/ tests/
 git add watermeter/position_utils.py watermeter/oneshot.py tests/unit/test_calculate_total.py tests/unit/test_oneshot.py
-git commit -m "claude: carry-aware calculate_total (cascade, NAN from context, fixed raw total)
+git commit -m "claude: carry-aware calculate_total (cascade, pair consistency, NAN from context, fixed raw total)
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```

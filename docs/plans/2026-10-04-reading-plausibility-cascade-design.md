@@ -113,6 +113,19 @@ Some simpler examples:
 
 The cascade tolerates errors of up to ±0.5 dial units on each dial. An arrow with `ERROR` makes the reading invalid (`total = None`) instead of counting as 0.0.
 
+### B1b. Pair consistency check (diagnostic)
+
+For each adjacent pair of dials, the cascade also measures how well the coarser dial agrees with its resolved expectation:
+
+```
+deviation[i] = circular_distance(a[i], int[i] + res[i+1] / 10)    # period 10
+```
+
+A correct pair sits near 0. Above `PAIR_INCONSISTENCY = 0.35`, a module constant, the reading gets the note `"<id_i>/<id_i+1> inconsistent (0.38)"`. The note ends up in the reading's warnings. The reading is **not** rejected; plausibility and re-anchoring stay responsible for that.
+
+- **Purpose:** the dashboard shows which dials contradict each other, and these frames are prime labeling candidates.
+- **Live case** (`5.2, 9.7, 0.3, 3.2`): the deviations are 0.20, 0.33 and 0.02, so no note.
+
 ### B2. Integer part (digits) with previous-value context
 
 Let `D` be the classifier digits. `NAN` is a wildcard, `ERROR` makes the reading invalid. Let `f` be the resolved arrow fraction `Σ int[i]·10^-(i+1)`. Let `ROLL_WINDOW = 0.2`, a module constant.
@@ -174,6 +187,7 @@ TDD with real code and no mocks of the logic under test.
   - A digits-only meter steps its last digit.
   - A large jump keeps `D`.
   - `ERROR` makes the reading invalid.
+  - The pair-consistency note fires above 0.35 and stays silent for the live case.
 - **Service-level tests** in the existing style, which mocks the fetch:
   - Jitter is held.
   - The live sequence `56.5999` then 6× `56.5903` re-anchors, while the published value stays 56.5999 until it is overtaken.
