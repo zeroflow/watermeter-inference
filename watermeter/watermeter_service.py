@@ -1074,8 +1074,11 @@ class WatermeterService:
     def _init_published_high_water(self) -> None:
         """Load the published high-water mark; old state files fall back to previous_value."""
         mark = self.state_store.load_published_value()
-        if mark is None:
+        if mark is None and self._state.previous_value is not None:
             mark = self._state.previous_value
+            # Persist the seed now: save(published_value=None) keeps the stored null, and the publish
+            # wrapper only saves on a new peak, so a lower re-anchor + restart would lose the mark.
+            self.state_store.save(self._state.previous_value, self._state.last_update_time, published_value=mark)
         self._state.published_high_water = mark
 
     def reset_previous_value(self) -> None:

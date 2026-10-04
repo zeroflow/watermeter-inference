@@ -149,6 +149,20 @@ def test_init_high_water_no_file(tmp_path):
     assert _init_mark(tmp_path) is None
 
 
+def test_seeded_high_water_is_persisted(tmp_path):
+    """Final review C2: a mark seeded from previous_value must survive a lower save + restart."""
+    svc = _make_publish_service(tmp_path)
+    (tmp_path / "state.json").write_text('{"previous_value": 56.5999, "last_update_time": null}')
+    svc._state.previous_value, svc._state.last_update_time = svc._state_store.load()
+    svc._init_published_high_water()
+    # re-anchor to a lower value: process_reading persists previous_value, the clamped publish does not save
+    svc._state.previous_value = 56.5004
+    svc._state_store.save(56.5004, None)
+    asyncio.run(svc.publish_to_mqtt(56.5004, [], {}))
+    assert _published(svc) == 56.5999
+    assert StateStore(str(tmp_path / "state.json")).load_published_value() == 56.5999
+
+
 def _make_manual_service(tmp_path):
     svc = _make_publish_service(tmp_path)
     svc._mqtt.mqtt_client = None  # MQTT not connected -> publish_to_mqtt never called
