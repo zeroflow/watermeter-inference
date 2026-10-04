@@ -20,12 +20,20 @@ class StateStore:
         self.file_path = Path(file_path)
         self.file_path.parent.mkdir(parents=True, exist_ok=True)
 
-    def save(self, previous_value: Optional[float], last_update_time: Optional[datetime]) -> None:
-        """Save state to disk."""
+    def save(
+        self,
+        previous_value: Optional[float],
+        last_update_time: Optional[datetime],
+        published_value: Optional[float] = None,
+    ) -> None:
+        """Save state to disk. ``published_value`` None keeps the stored high-water mark."""
         try:
+            if published_value is None:
+                published_value = self.load_published_value()
             state = {
                 "previous_value": previous_value,
                 "last_update_time": last_update_time.isoformat() if last_update_time else None,
+                "published_value": published_value,
             }
 
             # Write to temp file then rename for atomic save (prevents corruption on crash)
@@ -62,6 +70,17 @@ class StateStore:
         except Exception as e:
             logger.error(f"Failed to load state: {e}")
             return None, None
+
+    def load_published_value(self) -> Optional[float]:
+        """Highest value ever published to HA (high-water mark), or None."""
+        try:
+            if not self.file_path.exists():
+                return None
+            with open(self.file_path, "r") as f:
+                return json.load(f).get("published_value")
+        except Exception as e:
+            logger.error(f"Failed to load published value: {e}")
+            return None
 
     def clear(self) -> None:
         """Clear persisted state."""

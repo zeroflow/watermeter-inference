@@ -88,3 +88,22 @@ class TestStateStore:
         value, ts = store.load()
         assert value == 2.0
         assert ts == datetime(2025, 6, 1)
+
+
+class TestPublishedHighWater:
+    def test_round_trip(self, tmp_path):
+        store = StateStore(str(tmp_path / "state.json"))
+        store.save(56.5003, datetime(2026, 10, 4, 8, 0), published_value=56.5999)
+        assert StateStore(str(tmp_path / "state.json")).load_published_value() == 56.5999
+
+    def test_save_without_published_preserves_it(self, tmp_path):
+        store = StateStore(str(tmp_path / "state.json"))
+        store.save(56.5003, datetime(2026, 10, 4, 8, 0), published_value=56.5999)
+        store.save(56.5010, datetime(2026, 10, 4, 8, 1))
+        assert store.load_published_value() == 56.5999
+        assert store.load()[0] == 56.5010
+
+    def test_old_state_file_has_no_published_value(self, tmp_path):
+        path = tmp_path / "state.json"
+        path.write_text('{"previous_value": 1.0, "last_update_time": null}')
+        assert StateStore(str(path)).load_published_value() is None

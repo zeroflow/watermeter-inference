@@ -16,6 +16,7 @@ class MeterState:
     def __init__(self, ha_publish_enabled: bool = False) -> None:
         self.previous_value: Optional[float] = None
         self.last_update_time: Optional[datetime] = None
+        self.published_high_water: Optional[float] = None
         self.consecutive_rejections: int = 0
         self.max_consecutive_rejections: int = 5
         self.leak_warning: bool = False
@@ -41,6 +42,7 @@ class MeterState:
         """Clear published/rejected tracking fields and reset counters."""
         self.previous_value = None
         self.last_update_time = None
+        self.published_high_water = None
         self.consecutive_rejections = 0
         self.leak_warning = False
         self.current_state["leak_warning"] = False

@@ -70,6 +70,7 @@ class WatermeterService:
             self.state_store = StateStore(persistence_config["state_file"])
             # Load previous state
             self._state.previous_value, self._state.last_update_time = self.state_store.load()
+            self._state.published_high_water = self.state_store.load_published_value()
             # Populate last_published from persisted state (BL-14)
             if self._state.previous_value is not None:
                 self._state.current_state["last_published_value"] = self._state.previous_value
@@ -1040,15 +1041,29 @@ class WatermeterService:
         *,
         leak_warning: bool = False,
         raw_value: Optional[float] = None,
+        allow_decrease: bool = False,
     ) -> None:
-        """Delegate to MqttPublisher."""
-        await self._mqtt.publish_to_mqtt(value, warnings, predictions, leak_warning=leak_warning, raw_value=raw_value)
+        """Delegate to MqttPublisher, clamped to the published high-water mark.
+
+        HA treats ``water_usage`` as ``total_increasing``: any decrease looks like a
+        meter reset. Only a manual set (``allow_decrease``) or /api/reset may go down.
+        """
+        high_water = self._state.published_high_water
+        if allow_decrease or high_water is None or value > high_water:
+            high_water = value
+            self._state.published_high_water = value
+            if self.state_store:
+                self.state_store.save(self.previous_value, self.last_update_time, published_value=value)
+        await self._mqtt.publish_to_mqtt(
+            high_water, warnings, predictions, leak_warning=leak_warning, raw_value=raw_value
+        )
 
     def reset_previous_value(self) -> None:
         """Reset the previous value (for meter replacement or stuck state)."""
         logger.info("Resetting previous value, rate history, and rejection counter")
         self.previous_value = None
         self.last_update_time = None
+        self._state.published_high_water = None
         self._rate_tracker.reset()
         self.consecutive_rejections = 0
         self.leak_warning = False
@@ -1130,6 +1145,7 @@ class WatermeterService:
                     {},
                     leak_warning=False,
                     raw_value=value,
+                    allow_decrease=True,
                 )
                 logger.info(f"Published manual value {value:.4f} to MQTT")
                 return True
