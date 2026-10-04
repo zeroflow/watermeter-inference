@@ -444,6 +444,11 @@ class WatermeterService:
         """Plausibility verdict plus the baseline to adopt (held / new / re-anchored value)."""
         return self._plausibility_checker.evaluate(new_value, self.previous_value, self.last_update_time)
 
+    def _reset_reanchor_candidates(self) -> None:
+        """Drop re-anchor candidates (reset, manual set, or a non-reverse rejection)."""
+        if hasattr(self, "_plausibility_checker"):
+            self._plausibility_checker.reset_reanchor()
+
     def check_consistency(self, predictions: Dict[str, Dict]) -> List[str]:
         """Check consistency between adjacent positions."""
         return self._plausibility_checker.check_consistency(predictions)
@@ -772,6 +777,7 @@ class WatermeterService:
                         is_valid=False, warnings=resolution_notes or ["Reading could not be resolved"]
                     )
                     resolution_notes = []  # already carried as rejection reasons
+                    self._reset_reanchor_candidates()  # spec A2: non-reverse rejection
                 else:
                     # 3b. Value correction (BL-04)
                     correction_warnings = self.correct_predictions(predictions, total_value, raw_values)
@@ -787,6 +793,7 @@ class WatermeterService:
                     if total_value is None:
                         plausibility = PlausibilityResult(is_valid=False, warnings=resolution_notes)
                         resolution_notes = []
+                        self._reset_reanchor_candidates()  # spec A2: non-reverse rejection
                     else:
                         plausibility = self.evaluate_plausibility(total_value)
 
@@ -945,7 +952,10 @@ class WatermeterService:
                     self.consecutive_rejections += 1
                     self.current_state["status"] = "rejected"
                     self.current_state["warnings"] = all_warnings
-                    self.current_state["total_value"] = total_value
+                    if total_value is not None:
+                        # Unresolvable readings keep the last displayed total (dashboard
+                        # would otherwise show "No data available" instead of the rejection).
+                        self.current_state["total_value"] = total_value
 
                     # Track last-rejected state (BL-14)
                     self.current_state["last_rejected_value"] = total_value
@@ -1072,8 +1082,7 @@ class WatermeterService:
         self._state.published_high_water = None
         self._rate_tracker.reset()
         self.consecutive_rejections = 0
-        if hasattr(self, "_plausibility_checker"):
-            self._plausibility_checker.reset_reanchor()
+        self._reset_reanchor_candidates()
         self.leak_warning = False
         self.current_state["leak_warning"] = False
 
@@ -1116,8 +1125,7 @@ class WatermeterService:
 
         # Reset plausibility tracking
         self.consecutive_rejections = 0
-        if hasattr(self, "_plausibility_checker"):
-            self._plausibility_checker.reset_reanchor()
+        self._reset_reanchor_candidates()
         self.leak_warning = False
         self.current_state["leak_warning"] = False
 

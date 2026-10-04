@@ -292,6 +292,51 @@ def test_reset_clears_reanchor_candidates():
     assert svc.current_state["status"] == "rejected"
 
 
+def test_unresolvable_rejection_keeps_displayed_total():
+    """Fix round 1: a None total must not blank current_state["total_value"] (dashboard 'No data')."""
+    svc = _make_reading_service(previous_value=56.5)
+    svc.current_state["total_value"] = 56.5
+    svc.run_inference = AsyncMock(
+        return_value=_live_predictions(digits=("0", "8", "NAN"), arrows=("1.0", "0.0", "0.0", "0.0"))
+    )
+    asyncio.run(svc.process_reading())
+    assert svc.current_state["status"] == "rejected"
+    assert svc.current_state["total_value"] == 56.5
+    assert svc.current_state["last_rejected_value"] is None
+    assert svc.current_state["last_rejected_reasons"]
+
+
+def test_unresolvable_reading_resets_reanchor_candidates():
+    """Spec A2: any non-reverse rejection (incl. unresolvable) clears re-anchor candidates."""
+    svc = _make_reading_service(previous_value=56.5999)
+    svc.run_inference = AsyncMock(return_value=_live_predictions())
+    for _ in range(5):
+        asyncio.run(svc.process_reading())
+    svc.run_inference = AsyncMock(
+        return_value=_live_predictions(digits=("0", "8", "NAN"), arrows=("1.0", "0.0", "0.0", "0.0"))
+    )
+    asyncio.run(svc.process_reading())
+    assert svc.current_state["status"] == "rejected"
+    svc.run_inference = AsyncMock(return_value=_live_predictions())
+    asyncio.run(svc.process_reading())
+    assert svc.current_state["status"] == "rejected"
+    assert svc.previous_value == pytest.approx(56.5999)
+
+
+def test_set_manual_value_resets_reanchor_candidates():
+    """The real set_manual_value must clear re-anchor candidates."""
+    svc = _make_reading_service(previous_value=56.5999)
+    svc._cancel_confirmation_timer = MagicMock()
+    svc.run_inference = AsyncMock(return_value=_live_predictions())
+    for _ in range(5):
+        asyncio.run(svc.process_reading())
+    assert svc.consecutive_rejections == 5
+    asyncio.run(svc.set_manual_value(56.5999))
+    asyncio.run(svc.process_reading())
+    assert svc.current_state["status"] == "rejected"
+    assert svc.previous_value == pytest.approx(56.5999)
+
+
 # ---------------------------------------------------------------------------
 # Restore conftest mocks so subsequent test files in the same session see them.
 # (Done at module bottom so failures during imports above leave the mocks
