@@ -46,6 +46,14 @@ def calibration_path(config: dict) -> Path:
     return resolved
 
 
+def analog_rois_from_config(config: dict) -> dict[str, dict] | None:
+    """{"analog_1": roi, ...} in whole-image mode; None with separately fetched images (no ROIs)."""
+    if config.get("images", {}).get("process_separate", False):
+        return None
+    analog_rois = config.get("detection", {}).get("analogs", {}).get("rois", [])
+    return {f"analog_{i + 1}": dict(r) for i, r in enumerate(analog_rois)}
+
+
 def _same_roi(a: dict, b: dict) -> bool:
     return all(abs(float(a.get(k, -1)) - float(b.get(k, -2))) < 1e-6 for k in ("x", "y", "width", "height"))
 
@@ -68,12 +76,25 @@ class CalibratedArrowDetector:
         self.tip_percentile = tip_percentile
         self._fallback = OpenCVArrowDetector(hue_ranges, saturation_min, value_min)
         self._warned: set = set()
-        self._dials: dict[str, DialCalibration] = {}
-        for rid, dial in calibrations.items():
-            if rois is not None and rid in rois and not _same_roi(dial.roi, rois[rid]):
-                logger.warning(f"Arrow calibration for {rid} is stale (ROI changed) -- {_RECALIBRATE_HINT}")
-                continue
-            self._dials[rid] = dial
+        self._dials: dict[str, DialCalibration] = dict(calibrations)
+        self._rois: dict[str, dict] | None = None
+        self.set_rois(rois)
+
+    def set_rois(self, rois: dict[str, dict] | None) -> None:
+        """Current analog ROIs (normalised); a dial whose ROI changed since calibrating falls back to opencv.
+
+        ``None`` (separate-image mode) disables the check. The service calls this before every reading
+        because the ROI wizard edits the config without reloading the inference backend.
+        """
+        self._rois = {rid: dict(r) for rid, r in rois.items()} if rois is not None else None
+        for rid in self._dials:
+            if self._is_stale(rid):
+                self._warn_once(
+                    f"roi:{rid}", f"Arrow calibration for {rid} is stale (ROI changed) -- {_RECALIBRATE_HINT}"
+                )
+
+    def _is_stale(self, rid: str) -> bool:
+        return self._rois is not None and rid in self._rois and not _same_roi(self._dials[rid].roi, self._rois[rid])
 
     @classmethod
     def from_config(cls, config: dict) -> "CalibratedArrowDetector":
@@ -89,24 +110,21 @@ class CalibratedArrowDetector:
         except Exception as e:
             logger.warning(f"Arrow calibration unusable ({e}) -- using opencv arrows")
             calibrations = {}
-        rois = None
-        if not config.get("images", {}).get("process_separate", False):
-            analog_rois = config.get("detection", {}).get("analogs", {}).get("rois", [])
-            rois = {f"analog_{i + 1}": dict(r) for i, r in enumerate(analog_rois)}
         detector = cls(
             calibrations,
-            rois=rois,
+            rois=analog_rois_from_config(config),
             hue_ranges=color_cfg.get("hue_ranges"),
             saturation_min=color_cfg.get("saturation_min", 50),
             value_min=color_cfg.get("value_min", 50),
             tip_percentile=cal_cfg.get("tip_percentile", DEFAULT_TIP_PERCENTILE),
         )
-        logger.info(f"Calibrated arrows: {len(detector._dials)} dial(s) calibrated ({sorted(detector._dials)})")
+        logger.info(f"Calibrated arrows: dial(s) {detector.calibrated_ids} calibrated")
         return detector
 
     @property
     def calibrated_ids(self) -> list[str]:
-        return sorted(self._dials)
+        """Dials with a calibration that matches the current ROIs."""
+        return sorted(rid for rid in self._dials if not self._is_stale(rid))
 
     def _warn_once(self, key: str, msg: str) -> None:
         if key not in self._warned:
@@ -121,6 +139,8 @@ class CalibratedArrowDetector:
 
     def _predict_image(self, image: np.ndarray, image_id: str | None) -> dict:
         dial = self._dials.get(image_id) if image_id else None
+        if dial is not None and self._is_stale(image_id):
+            return self._fallback_result(image)  # warned in set_rois
         if dial is None:
             self._warn_once(f"nocal:{image_id}", f"No arrow calibration for {image_id!r} -- using opencv arrows")
             return self._fallback_result(image)

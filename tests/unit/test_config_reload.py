@@ -162,3 +162,32 @@ class TestReloadConfig:
         assert isinstance(result, dict)
         assert result.get("mqtt_reconnected") is True
         assert result.get("config_updated") is True
+
+
+class TestReloadConfigArrowBackend:
+    """Arrow backend settings are baked into the backend: reload it when they change."""
+
+    def _service(self, config, monkeypatch):
+        service = TestReloadConfig()._make_service(config)
+        service._arrow_backend_settings = WatermeterService._arrow_backend_settings
+        inference = MagicMock()
+        monkeypatch.setitem(WatermeterService.reload_config.__globals__, "get_inference_service", lambda: inference)
+        return service, inference
+
+    def test_arrows_mode_change_reloads_backend(self, monkeypatch):
+        new = _make_config(**{"inference.arrows_mode": "calibrated"})
+        service, inference = self._service(_make_config(), monkeypatch)
+        service.reload_config(new)
+        inference.reload_models.assert_called_once_with(new)
+
+    def test_calibrated_settings_change_reloads_backend(self, monkeypatch):
+        old = _make_config(**{"inference.arrows_mode": "calibrated"})
+        new = _make_config(**{"inference.arrows_mode": "calibrated", "inference.calibrated_arrows": {"tip_percentile": 90}})
+        service, inference = self._service(old, monkeypatch)
+        service.reload_config(new)
+        inference.reload_models.assert_called_once()
+
+    def test_unrelated_change_does_not_reload_backend(self, monkeypatch):
+        service, inference = self._service(_make_config(), monkeypatch)
+        service.reload_config(_make_config(**{"inference.confidence_threshold": 0.9}))
+        inference.reload_models.assert_not_called()

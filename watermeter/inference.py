@@ -506,6 +506,12 @@ class InferenceService:
             else:
                 raise ValueError(f"Unknown model type: {model_type}")
 
+    def update_arrow_rois(self, rois: dict | None) -> None:
+        """Hand the current analog ROIs to a calibrated arrow backend (stale-calibration check); else no-op."""
+        with self._lock:
+            if isinstance(self._arrows_classifier, CalibratedArrowDetector):
+                self._arrows_classifier.set_rois(rois)
+
     def get_classifier(self, model_type: str) -> Classifier:
         """Get classifier (for backward compatibility)."""
         with self._lock:

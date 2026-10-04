@@ -129,6 +129,23 @@ def test_stale_roi_falls_back(mods, cv2):
     assert det.predict_from_bytes(data, image_id="analog_2") == _opencv_result(oa, cv2, data)
 
 
+def test_roi_edit_after_load_falls_back_until_restored(mods, cv2):
+    ac, ca, oa = mods
+    det = ca.CalibratedArrowDetector({"analog_2": _dial(ac)}, rois={"analog_2": ROI})
+    data = _jpeg(cv2, render_dial(cv2, 3.3, shift=SHIFT))
+    det.set_rois({"analog_2": dict(ROI, y=ROI["y"] + 0.02)})  # ROI wizard moved the dial
+    assert det.predict_from_bytes(data, image_id="analog_2") == _opencv_result(oa, cv2, data)
+    det.set_rois({"analog_2": ROI})
+    assert _err(float(det.predict_from_bytes(data, image_id="analog_2")["class"]), 3.3) < 0.03
+
+
+def test_separate_image_mode_skips_roi_check(mods, cv2):
+    ac, ca, _ = mods
+    det = ca.CalibratedArrowDetector({"analog_2": _dial(ac)}, rois=None)
+    assert det.calibrated_ids == ["analog_2"]
+    assert ca.analog_rois_from_config({"images": {"process_separate": True}}) is None
+
+
 def test_crop_size_mismatch_falls_back(mods, cv2):
     ac, ca, oa = mods
     det = ca.CalibratedArrowDetector({"analog_2": _dial(ac)})
@@ -231,3 +248,5 @@ def test_inference_service_passes_image_id(mods, cv2, tmp_path, monkeypatch):
     assert _err(float(res["class"]), 6.66) < 0.03
     detailed = svc.predict_detailed_from_bytes("arrows", data, top_k=3, image_id="analog_2")
     assert detailed == [res]
+    svc.update_arrow_rois({"analog_2": dict(ROI, x=0.5)})  # stale -> opencv fallback (1 decimal)
+    assert len(svc.predict_from_bytes("arrows", data, image_id="analog_2")["class"].split(".")[1]) == 1

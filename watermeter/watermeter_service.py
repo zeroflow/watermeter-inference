@@ -18,6 +18,7 @@ from typing import Dict, List, Optional, Tuple
 
 import yaml
 
+from .calibrated_arrows import analog_rois_from_config
 from .confirmation import ConfirmationManager
 from .correction import CorrectionEngine
 from .data_collector import DataCollector
@@ -394,6 +395,8 @@ class WatermeterService:
         predictions = {}
 
         logger.info(f"Running inference on {len(images)} images")
+        # ROI edits replace self.config without reloading the backend: re-check calibrated arrows
+        get_inference_service().update_arrow_rois(analog_rois_from_config(self.config))
 
         for image_id, (image_bytes, image_class) in images.items():
             # Run prediction via inference service (supports hot-reload)
@@ -1254,6 +1257,11 @@ class WatermeterService:
         """Delegate to MqttPublisher."""
         self._mqtt.start()
 
+    @staticmethod
+    def _arrow_backend_settings(config: dict) -> tuple:
+        inference = config.get("inference", {}) or {}
+        return tuple(repr(inference.get(k)) for k in ("arrows_mode", "opencv_arrows", "calibrated_arrows"))
+
     def reload_config(self, new_config: dict) -> dict:
         """Hot-reload config into the running service.
 
@@ -1266,6 +1274,7 @@ class WatermeterService:
         Returns:
             Dict with keys: config_updated (bool), mqtt_reconnected (bool).
         """
+        old_config = self.config
         old_mqtt = self.config.get("mqtt", {})
         new_mqtt = new_config.get("mqtt", {})
 
@@ -1303,6 +1312,11 @@ class WatermeterService:
         # Sync config to confirmation manager and MQTT publisher
         self._confirmation_manager.config = new_config
         self._mqtt.config = new_config
+
+        # Arrow backend settings are read when the backend is built: rebuild it when they change
+        if self._arrow_backend_settings(old_config) != self._arrow_backend_settings(new_config):
+            logger.info("Arrow backend settings changed -- reloading inference backends")
+            get_inference_service().reload_models(new_config)
 
         # Reconnect MQTT if connection params changed
         if mqtt_changed and self.mqtt_client:
