@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 from .meter_state import MeterState
-from .position_utils import get_position_ids
+from .position_utils import calculate_total, get_position_ids
 from .rate_tracker import RateTracker
 
 logger = logging.getLogger(__name__)
@@ -48,33 +48,16 @@ class CorrectionEngine:
 
     def _recalculate_with_replacement(
         self, predictions: Dict[str, Dict], replace_id: str, replace_class: str, raw_values: Dict
-    ) -> float:
-        """Calculate hypothetical total with one position replaced."""
-        digit_ids, arrow_ids = get_position_ids(self.config)
+    ) -> Optional[float]:
+        """Calculate the hypothetical total with one position replaced (None if unresolvable).
 
-        digits = []
-        for image_id in digit_ids:
-            if image_id in predictions:
-                cls = replace_class if image_id == replace_id else predictions[image_id]["class"]
-                if cls not in ("NAN", "ERROR"):
-                    digits.append(int(cls))
-                else:
-                    digits.append(0)
-
-        arrows = []
-        for image_id in arrow_ids:
-            if image_id in predictions:
-                cls = replace_class if image_id == replace_id else predictions[image_id]["class"]
-                if cls != "ERROR":
-                    arrows.append(float(cls))
-                else:
-                    arrows.append(0.0)
-
-        total = 0.0
-        for i, digit in enumerate(digits):
-            total += digit * 10 ** (len(digits) - 1 - i)
-        for i, arrow in enumerate(arrows):
-            total += int(arrow) * 10 ** (-(i + 1))
+        Deliberately without previous-value context: carry context would mask the
+        replacement being evaluated.
+        """
+        replaced = {
+            pid: (dict(p, **{"class": replace_class}) if pid == replace_id else p) for pid, p in predictions.items()
+        }
+        total, _ = calculate_total(self.config, replaced)
         return total
 
     def _check_consistency_improvement(self, predictions: Dict[str, Dict], replace_id: str, replace_class: str) -> bool:
@@ -249,6 +232,8 @@ class CorrectionEngine:
             for alt in alternatives:
                 score = 0
                 total_with_alt = self._recalculate_with_replacement(predictions, pid, alt["class"], raw_values)
+                if total_with_alt is None:
+                    continue
 
                 # Signal 1: Previous value constraint
                 if not skip_previous_value_signal and self._meter_state.previous_value is not None:

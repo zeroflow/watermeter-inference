@@ -406,13 +406,6 @@ class ConfirmationManager:
     # ── Internal helpers ───────────────────────────────────────────────────
 
     @staticmethod
-    def _compute_raw_total(raw_values: Dict) -> float:
-        """Compute the unrounded total from raw digit and arrow values."""
-        total = 0.0
-        digits = raw_values.get("digits", [])
-        arrows = raw_values.get("arrows", [])
-        for i, digit in enumerate(digits):
-            total += digit * (10 ** (len(digits) - 1 - i))
-        for i, arrow in enumerate(arrows):
-            total += arrow * (10 ** (-(i + 1)))
-        return total
+    def _compute_raw_total(raw_values: Dict) -> Optional[float]:
+        """High-precision total computed by position_utils.calculate_total."""
+        return raw_values.get("raw_total")

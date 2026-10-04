@@ -7,6 +7,7 @@ consistency improvement checks, signal scoring, and the correction engine.
 from datetime import datetime, timedelta
 
 import numpy as np
+import pytest
 
 from watermeter.correction import CorrectionEngine
 from watermeter.meter_state import MeterState
@@ -197,8 +198,36 @@ class TestHelperMethods:
         original = engine._recalculate_with_replacement(predictions, 'analog_1', '3.0', raw_values)
         replaced = engine._recalculate_with_replacement(predictions, 'analog_1', '7.0', raw_values)
 
-        # floor(3.0)*0.1 = 0.3, floor(7.0)*0.1 = 0.7 -> delta = 0.4
+        # cascade: 0.1 dial resolves to 2 (3.0 - 0.741) vs 6 (7.0 - 0.741) -> delta = 0.4
         assert abs(replaced - original - 0.4) < 1e-9
+
+    def test_recalculate_uses_carry_aware_cascade(self):
+        """Replacing the 0.01 dial with a rolled-over value changes the 0.1 dial's integer via the cascade."""
+        engine = make_engine()
+        predictions = {
+            'digit_1': {'id': 'digit_1', 'class': '0', 'confidence': 0.95, 'model': 'digits'},
+            'digit_2': {'id': 'digit_2', 'class': '5', 'confidence': 0.95, 'model': 'digits'},
+            'digit_3': {'id': 'digit_3', 'class': '6', 'confidence': 0.95, 'model': 'digits'},
+            'analog_1': {'id': 'analog_1', 'class': '5.2', 'confidence': 0.80, 'model': 'arrows'},
+            'analog_2': {'id': 'analog_2', 'class': '9.7', 'confidence': 0.40, 'model': 'arrows'},
+            'analog_3': {'id': 'analog_3', 'class': '0.3', 'confidence': 0.80, 'model': 'arrows'},
+            'analog_4': {'id': 'analog_4', 'class': '3.2', 'confidence': 0.80, 'model': 'arrows'},
+        }
+        assert engine._recalculate_with_replacement(predictions, 'analog_2', '9.7', {}) == pytest.approx(56.5003)
+
+    def test_recalculate_unresolvable_returns_none(self):
+        """A NAN digit without carry context makes the hypothetical reading unresolvable."""
+        engine = make_engine()
+        predictions = {
+            'digit_1': {'id': 'digit_1', 'class': '0', 'confidence': 0.95, 'model': 'digits'},
+            'digit_2': {'id': 'digit_2', 'class': '5', 'confidence': 0.95, 'model': 'digits'},
+            'digit_3': {'id': 'digit_3', 'class': '6', 'confidence': 0.95, 'model': 'digits'},
+            'analog_1': {'id': 'analog_1', 'class': '5.2', 'confidence': 0.80, 'model': 'arrows'},
+            'analog_2': {'id': 'analog_2', 'class': '9.7', 'confidence': 0.40, 'model': 'arrows'},
+            'analog_3': {'id': 'analog_3', 'class': '0.3', 'confidence': 0.80, 'model': 'arrows'},
+            'analog_4': {'id': 'analog_4', 'class': '3.2', 'confidence': 0.80, 'model': 'arrows'},
+        }
+        assert engine._recalculate_with_replacement(predictions, 'digit_3', 'NAN', {}) is None
 
     def test_get_ordered_position_ids(self):
         """Returns correct order for 3 digits + 4 arrows."""
