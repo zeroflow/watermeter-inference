@@ -174,6 +174,7 @@ class WatermeterService:
             get_active_model_fn=self._get_active_model_name,
             get_inference_duration_fn=lambda: self._last_inference_duration_ms,
             get_processing_duration_fn=lambda: self._last_processing_duration_s,
+            publish_fn=self.publish_to_mqtt,
         )
 
         # Correction engine (BL-04)

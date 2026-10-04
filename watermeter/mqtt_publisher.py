@@ -261,6 +261,9 @@ class MqttPublisher:
         get_active_model_fn: Optional callable(model_type: str) -> Optional[str].
         get_inference_duration_fn: Optional callable() -> Optional[int].
         get_processing_duration_fn: Optional callable() -> Optional[float].
+        publish_fn: Optional coroutine function used for confirmation replies, normally the
+            service's ``publish_to_mqtt`` (clamped to the published high-water mark). Falls back
+            to this publisher's unclamped ``publish_to_mqtt``.
     """
 
     def __init__(
@@ -274,6 +277,7 @@ class MqttPublisher:
         get_active_model_fn: Optional[Callable] = None,
         get_inference_duration_fn: Optional[Callable] = None,
         get_processing_duration_fn: Optional[Callable] = None,
+        publish_fn: Optional[Callable] = None,
     ) -> None:
         self.config = config
         self._meter_state = meter_state
@@ -284,6 +288,7 @@ class MqttPublisher:
         self._get_active_model_fn = get_active_model_fn
         self._get_inference_duration_fn = get_inference_duration_fn
         self._get_processing_duration_fn = get_processing_duration_fn
+        self._publish_fn = publish_fn
 
         self.mqtt_client = None
         self.loop = None
@@ -550,19 +555,21 @@ class MqttPublisher:
                 self._on_reset()
 
         elif topic == self._confirmation_manager.get_config()["response_topic"]:
+            # Replies publish through the service wrapper so HA never sees water_usage decrease.
+            publish_fn = self._publish_fn or self.publish_to_mqtt
             # Route through event loop to keep state mutations on the main thread
             if self.loop:
                 self.loop.call_soon_threadsafe(
                     self._confirmation_manager.handle_response,
                     payload,
                     self.loop,
-                    self.publish_to_mqtt,
+                    publish_fn,
                 )
             else:
                 self._confirmation_manager.handle_response(
                     payload,
                     loop=self.loop,
-                    publish_fn=self.publish_to_mqtt,
+                    publish_fn=publish_fn,
                 )
 
         elif topic == "homeassistant/status":

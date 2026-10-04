@@ -263,7 +263,8 @@ class ConfirmationManager:
             loop: asyncio event loop for scheduling publish coroutines.
             publish_fn: Coroutine function ``publish_to_mqtt(value, warnings,
                 predictions, *, leak_warning, raw_value)`` called on confirm /
-                correct paths.
+                reject / correct paths; normally the service's wrapper, which
+                clamps to the published high-water mark.
         """
         pending = self._pending_confirmation
         if pending is None:
@@ -344,11 +345,15 @@ class ConfirmationManager:
                 f"User corrected reading: {pending['value']:.4f} -> {corrected_value:.4f}"
             )
 
-            # Apply the corrected value
+            # Apply the corrected value. Like a manual set, the user's value is authoritative:
+            # it also becomes the published high-water mark (even if lower, even without MQTT).
             state.previous_value = corrected_value
             state.last_update_time = datetime.now()
+            state.published_high_water = corrected_value
             if self._state_store:
-                self._state_store.save(state.previous_value, state.last_update_time)
+                self._state_store.save(
+                    state.previous_value, state.last_update_time, published_value=corrected_value
+                )
 
             # Fix up rate_history: replace the last (optimistic) entry
             self._rate_tracker.replace_last(corrected_value, state.last_update_time)

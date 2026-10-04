@@ -690,6 +690,78 @@ class TestMqttMessageRouting:
         assert service.current_state['status'] == 'ok'
 
 
+class TestConfirmationRespectsHighWater:
+    """Final review I4: MQTT confirmation replies go through the service's clamped publish."""
+
+    RESPONSE_TOPIC = 'watermeter/confirmation_response'
+
+    def _wire(self, service, tmp_path, high_water=125.0, pending_value=123.456):
+        from unittest.mock import AsyncMock
+
+        from watermeter.persistence import StateStore
+
+        service._mqtt = MagicMock()  # raw publisher underneath WatermeterService.publish_to_mqtt
+        service._mqtt.publish_to_mqtt = AsyncMock()
+        service.state_store = StateStore(str(tmp_path / 'state.json'))
+        service._state.published_high_water = high_water
+        service.previous_value = pending_value
+        service.last_update_time = datetime.now()
+        service.rate_history = [(pending_value, datetime.now())]
+        service._pending_confirmation = {
+            'value': pending_value,
+            'warnings': ['test warning'],
+            'predictions': _make_predictions(),
+            'reason': 'test',
+            'timestamp': datetime.now(),
+            'previous_value_before': 123.0,
+            'last_update_time_before': datetime(2026, 2, 14, 12, 0),
+        }
+        publisher = MqttPublisher(
+            config={'mqtt': {'trigger_topic': 'watermeter/trigger', 'reset_topic': 'watermeter/reset'}},
+            meter_state=service._state,
+            rate_tracker=service._rate_tracker,
+            confirmation_manager=service._confirmation_manager,
+            on_trigger=MagicMock(),
+            on_reset=MagicMock(),
+            publish_fn=service.publish_to_mqtt,
+        )
+        return publisher
+
+    def _reply(self, publisher, payload):
+        import asyncio
+
+        async def run():
+            publisher.loop = asyncio.get_running_loop()
+            msg = MagicMock()
+            msg.topic = self.RESPONSE_TOPIC
+            msg.payload = payload.encode()
+            publisher.on_message(None, None, msg)
+            for _ in range(5):
+                await asyncio.sleep(0)
+
+        asyncio.run(run())
+
+    def test_confirm_is_clamped_to_high_water(self, service, tmp_path):
+        publisher = self._wire(service, tmp_path, high_water=125.0, pending_value=123.456)
+        self._reply(publisher, 'confirm')
+        assert service._mqtt.publish_to_mqtt.call_args.args[0] == 125.0
+
+    def test_correct_lowers_and_persists_high_water(self, service, tmp_path):
+        publisher = self._wire(service, tmp_path, high_water=125.0, pending_value=123.456)
+        self._reply(publisher, 'correct:120.0')
+        assert service._mqtt.publish_to_mqtt.call_args.args[0] == 120.0
+        assert service._state.published_high_water == 120.0
+        assert service.state_store.load_published_value() == 120.0
+
+    def test_correct_without_mqtt_still_lowers_high_water(self, service, tmp_path):
+        """Like a manual set, the user's correction is authoritative even when MQTT is down."""
+        self._wire(service, tmp_path, high_water=125.0, pending_value=123.456)
+        service._mqtt.loop = None
+        service._handle_confirmation_response('correct:120.0')
+        assert service._state.published_high_water == 120.0
+        assert service.state_store.load_published_value() == 120.0
+
+
 # ---------------------------------------------------------------------------
 # Tests: on_mqtt_connect subscribes to response topic
 # ---------------------------------------------------------------------------
