@@ -275,7 +275,7 @@ class TestOpenCVArrowsConfig:
 
         inference_props = CONFIG_SCHEMA["properties"]["inference"]["properties"]
         assert "arrows_mode" in inference_props
-        assert inference_props["arrows_mode"]["enum"] == ["model", "opencv"]
+        assert inference_props["arrows_mode"]["enum"] == ["model", "opencv", "calibrated"]
 
     def test_schema_has_opencv_arrows(self):
         from watermeter.config_utils import CONFIG_SCHEMA

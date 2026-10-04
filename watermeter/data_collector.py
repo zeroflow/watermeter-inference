@@ -8,6 +8,7 @@ persists counters to disk, and enforces configurable quotas.
 import copy
 import json
 import logging
+import math
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -37,6 +38,19 @@ def _defaultdict_to_dict(dd) -> dict:
     if isinstance(dd, defaultdict):
         return {k: _defaultdict_to_dict(v) for k, v in dd.items()}
     return dd
+
+
+def _training_label(model_type: str, predicted_class: str) -> str:
+    """Arrow training labels are floored 0.1 classes: a calibrated reading "3.47" is collected as "3.4"."""
+    if model_type != "arrows":
+        return predicted_class
+    try:
+        value = float(predicted_class)
+    except (TypeError, ValueError):
+        return predicted_class
+    if not math.isfinite(value):
+        return predicted_class
+    return f"{(math.floor(value * 10 + 1e-6) % 100) / 10:.1f}"
 
 
 class DataCollector:
@@ -121,6 +135,8 @@ class DataCollector:
         Returns:
             True if image was saved, False if skipped (quota or duplicate).
         """
+        predicted_class = _training_label(model_type, predicted_class)
+
         # 1. Quota check
         if not self.should_collect(model_type, roi_id, predicted_class):
             return False

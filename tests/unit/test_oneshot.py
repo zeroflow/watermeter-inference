@@ -166,7 +166,7 @@ class TestOneShotSuccess:
         mock_svc = _make_mock_inference_service(models_loaded=True)
         # Digits read NAN; arrows read a valid value so only the digit is unresolved (a NaN arrow would also be unresolved).
         mock_svc.predict_from_bytes = MagicMock(
-            side_effect=lambda model_type, _bytes: (
+            side_effect=lambda model_type, _bytes, **_kw: (
                 {"class": "NAN", "confidence": 0.9} if model_type == "digits" else {"class": "5.0", "confidence": 0.9}
             )
         )
@@ -516,7 +516,7 @@ class TestOneShotBinWidth:
         config_path = _write_config_yaml(str(tmp_path), _make_minimal_config())
         mock_svc = _make_mock_inference_service(models_loaded=True)
         mock_svc.predict_from_bytes = MagicMock(
-            side_effect=lambda model_type, _bytes: (
+            side_effect=lambda model_type, _bytes, **_kw: (
                 {"class": "1", "confidence": 0.9}
                 if model_type == "digits"
                 else {"class": "3.0", "confidence": 0.9, "bin_width": 1.0}

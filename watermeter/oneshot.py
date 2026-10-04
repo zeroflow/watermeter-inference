@@ -94,7 +94,7 @@ async def run_one_shot(config_path: str) -> int:
     predictions: Dict[str, Dict] = {}
     for image_id, (roi_bytes, model_type) in rois.items():
         try:
-            result = inference.predict_from_bytes(model_type, roi_bytes)
+            result = inference.predict_from_bytes(model_type, roi_bytes, image_id=image_id)
             predictions[image_id] = {
                 "id": image_id,
                 "class": result["class"],

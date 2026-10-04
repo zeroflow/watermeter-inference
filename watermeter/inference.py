@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 import openvino as ov
 
+from watermeter.calibrated_arrows import CalibratedArrowDetector
 from watermeter.opencv_arrows import OpenCVArrowDetector
 
 logger = logging.getLogger(__name__)
@@ -232,14 +233,16 @@ def _detect_training_mode(model_path: str) -> str:
     return "discrete"
 
 
-def _create_arrows_backend(config: dict) -> OpenCVArrowDetector | None:
-    """Create OpenCV arrow detector if arrows_mode is 'opencv', else None.
+def _create_arrows_backend(config: dict) -> OpenCVArrowDetector | CalibratedArrowDetector | None:
+    """Create the geometric arrow detector for arrows_mode 'opencv' or 'calibrated', else None.
 
     Returns None when the ML model path should be used instead.
     """
     inference_cfg = config.get("inference", {})
     mode = inference_cfg.get("arrows_mode", "model")
 
+    if mode == "calibrated":
+        return CalibratedArrowDetector.from_config(config)
     if mode != "opencv":
         return None
 
@@ -295,7 +298,7 @@ class InferenceService:
             opencv_detector = _create_arrows_backend(config)
             if opencv_detector is not None:
                 self._arrows_classifier = opencv_detector
-                logger.info("Arrows initialized in OPENCV mode (HSV + bisection)")
+                logger.info(f"Arrows initialized in {type(opencv_detector).__name__} mode")
             else:
                 arrows_path = inference_config["arrows_model"]
                 try:
@@ -375,7 +378,7 @@ class InferenceService:
                 opencv_detector = _create_arrows_backend(config)
                 if opencv_detector is not None:
                     new_arrows = opencv_detector
-                    logger.info("Arrows reloaded in OPENCV mode (HSV + bisection)")
+                    logger.info(f"Arrows reloaded in {type(opencv_detector).__name__} mode")
                 else:
                     new_arrows = None
                     arrows_path = inference_config["arrows_model"]
@@ -465,8 +468,12 @@ class InferenceService:
             else:
                 raise ValueError(f"Unknown model type: {model_type}")
 
-    def predict_from_bytes(self, model_type: str, image_bytes: bytes) -> dict:
-        """Run inference from raw image bytes without a disk round-trip."""
+    def predict_from_bytes(self, model_type: str, image_bytes: bytes, image_id: str | None = None) -> dict:
+        """Run inference from raw image bytes without a disk round-trip.
+
+        ``image_id`` (e.g. "analog_2") selects the per-dial calibration in arrows_mode 'calibrated';
+        other backends ignore it.
+        """
         with self._lock:
             if model_type == "digits":
                 if self._digits_classifier is None:
@@ -475,12 +482,16 @@ class InferenceService:
             elif model_type == "arrows":
                 if self._arrows_classifier is None:
                     raise RuntimeError("No arrows model loaded")
+                if isinstance(self._arrows_classifier, CalibratedArrowDetector):
+                    return self._arrows_classifier.predict_from_bytes(image_bytes, image_id=image_id)
                 return self._arrows_classifier.predict_from_bytes(image_bytes)
             else:
                 raise ValueError(f"Unknown model type: {model_type}")
 
-    def predict_detailed_from_bytes(self, model_type: str, image_bytes: bytes, top_k: int = 3) -> list:
-        """Run inference from raw image bytes and return top-K predictions."""
+    def predict_detailed_from_bytes(
+        self, model_type: str, image_bytes: bytes, top_k: int = 3, image_id: str | None = None
+    ) -> list:
+        """Run inference from raw image bytes and return top-K predictions (``image_id``: see predict_from_bytes)."""
         with self._lock:
             if model_type == "digits":
                 if self._digits_classifier is None:
@@ -489,6 +500,8 @@ class InferenceService:
             elif model_type == "arrows":
                 if self._arrows_classifier is None:
                     raise RuntimeError("No arrows model loaded")
+                if isinstance(self._arrows_classifier, CalibratedArrowDetector):
+                    return self._arrows_classifier.predict_detailed_from_bytes(image_bytes, top_k, image_id=image_id)
                 return self._arrows_classifier.predict_detailed_from_bytes(image_bytes, top_k)
             else:
                 raise ValueError(f"Unknown model type: {model_type}")

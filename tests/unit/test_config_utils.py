@@ -347,3 +347,30 @@ class TestPlausibilityReanchorSchema:
         result = self._validate({"reanchor_after": -1})
         assert result["valid"] is False
         assert "-1" in result["error"]
+
+
+class TestCalibratedArrowsSchema:
+    """arrows_mode 'calibrated' and its calibrated_arrows section."""
+
+    @staticmethod
+    def _config(**inference):
+        return {
+            "images": {"digits": [], "arrows": []},
+            "mqtt": {"broker": "x", "port": 1883},
+            "inference": {"confidence_threshold": 0.5, **inference},
+        }
+
+    def test_schema_accepts_calibrated_mode(self):
+        cfg = self._config(
+            arrows_mode="calibrated",
+            calibrated_arrows={"calibration_file": "/data/arrow_calibration.json", "tip_percentile": 95},
+        )
+        assert validate_config_schema(cfg)["valid"] is True
+
+    def test_schema_rejects_out_of_range_tip_percentile(self):
+        cfg = self._config(arrows_mode="calibrated", calibrated_arrows={"tip_percentile": 100})
+        assert validate_config_schema(cfg)["valid"] is False
+
+    def test_schema_rejects_unknown_calibrated_key(self):
+        cfg = self._config(calibrated_arrows={"bogus": 1})
+        assert validate_config_schema(cfg)["valid"] is False

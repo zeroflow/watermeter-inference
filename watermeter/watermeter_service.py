@@ -402,7 +402,7 @@ class WatermeterService:
                 if correction_config.get("enabled", False):
                     top_k_count = correction_config.get("top_k", 3)
                     top_k_results = get_inference_service().predict_detailed_from_bytes(
-                        image_class, image_bytes, top_k=top_k_count
+                        image_class, image_bytes, top_k=top_k_count, image_id=image_id
                     )
                     result = top_k_results[0]
                     predictions[image_id] = {
@@ -416,7 +416,7 @@ class WatermeterService:
                     if "bin_width" in result:
                         predictions[image_id]["bin_width"] = result["bin_width"]
                 else:
-                    result = get_inference_service().predict_from_bytes(image_class, image_bytes)
+                    result = get_inference_service().predict_from_bytes(image_class, image_bytes, image_id=image_id)
                     predictions[image_id] = {
                         "id": image_id,
                         "class": result["class"],

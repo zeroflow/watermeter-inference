@@ -370,9 +370,9 @@ def test_run_inference_keeps_bin_width(monkeypatch, correction_enabled):
     arrow = {"class": "3.0", "confidence": 0.9, "bin_width": 1.0}
     digit = {"class": "5", "confidence": 0.9}
     inference = MagicMock()
-    inference.predict_from_bytes = MagicMock(side_effect=lambda model, _b: dict(arrow if model == "arrows" else digit))
+    inference.predict_from_bytes = MagicMock(side_effect=lambda model, _b, **_kw: dict(arrow if model == "arrows" else digit))
     inference.predict_detailed_from_bytes = MagicMock(
-        side_effect=lambda model, _b, top_k: [dict(arrow if model == "arrows" else digit)]
+        side_effect=lambda model, _b, top_k, **_kw: [dict(arrow if model == "arrows" else digit)]
     )
     # the real module's globals (sys.modules holds the conftest mock again after import)
     monkeypatch.setitem(WatermeterService.run_inference.__globals__, "get_inference_service", lambda: inference)

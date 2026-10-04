@@ -82,11 +82,16 @@ inference:
   confidence_threshold: 0.8
   device: "AUTO"  # CPU, GPU, or AUTO
 
-  arrows_mode: "model"           # "model" (ML/OpenVINO) or "opencv" (color threshold)
-  # opencv_arrows:               # Settings for arrows_mode: "opencv"
+  arrows_mode: "model"           # "model" (ML/OpenVINO), "opencv" (color threshold) or "calibrated"
+  # opencv_arrows:               # Colour settings for arrows_mode "opencv" and "calibrated"
   #   hue_ranges: [[0, 15], [165, 180]]  # HSV hue ranges (red default)
   #   saturation_min: 50
   #   value_min: 50
+  # calibrated_arrows:           # arrows_mode "calibrated": most precise geometric reading.
+  #                              # Enable alignment.archive_raw_images, collect a day of frames (needles
+  #                              # should move), then POST /api/arrows/calibrate. Re-run after ROI changes.
+  #   calibration_file: "/data/arrow_calibration.json"
+  #   tip_percentile: 95         # outermost 5 % of needle pixels = tip
 
   # Data collection mode — fills training dataset with diverse images
   # Set enabled: true to start collecting, then label via /label page

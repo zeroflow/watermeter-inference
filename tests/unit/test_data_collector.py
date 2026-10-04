@@ -334,3 +334,26 @@ class TestCollect:
 
         counts = dc.get_counts()
         assert counts["arrows"]["analog_1"]["0.0"] == 2
+
+
+class TestArrowLabelFlooring:
+    """Calibrated arrows report 2 decimals; training labels stay floored 0.1 classes."""
+
+    def test_collect_floors_arrow_label(self, tmp_path):
+        dc = _make_collector(tmp_path)
+        assert dc.collect("arrows", "analog_1", "3.47", b"\xff\xd8jpeg") is True
+        files = list((tmp_path / "arrows" / "input").glob("*.jpg"))
+        assert len(files) == 1 and files[0].name.endswith("_label=3.4.jpg")
+        assert dc._counters["arrows"]["analog_1"]["3.4"] == 1
+
+    def test_collect_keeps_one_decimal_and_digit_labels(self, tmp_path):
+        dc = _make_collector(tmp_path)
+        dc.collect("arrows", "analog_1", "7.0", b"a")
+        dc.collect("digits", "digit_1", "NAN", b"b")
+        assert dc._counters["arrows"]["analog_1"]["7.0"] == 1
+        assert dc._counters["digits"]["digit_1"]["NAN"] == 1
+
+    def test_collect_floor_wraps_below_ten(self, tmp_path):
+        dc = _make_collector(tmp_path)
+        dc.collect("arrows", "analog_1", "9.99", b"a")
+        assert dc._counters["arrows"]["analog_1"]["9.9"] == 1

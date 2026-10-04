@@ -326,9 +326,32 @@ CONFIG_SCHEMA = {
                 "arrows_resolution": {"type": "integer", "description": "Input resolution for arrows"},
                 "arrows_mode": {
                     "type": "string",
-                    "enum": ["model", "opencv"],
-                    "description": "Arrow inference backend: 'model' (ML/OpenVINO) or 'opencv' (color threshold + circular mean)",
+                    "enum": ["model", "opencv", "calibrated"],
+                    "description": (
+                        "Arrow inference backend: 'model' (ML/OpenVINO), 'opencv' (color threshold around the crop "
+                        "centre) or 'calibrated' (needle tip around the calibrated pivot, interpolated between the "
+                        "scale ticks; needs POST /api/arrows/calibrate, falls back to 'opencv' per dial without it)"
+                    ),
                     "default": "model",
+                },
+                "calibrated_arrows": {
+                    "type": "object",
+                    "description": "Settings for arrows_mode='calibrated' (colour thresholds come from opencv_arrows)",
+                    "properties": {
+                        "calibration_file": {
+                            "type": "string",
+                            "description": "Calibration JSON written by POST /api/arrows/calibrate",
+                            "default": "/data/arrow_calibration.json",
+                        },
+                        "tip_percentile": {
+                            "type": "number",
+                            "minimum": 50,
+                            "maximum": 99.5,
+                            "description": "Needle pixels beyond this distance percentile count as the tip",
+                            "default": 95,
+                        },
+                    },
+                    "additionalProperties": False,
                 },
                 "opencv_arrows": {
                     "type": "object",
