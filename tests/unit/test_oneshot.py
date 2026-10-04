@@ -504,3 +504,31 @@ class TestOneShotOutput:
             result = await run_one_shot(config_path)
 
         assert result == 0
+
+
+class TestOneShotBinWidth:
+    """Final review C1: a discrete classifier's bin_width must reach calculate_total."""
+
+    @pytest.mark.asyncio
+    async def test_bin_width_passed_to_calculate_total(self, tmp_path):
+        from watermeter import oneshot
+
+        config_path = _write_config_yaml(str(tmp_path), _make_minimal_config())
+        mock_svc = _make_mock_inference_service(models_loaded=True)
+        mock_svc.predict_from_bytes = MagicMock(
+            side_effect=lambda model_type, _bytes: (
+                {"class": "1", "confidence": 0.9}
+                if model_type == "digits"
+                else {"class": "3.0", "confidence": 0.9, "bin_width": 1.0}
+            )
+        )
+        with (
+            patch("watermeter.oneshot.get_inference_service", return_value=mock_svc),
+            patch("watermeter.oneshot.ImagePipeline", return_value=_make_mock_image_pipeline()),
+            patch("watermeter.oneshot._calculate_total", wraps=oneshot._calculate_total) as calc,
+        ):
+            assert await run_one_shot(config_path) == 0
+
+        predictions = calc.call_args.args[1]
+        assert predictions["analog_1"]["bin_width"] == 1.0
+        assert "bin_width" not in predictions["digit_1"]

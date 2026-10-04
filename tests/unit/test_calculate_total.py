@@ -173,3 +173,57 @@ class TestUnreadablePositions:
         total, raw = calculate_total(CONFIG, p)
         assert total is None
         assert "analog_3: missing prediction" in raw["notes"]
+
+
+class TestDiscreteClassifierArrows:
+    """Final review C1: classifier arrow labels are floored, so class "k.0" means the needle is in [k, k+1)."""
+
+    @staticmethod
+    def floor_classifier_preds(units):
+        """Perfect floor classifier (c10, bin_width 1.0) at a true value of ``units`` * 1e-5 m³."""
+        digits = (units // 100000) % 1000
+        p = preds([digits // 100, (digits // 10) % 10, digits % 10], [])
+        for i in range(4):
+            dial = (units // 10 ** (4 - i)) % 10
+            p[f"analog_{i + 1}"] = {
+                "id": f"analog_{i + 1}",
+                "class": f"{dial}.0",
+                "confidence": 0.9,
+                "model": "arrows",
+                "bin_width": 1.0,
+            }
+        return p
+
+    def test_floor_classifier_sweep_is_exact_and_monotonic(self):
+        # true values 56.00000 .. 58.00000 m³ in steps of 0.0137 (in 1e-5 units)
+        previous = None
+        for units in range(5600000, 5800001, 1370):
+            total, raw = calculate_total(CONFIG, self.floor_classifier_preds(units))
+            # coarser dials resolved correctly: the total is the true value floored to the finest dial
+            assert total == pytest.approx((units // 10) / 10000, abs=1e-9), units
+            assert abs(raw["raw_total"] - units / 100000) <= 0.0001 + 1e-9, units
+            if previous is not None:
+                assert total >= previous
+            previous = total
+
+    def test_bin_width_centres_class_before_cascade(self):
+        # needle 0.1 dial in [3, 4) and 0.01 dial in [7, 8): true 0.37x, not 0.27x
+        p = preds([0, 5, 6], [])
+        for i, cls in enumerate(["3.0", "7.0", "0.0", "0.0"]):
+            p[f"analog_{i + 1}"] = {"class": cls, "confidence": 0.9, "model": "arrows", "bin_width": 1.0}
+        total, raw = calculate_total(CONFIG, p)
+        assert total == pytest.approx(56.3700)
+        assert raw["arrows"] == pytest.approx([3.5, 7.5, 0.5, 0.5])
+
+    def test_centring_wraps_mod_10(self):
+        p = preds([0, 5, 6], [])
+        for i, cls in enumerate(["9.9", "9.9"]):
+            p[f"analog_{i + 1}"] = {"class": cls, "confidence": 0.9, "model": "arrows", "bin_width": 0.2}
+        cfg = {"images": {"process_separate": False}, "detection": {"digits": {"count": 3}, "analogs": {"count": 2}}}
+        _, raw = calculate_total(cfg, p)
+        assert raw["arrows"] == pytest.approx([0.0, 0.0])
+
+    def test_continuous_predictions_unchanged(self):
+        total, raw = calculate_total(CONFIG, preds([0, 5, 6], [5.2, 9.7, 0.3, 3.2]))
+        assert total == pytest.approx(56.5003)
+        assert raw["arrows"] == [5.2, 9.7, 0.3, 3.2]

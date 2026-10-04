@@ -146,6 +146,7 @@ class TestOpenCVArrowDetector:
         assert "confidence" in result
         assert isinstance(result["class"], str)
         assert isinstance(result["confidence"], float)
+        assert "bin_width" not in result  # continuous reading: calculate_total does not centre it
 
     def test_predict_from_bytes_detects_value_3(self):
         """Arrow pointing at value 3 should be detected as ~3."""

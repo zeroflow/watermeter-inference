@@ -149,12 +149,14 @@ def calculate_total(
 
     Args:
         config: The watermeter configuration dict.
-        predictions: Position ID -> prediction dict with at least "class".
+        predictions: Position ID -> prediction dict with at least "class". Discrete classifier arrow
+            predictions also carry "bin_width" (their class is the floor of the needle position) and are
+            centred by half a bin; continuous (regressor/OpenCV) predictions are used as-is.
         previous_value: Last accepted reading, used to resolve NAN digits and rolling wheels.
 
     Returns:
         (total or None if unresolvable,
-         {"digits": resolved digits, "arrows": raw arrow floats, "notes": [...], "raw_total": float or None})
+         {"digits": resolved digits, "arrows": arrow floats (centred if discrete), "notes": [...], "raw_total": float or None})
     """
     digit_ids, arrow_ids = get_position_ids(config)
     notes: List[str] = []
@@ -199,6 +201,10 @@ def calculate_total(
             notes.append(f"{image_id}: no reading ({cls})")
             invalid = True
         else:
+            # Discrete classifier labels are floored (class k = needle in [k, k + bin_width)): centre them.
+            bin_width = predictions[image_id].get("bin_width") or 0.0
+            if bin_width:
+                value = (value + bin_width / 2) % 10
             arrows.append(value)
             used_arrow_ids.append(image_id)
 

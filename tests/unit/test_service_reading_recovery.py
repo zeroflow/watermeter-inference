@@ -337,6 +337,27 @@ def test_set_manual_value_resets_reanchor_candidates():
     assert svc.previous_value == pytest.approx(56.5999)
 
 
+@pytest.mark.parametrize("correction_enabled", [False, True])
+def test_run_inference_keeps_bin_width(monkeypatch, correction_enabled):
+    """Final review C1: a discrete classifier's bin_width must survive into the per-position predictions."""
+    arrow = {"class": "3.0", "confidence": 0.9, "bin_width": 1.0}
+    digit = {"class": "5", "confidence": 0.9}
+    inference = MagicMock()
+    inference.predict_from_bytes = MagicMock(side_effect=lambda model, _b: dict(arrow if model == "arrows" else digit))
+    inference.predict_detailed_from_bytes = MagicMock(
+        side_effect=lambda model, _b, top_k: [dict(arrow if model == "arrows" else digit)]
+    )
+    # the real module's globals (sys.modules holds the conftest mock again after import)
+    monkeypatch.setitem(WatermeterService.run_inference.__globals__, "get_inference_service", lambda: inference)
+    svc = object.__new__(WatermeterService)
+    svc.config = {"correction": {"enabled": correction_enabled, "top_k": 3}}
+
+    predictions = asyncio.run(svc.run_inference({"analog_1": (b"a", "arrows"), "digit_1": (b"d", "digits")}))
+
+    assert predictions["analog_1"]["bin_width"] == 1.0
+    assert "bin_width" not in predictions["digit_1"]
+
+
 # ---------------------------------------------------------------------------
 # Restore conftest mocks so subsequent test files in the same session see them.
 # (Done at module bottom so failures during imports above leave the mocks

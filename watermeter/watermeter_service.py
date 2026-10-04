@@ -412,6 +412,8 @@ class WatermeterService:
                         "image_bytes": image_bytes,
                         "top_k": top_k_results,
                     }
+                    if "bin_width" in result:
+                        predictions[image_id]["bin_width"] = result["bin_width"]
                 else:
                     result = get_inference_service().predict_from_bytes(image_class, image_bytes)
                     predictions[image_id] = {
@@ -421,6 +423,8 @@ class WatermeterService:
                         "model": image_class,
                         "image_bytes": image_bytes,
                     }
+                    if "bin_width" in result:  # discrete classifier arrows: floored class bin (calculate_total)
+                        predictions[image_id]["bin_width"] = result["bin_width"]
                 logger.debug(f"{image_id}: {result['class']} ({result['confidence']:.3f})")
             except Exception as e:
                 logger.error(f"Inference failed for {image_id}: {e}")

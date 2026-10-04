@@ -13,8 +13,26 @@ from watermeter.opencv_arrows import OpenCVArrowDetector
 logger = logging.getLogger(__name__)
 
 
+def arrow_bin_width(classes) -> float | None:
+    """Spacing of discrete arrow classes (1.0 for c10, 0.1 for c100); None if not numeric.
+
+    Discrete arrow labels are floored at training time, so class ``k`` covers ``[k, k + bin_width)``.
+    """
+    values = []
+    for cls in classes:
+        try:
+            values.append(float(cls))
+        except (TypeError, ValueError):
+            continue
+    values = sorted(set(values))
+    gaps = [b - a for a, b in zip(values, values[1:]) if b > a]
+    if not gaps:
+        return None
+    return round(min(gaps), 6)
+
+
 class Classifier:
-    def __init__(self, model_path, classes, resolution, label_config_tag, device="GPU"):
+    def __init__(self, model_path, classes, resolution, label_config_tag, device="GPU", bin_width=None):
         core = ov.Core()
         model = core.read_model(model_path)
         self.compiled = core.compile_model(model, device)
@@ -22,6 +40,14 @@ class Classifier:
         self.resolution = resolution
         self.label_config_tag = label_config_tag
         self.model_path = model_path
+        # Discrete arrow classifiers: width of the floored class bin (see arrow_bin_width); None for digits.
+        self.bin_width = bin_width
+
+    def _result(self, probs, idx) -> dict:
+        result = {"class": self.classes[idx], "confidence": float(probs[idx])}
+        if self.bin_width is not None:
+            result["bin_width"] = self.bin_width
+        return result
 
     def preprocess(self, image_path):
         img = cv2.imread(str(image_path))
@@ -52,7 +78,7 @@ class Classifier:
         exp_result = np.exp(result)
         probs = exp_result / exp_result.sum()
         idx = probs.argmax()
-        return {"class": self.classes[idx], "confidence": float(probs[idx])}
+        return self._result(probs, idx)
 
     def predict_from_bytes(self, image_bytes):
         img = self.preprocess_bytes(image_bytes)
@@ -61,7 +87,7 @@ class Classifier:
         exp_result = np.exp(result)
         probs = exp_result / exp_result.sum()
         idx = probs.argmax()
-        return {"class": self.classes[idx], "confidence": float(probs[idx])}
+        return self._result(probs, idx)
 
     def predict_detailed(self, image_path, top_k=3):
         """Return top-K predictions with softmax probabilities."""
@@ -74,7 +100,7 @@ class Classifier:
         k = min(top_k, len(self.classes))
         top_indices = probs.argsort()[::-1][:k]
 
-        return [{"class": self.classes[idx], "confidence": float(probs[idx])} for idx in top_indices]
+        return [self._result(probs, idx) for idx in top_indices]
 
     def predict_detailed_from_bytes(self, image_bytes, top_k=3):
         """Return top-K predictions from bytes without a disk round-trip."""
@@ -87,7 +113,7 @@ class Classifier:
         k = min(top_k, len(self.classes))
         top_indices = probs.argsort()[::-1][:k]
 
-        return [{"class": self.classes[idx], "confidence": float(probs[idx])} for idx in top_indices]
+        return [self._result(probs, idx) for idx in top_indices]
 
 
 class Regressor:
@@ -299,6 +325,7 @@ class InferenceService:
                             inference_config["arrows_resolution"],
                             "arrow_value",
                             device=inference_config.get("device", "GPU"),
+                            bin_width=arrow_bin_width(inference_config["arrows_classes"]),
                         )
                         logger.info("Arrows model initialized in CLASSIFICATION mode")
                 except Exception as e:
@@ -378,6 +405,7 @@ class InferenceService:
                                 inference_config["arrows_resolution"],
                                 "arrow_value",
                                 device=inference_config.get("device", "GPU"),
+                                bin_width=arrow_bin_width(inference_config["arrows_classes"]),
                             )
                             logger.info("Arrows model reloaded in CLASSIFICATION mode")
                     except Exception as e:

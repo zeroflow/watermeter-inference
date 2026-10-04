@@ -102,6 +102,8 @@ async def run_one_shot(config_path: str) -> int:
                 "model": model_type,
                 "image_bytes": roi_bytes,
             }
+            if "bin_width" in result:  # discrete classifier arrows: floored class bin (calculate_total)
+                predictions[image_id]["bin_width"] = result["bin_width"]
             logger.debug(f"{image_id}: {result['class']} ({result['confidence']:.3f})")
         except Exception as e:
             logger.error(f"Inference failed for {image_id}: {e}")
