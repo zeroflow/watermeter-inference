@@ -1173,6 +1173,29 @@
             }
         }
 
+        const ARROWS_MODE_HINTS = {
+            model: 'Arrows are read by the active ML model.',
+            opencv: 'Arrows are read by colour threshold around the crop centre.',
+            calibrated: 'Collect frames and calibrate in the <a href="/calibration">Calibration tab</a> '
+                + '(until then dials fall back to OpenCV).',
+        };
+
+        async function setArrowsMode(mode) {
+            const hint = document.getElementById('arrows-mode-hint');
+            try {
+                const response = await fetch('/api/config/arrows-mode', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode: mode })
+                });
+                const data = await response.json();
+                if (!data.success) throw new Error(data.message);
+                hint.innerHTML = ARROWS_MODE_HINTS[mode] || '';
+            } catch (e) {
+                hint.textContent = 'Could not switch: ' + e.message;
+            }
+        }
+
         async function saveAnalogs() {
             const count = getAnalogCount();
 

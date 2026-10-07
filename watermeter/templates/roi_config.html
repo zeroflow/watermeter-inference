@@ -266,6 +266,18 @@
                     <div id="analogs-preview-saved" class="analogs-preview-saved">
                         <!-- Dynamically generated saved previews -->
                     </div>
+                    {% set amode = arrows_mode() if arrows_mode is defined else 'model' %}
+                    <div class="arrows-mode-row">
+                        <label for="arrows-mode-select">Arrow reading</label>
+                        <select id="arrows-mode-select" onchange="setArrowsMode(this.value)">
+                            <option value="model"{{ ' selected' if amode == 'model' }}>ML model</option>
+                            <option value="opencv"{{ ' selected' if amode == 'opencv' }}>OpenCV (colour threshold)</option>
+                            <option value="calibrated"{{ ' selected' if amode == 'calibrated' }}>Calibrated (most precise)</option>
+                        </select>
+                        <span id="arrows-mode-hint" class="arrows-mode-hint">
+                            {%- if amode == 'calibrated' %}Calibrate in the <a href="/calibration">Calibration tab</a>.{% endif -%}
+                        </span>
+                    </div>
                 </div>
 
                 <div id="analogs-disabled" class="step-content">

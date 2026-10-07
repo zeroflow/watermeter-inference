@@ -121,6 +121,17 @@
         </svg>
         <span class="nav-label">ROI</span>
     </a>
+    {% if arrows_mode is defined and arrows_mode() == 'calibrated' %}
+    <a href="/calibration" class="nav-item{{ ' active' if active == 'calibration' else '' }}">
+        <svg class="nav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a10 10 0 1 0 10 10"/>
+            <path d="M12 12l6-6"/>
+            <circle cx="12" cy="12" r="2"/>
+            <path d="M16 2h6v6"/>
+        </svg>
+        <span class="nav-label">Calib</span>
+    </a>
+    {% endif %}
     <a href="/config-editor" class="nav-item{{ ' active' if active == 'config' else '' }}">
         <svg class="nav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"/>

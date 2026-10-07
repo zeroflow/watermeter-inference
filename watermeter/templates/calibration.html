@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="auto">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calibration - AI Water Meter</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💧</text></svg>">
+    {% include '_theme.html' %}
+</head>
+<body>
+    {% include '_nav.html' %}
+    <div class="container">
+        <header>
+            <h1>Arrow Calibration</h1>
+            <div class="header-actions">
+                <span id="cal-badge" class="cal-badge cal-badge-idle">{{ 'Loading…' if mode_active else 'Inactive' }}</span>
+            </div>
+        </header>
+
+        <main class="cal-content">
+        {% if not mode_active %}
+            <section class="cal-section">
+                <h2>Calibrated arrow reading is not active</h2>
+                <p class="cal-hint">
+                    This page calibrates the arrow dials for the <strong>Calibrated</strong> arrow reading mode
+                    (needle tip around the measured pivot, interpolated between the scale ticks).
+                    Switch <em>Arrow reading</em> to <em>Calibrated</em> in the
+                    <a href="/roi-config">ROI setup</a> (Analogs step) to use it.
+                </p>
+            </section>
+        {% else %}
+            <div id="cal-message" class="cal-message" hidden></div>
+
+            <section class="cal-section" id="cal-status">
+                <h2>Status</h2>
+                <div id="status-body" class="cal-status-body">Loading…</div>
+            </section>
+
+            <section class="cal-section" id="cal-collect">
+                <h2>1. Collect frames</h2>
+                <p class="cal-hint">Every camera image is stored while collecting. The needles have to turn for the
+                    pivot to be measured, so collect while water is used (a day of normal use is ideal).</p>
+                <div id="collect-idle">
+                    <div class="cal-target">
+                        <label class="cal-radio">
+                            <input type="radio" name="target-type" value="hours" checked>
+                            Duration <input type="number" id="target-hours" min="1" max="336" step="1" value="24"> h
+                        </label>
+                        <label class="cal-radio">
+                            <input type="radio" name="target-type" value="frames">
+                            Count <input type="number" id="target-frames" min="20" max="5000" step="10" value="500"> frames
+                        </label>
+                        <button id="collect-start" class="btn btn-primary">Start collecting</button>
+                    </div>
+                </div>
+                <div id="collect-running" hidden>
+                    <div class="cal-progress"><div id="collect-bar" class="cal-progress-bar"></div></div>
+                    <div class="cal-row">
+                        <span id="collect-text" class="cal-progress-text"></span>
+                        <button id="collect-stop" class="btn btn-secondary">Stop</button>
+                    </div>
+                </div>
+            </section>
+
+            <section class="cal-section" id="cal-run">
+                <h2>2. Calibrate</h2>
+                <p class="cal-hint">Starts automatically when the collection target is reached.</p>
+                <div class="cal-row">
+                    <button id="run-btn" class="btn btn-primary" disabled>Calibrate now</button>
+                    <span id="run-text" class="cal-progress-text"></span>
+                </div>
+                <div id="run-progress" class="cal-progress" hidden><div id="run-bar" class="cal-progress-bar"></div></div>
+            </section>
+
+            <section class="cal-section" id="cal-dials">
+                <h2>3. Dials</h2>
+                <p class="cal-hint">Latest reading with the calibration drawn on top: scale ticks and ellipse (white),
+                    needle tip (cyan) and pivot (cross). If a pivot is off, use <em>Set pivot</em> and click the
+                    centre of the needle hub.</p>
+                <div id="dial-grid" class="cal-dial-grid"></div>
+            </section>
+        {% endif %}
+        </main>
+    </div>
+    {% if mode_active %}
+    <script src="/static/calibration.js"></script>
+    {% endif %}
+</body>
+</html>

@@ -12,7 +12,22 @@ from ..inference import get_inference_service
 router = APIRouter()
 
 _pkg_dir = Path(__file__).resolve().parent.parent
+
+
+def current_arrows_mode() -> str:
+    """inference.arrows_mode of the running service ("model" when unknown); used by the nav."""
+    try:
+        return watermeter_service.get_service().config.get("inference", {}).get("arrows_mode", "model") or "model"
+    except Exception:
+        return "model"
+
+
+def register_template_globals(tmpl: Jinja2Templates) -> None:
+    tmpl.env.globals["arrows_mode"] = current_arrows_mode
+
+
 templates = Jinja2Templates(directory=str(_pkg_dir / "templates"))
+register_template_globals(templates)
 
 
 @router.get(
@@ -134,4 +149,20 @@ async def get_status_html(request: Request):
         request,
         "status_fragment.html",
         context=state,
+    )
+
+
+@router.get(
+    "/calibration",
+    response_class=HTMLResponse,
+    tags=["Pages"],
+    summary="Arrow calibration page",
+    description="Collect calibration frames, calibrate the arrow dials and review/correct the result",
+)
+async def calibration_page(request: Request):
+    """Render the calibration tab (a hint only when arrows_mode is not 'calibrated')."""
+    return templates.TemplateResponse(
+        request,
+        "calibration.html",
+        context={"nav_active": "calibration", "mode_active": current_arrows_mode() == "calibrated"},
     )
