@@ -20,7 +20,7 @@ AI-powered water meter reader with live dashboard, built-in model training, and 
 ## Features
 
 - **AI-Powered Reading**: Digit classification and analog arrow regression using OpenVINO inference; supports CPU and Intel GPU
-- **Calibrated Arrow Reading** (`inference.arrows_mode: calibrated`): geometric needle reading around the calibrated pivot (parallax-corrected), interpolated between the detected scale ticks — calibrated once from the raw-image archive via `POST /api/arrows/calibrate`
+- **Calibrated Arrow Reading** (`inference.arrows_mode: calibrated`, switchable on the ROI page): geometric needle reading around the calibrated pivot (parallax-corrected), interpolated between the detected scale ticks. The **Calib** tab collects frames (duration or frame target), calibrates automatically, shows a per-dial overlay preview and lets you correct a needle pivot by click
 - **Live Dashboard**: Real-time meter readings via HTMX polling, confidence color-coding, and per-position image previews
 - **Model Training**: Built-in web UI backed by PyTorch and timm; 16 architectures across 3 tiers; training queue with auto-benchmark after each job
 - **Smart Validation**: Multi-stage correction engine — spatial consistency checks, cross-arrow validation, temporal plausibility limits
@@ -74,6 +74,10 @@ GET  /api/status                          Current reading and system state (full
 POST /api/trigger                         Trigger an immediate reading cycle
 POST /api/arrows/calibrate                Calibrate the arrow dials from the raw-image archive
 GET  /api/arrows/calibration              Current arrow calibration and its report
+GET  /api/calibration/status              Calibration tab: collection, job and per-dial summary
+POST /api/calibration/collect/start       Start collecting calibration frames {type: hours|frames, value}
+POST /api/calibration/run                 Calibrate from the collected frames
+POST /api/config/arrows-mode              Switch the arrow reading mode {mode}
 POST /api/set-value                       Manually override the meter value
 POST /api/training/start                  Enqueue a training job
 POST /api/models/{type}/{id}/activate     Set a model as active

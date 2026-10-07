@@ -245,7 +245,8 @@ See `backlog_archiv.md` for completed items (BL-01 through BL-25).
   - **Effort**: M
 
 - **BL-83** `done` — **Calibrated arrows mode**: `inference.arrows_mode: calibrated` reads the needle tip around the calibrated pivot and interpolates between the detected scale ticks. Calibration (ticks, pivot via needle-axis intersection plus a radial parallax model for slow dials, offsets via cross-arrow consistency) comes from the raw archive via `POST /api/arrows/calibrate` or `scripts/calibrate_arrows.py`. On 875 debug frames, the cross-arrow MAE went from 0.146 (opencv) to 0.022 held-out.
-  - Open: UI button for calibration on the ROI page; recalibration hint in the dashboard when dials fall back to opencv.
+  - UI: Calib tab (collection session with duration/frame target, auto-calibration, overlay preview, manual pivot) + arrows-mode select on the ROI page — `docs/plans/2026-10-07-calibration-tab-design.md`.
+  - Open: recalibration hint on the dashboard when dials fall back to opencv.
   - **Ref**: `docs/plans/2026-10-04-calibrated-arrows.md`, `watermeter/arrow_calibration.py`, `watermeter/calibrated_arrows.py`
   - **Effort**: L
 
