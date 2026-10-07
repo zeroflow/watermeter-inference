@@ -2093,7 +2093,7 @@ main {
     flex-wrap: wrap;
     align-items: center;
     gap: 8px 12px;
-    margin-top: 1rem;
+    margin: 1rem 0;
     color: var(--text-dark);
 }
 .arrows-mode-row select {

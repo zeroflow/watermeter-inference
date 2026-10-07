@@ -231,10 +231,10 @@
     function marker(img, x, y) {
         const m = document.createElement('div');
         m.className = 'cal-pivot-marker';
+        // percentages of the image size: independent of layout (the card may not be in the DOM yet)
         const place = () => {
-            const sx = img.clientWidth / img.naturalWidth, sy = img.clientHeight / img.naturalHeight;
-            m.style.left = (x * sx) + 'px';
-            m.style.top = (y * sy) + 'px';
+            m.style.left = (100 * x / img.naturalWidth) + '%';
+            m.style.top = (100 * y / img.naturalHeight) + '%';
         };
         if (img.complete && img.naturalWidth) place(); else img.addEventListener('load', place);
         return m;
