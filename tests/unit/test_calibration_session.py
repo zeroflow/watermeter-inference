@@ -253,3 +253,13 @@ def test_clear_override(env):
     s.clear_pivot_override("analog_1")
     assert env["cal"].calls[-1]["pivot_overrides"] == {}
     assert json.loads((env["dir"] / "cal.json").read_text())["pivot_overrides"] == {}
+
+
+def test_timestamps_carry_timezone(env):
+    """The container runs in UTC; the browser must not read naive timestamps as local time."""
+    s = env["make"]()
+    s.start("frames", 100)
+    _feed(s, 1)
+    st = s.status()
+    for ts in (st["started_at"], st["last_frame_at"]):
+        assert datetime.fromisoformat(ts).tzinfo is not None

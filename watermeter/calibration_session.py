@@ -99,8 +99,12 @@ class CalibrationSession:
         tmp.write_text(json.dumps(self._state, indent=2))
         os.replace(tmp, self.state_path)
 
+    def _now(self) -> datetime:
+        """Timezone-aware now (the container runs in UTC; the browser shows local time)."""
+        return self._clock().astimezone()
+
     def _now_iso(self) -> str:
-        return self._clock().isoformat(timespec="seconds")
+        return self._now().isoformat(timespec="seconds")
 
     # --- collection -------------------------------------------------------------------------------
 
@@ -151,7 +155,9 @@ class CalibrationSession:
             return self._state["frames"] >= target["value"]
         if target.get("type") == "hours":
             started = datetime.fromisoformat(self._state["started_at"])
-            return self._clock() - started >= timedelta(hours=target["value"])
+            if started.tzinfo is None:  # state written by an older version
+                started = started.astimezone()
+            return self._now() - started >= timedelta(hours=target["value"])
         return False
 
     def on_frame(self, image_bytes: bytes, aligned: bool) -> None:
@@ -160,7 +166,7 @@ class CalibrationSession:
             if not self._state["collecting"]:
                 return
             self.frames_dir.mkdir(parents=True, exist_ok=True)
-            stem = self._clock().strftime("%Y%m%d-%H%M%S-%f")
+            stem = self._now().strftime("%Y%m%d-%H%M%S-%f")
             target, n = self.frames_dir / f"{stem}.jpg", 1
             while target.exists():  # same timestamp (coarse clock): keep both
                 target, n = self.frames_dir / f"{stem}_{n}.jpg", n + 1

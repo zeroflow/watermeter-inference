@@ -567,7 +567,7 @@ def save_calibration(path, dials: dict, report: dict, pivot_overrides: dict | No
     path.parent.mkdir(parents=True, exist_ok=True)
     doc = {
         "version": CALIBRATION_VERSION,
-        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "dials": {rid: d.to_dict() for rid, d in dials.items()},
         "report": report,
         "pivot_overrides": pivot_overrides or {},

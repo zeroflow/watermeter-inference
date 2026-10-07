@@ -293,3 +293,11 @@ def test_no_needle_movement_fails_instead_of_degrading(ac, cv2):
     crops = {k: [render_dial(cv2, 3.0 + 0.001 * i, shift=(10.0, -12.0), seed=i) for i in range(25)] for k in ARROW_IDS}
     with pytest.raises(ac.CalibrationError, match="needles"):
         ac.calibrate_dials(crops, ROIS, ARROW_IDS)
+
+
+def test_calibration_created_at_has_timezone(ac, tmp_path):
+    import json as _json
+    from datetime import datetime as _dt
+
+    ac.save_calibration(tmp_path / "c.json", {"analog_2": _true_dial(ac)}, {})
+    assert _dt.fromisoformat(_json.loads((tmp_path / "c.json").read_text())["created_at"]).tzinfo is not None
