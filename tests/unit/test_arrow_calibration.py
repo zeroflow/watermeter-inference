@@ -286,3 +286,10 @@ def test_render_overlay_shape_and_draws(ac, cv2):
 def test_render_overlay_without_dial_returns_crop(ac, cv2):
     crop = render_dial(cv2, 3.3)
     assert np.array_equal(ac.render_overlay(crop, None), crop)
+
+
+def test_no_needle_movement_fails_instead_of_degrading(ac, cv2):
+    """All needles static -> no pivot can be measured -> refuse rather than write a scale-centre calibration."""
+    crops = {k: [render_dial(cv2, 3.0 + 0.001 * i, shift=(10.0, -12.0), seed=i) for i in range(25)] for k in ARROW_IDS}
+    with pytest.raises(ac.CalibrationError, match="needles"):
+        ac.calibrate_dials(crops, ROIS, ARROW_IDS)

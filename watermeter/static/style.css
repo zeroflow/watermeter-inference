@@ -2082,6 +2082,10 @@ main {
     gap: 8px;
 }
 .cal-dial-actions .btn { padding: 6px 12px; font-size: 13px; }
+.cal-content .btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
 
 /* ROI page: arrow reading mode */
 .arrows-mode-row {

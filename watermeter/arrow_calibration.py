@@ -490,6 +490,11 @@ def calibrate_dials(
         pivots[rid] = (np.asarray(p), 0.0)  # a manual pivot is as good as a measured one
 
     good = [r for r in geo if r in rois and pivots[r][1] <= MAX_PIVOT_CONDITION]
+    if not good and not any(pivots[r][1] <= MAX_PIVOT_CONDITION for r in geo):
+        # without any measured pivot every dial would fall back to the scale centre, which reads worse than opencv
+        raise CalibrationError(
+            "the needles did not turn enough to measure their pivots -- collect longer while water is used"
+        )
     samples = [(full_position(r)[0], np.asarray(pivots[r][0]) - np.asarray(geo[r]["centre"])) for r in good]
     parallax = None
     if samples:
