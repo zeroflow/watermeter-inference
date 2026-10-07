@@ -169,6 +169,16 @@ def measure(mask: np.ndarray, dial: DialCalibration, tip_percentile: float = DEF
     return value, confidence
 
 
+def decode_image(data: bytes):
+    """JPEG/PNG bytes -> BGR image (None if undecodable)."""
+    return cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+
+
+def encode_jpeg(img: np.ndarray, quality: int = 90) -> bytes:
+    """BGR image -> JPEG bytes."""
+    return cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, quality])[1].tobytes()
+
+
 _SOURCE_COLOURS = {  # BGR
     "needle_axes": (60, 180, 60),
     "manual": (230, 140, 30),

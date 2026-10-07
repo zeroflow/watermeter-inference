@@ -19,6 +19,7 @@ from typing import Dict, List, Optional, Tuple
 import yaml
 
 from .calibrated_arrows import analog_rois_from_config
+from .calibration_session import CalibrationSession
 from .confirmation import ConfirmationManager
 from .correction import CorrectionEngine
 from .data_collector import DataCollector
@@ -188,6 +189,11 @@ class WatermeterService:
         # Timing instrumentation (populated by process_reading, published via MQTT)
         self._last_inference_duration_ms: Optional[int] = None
         self._last_processing_duration_s: Optional[float] = None
+
+        # Calibration frame collection + background arrow calibration (calibration tab)
+        self.calibration_session = CalibrationSession(
+            Path("/data"), get_config=lambda: self.config, on_calibrated=self._on_arrows_calibrated
+        )
 
         # Raw-image archive retention sweep state (see _archive_raw_image).
         # Tracks the date of the last sweep so we only walk the archive dir once per day.
@@ -711,6 +717,7 @@ class WatermeterService:
                     images, alignment = await asyncio.get_running_loop().run_in_executor(
                         None, self.process_whole_image, whole_image
                     )
+                    await self._feed_calibration_session(whole_image, alignment.success)
                     # Fail-closed: if alignment failed, persist + short-circuit before inference.
                     if not alignment.success:
                         self._failure_store.record_failure(
@@ -1256,6 +1263,20 @@ class WatermeterService:
     def start_mqtt(self):
         """Delegate to MqttPublisher."""
         self._mqtt.start()
+
+    def _on_arrows_calibrated(self, config: dict) -> None:
+        """A new arrow calibration was written: rebuild the backend when it is in use."""
+        if config.get("inference", {}).get("arrows_mode") == "calibrated":
+            get_inference_service().reload_models(config)
+
+    async def _feed_calibration_session(self, whole_image: bytes, aligned: bool) -> None:
+        """Hand the raw frame to the calibration collection; never lets it fail the reading."""
+        try:
+            await asyncio.get_running_loop().run_in_executor(
+                None, self.calibration_session.on_frame, whole_image, aligned
+            )
+        except Exception as e:
+            logger.warning(f"Calibration frame collection failed: {e}")
 
     @staticmethod
     def _arrow_backend_settings(config: dict) -> tuple:

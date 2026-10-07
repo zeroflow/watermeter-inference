@@ -294,3 +294,29 @@ for _ws_name, _ws_mock in _saved_ws_mocks.items():
     _attr = _ws_name.split(".")[-1]
     if hasattr(_wm_pkg, _attr):
         setattr(_wm_pkg, _attr, _ws_mock)
+
+
+# ---------------------------------------------------------------------------
+# Calibration collection hook: every whole image goes to the session with its alignment outcome
+# ---------------------------------------------------------------------------
+
+
+def test_unaligned_frame_handed_to_calibration_session():
+    align = AlignmentResult(success=False, error_reason="low_confidence", marker_confidences=[0.2])
+    svc = _make_service_with_alignment_failure(align)
+    svc.calibration_session = MagicMock()
+
+    asyncio.run(svc.process_reading())
+
+    svc.calibration_session.on_frame.assert_called_once_with(b"fake jpeg bytes", False)
+
+
+def test_calibration_session_error_does_not_break_reading():
+    align = AlignmentResult(success=False, error_reason="low_confidence", marker_confidences=[0.2])
+    svc = _make_service_with_alignment_failure(align)
+    svc.calibration_session = MagicMock()
+    svc.calibration_session.on_frame.side_effect = OSError("disk full")
+
+    asyncio.run(svc.process_reading())
+
+    assert svc.current_state.get("status") == "alignment_failed"

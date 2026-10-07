@@ -97,3 +97,41 @@ async def save_config(submission: ConfigSaveSubmission):
 async def get_config_schema():
     """Get JSON schema for config validation (used by Monaco editor)."""
     return JSONResponse(config_utils.get_config_schema())
+
+
+ARROWS_MODES = ("model", "opencv", "calibrated")
+
+
+class ArrowsModeSubmission(BaseModel):
+    """Request model for switching the arrow reading backend."""
+
+    mode: str
+
+
+@router.post(
+    "/api/config/arrows-mode",
+    tags=["Configuration"],
+    summary="Switch arrow reading mode",
+    description="Set inference.arrows_mode ('model', 'opencv' or 'calibrated'), keep comments, apply immediately",
+)
+async def set_arrows_mode(submission: ArrowsModeSubmission):
+    """Switch inference.arrows_mode and hot-reload (the arrow backend is rebuilt by reload_config)."""
+    if submission.mode not in ARROWS_MODES:
+        return JSONResponse(
+            {"success": False, "message": f"mode must be one of {', '.join(ARROWS_MODES)}"}, status_code=400
+        )
+    try:
+        config_path = Path("config.yaml")
+
+        def _update(config):
+            config.setdefault("inference", {})["arrows_mode"] = submission.mode
+
+        config_utils.update_config(config_path, _update)
+        with open(config_path, "r") as f:
+            plain_config = yaml.safe_load(f)
+        watermeter_service.get_service().reload_config(plain_config)
+        logger.info(f"Arrow reading mode set to {submission.mode}")
+        return JSONResponse({"success": True, "mode": submission.mode})
+    except Exception as e:
+        logger.error(f"Error switching arrows mode: {e}")
+        return JSONResponse({"success": False, "message": f"Error: {e}"}, status_code=500)
