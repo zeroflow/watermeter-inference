@@ -215,3 +215,74 @@ def test_calibrate_from_archive_spreads_frames(ac, tmp_path, monkeypatch):
         ac.calibrate_from_archive({"detection": {"analogs": {"rois": []}}}, tmp_path, max_frames=4)
     # evenly spread over the whole archive (more needle rotation -> better pivot fit), oldest + newest included
     assert seen == ["2026-10-01-0", "2026-10-01-3", "2026-10-02-1", "2026-10-02-4"]
+
+
+def test_pivot_override_manual_source(ac, cv2):
+    crops, shifts = _synthetic_session(cv2)
+    true_pivot = [CENTRE[0] + shifts["analog_1"][0], CENTRE[1] + shifts["analog_1"][1]]
+    overrides = {"analog_1": {"pivot": true_pivot, "roi": ROIS["analog_1"]}}
+    dials, report = ac.calibrate_dials(crops, ROIS, ARROW_IDS, pivot_overrides=overrides)
+    assert dials["analog_1"].pivot_source == "manual"
+    assert dials["analog_1"].pivot == tuple(true_pivot)
+    assert report["dials"]["analog_1"]["pivot_source"] == "manual"
+    assert report["calibrated"]["mae_after"] < 0.02
+
+
+def test_stale_override_ignored(ac, cv2):
+    crops, _ = _synthetic_session(cv2)
+    moved = dict(ROIS["analog_1"], x=0.5)
+    overrides = {"analog_1": {"pivot": [10.0, 10.0], "roi": moved}}
+    dials, report = ac.calibrate_dials(crops, ROIS, ARROW_IDS, pivot_overrides=overrides)
+    assert dials["analog_1"].pivot_source == "parallax"
+    assert report["dials"]["analog_1"]["override_ignored"] is True
+
+
+def test_progress_callback_called(ac, cv2):
+    crops, _ = _synthetic_session(cv2, n=12)
+    calls = []
+    try:
+        ac.calibrate_dials(crops, ROIS, ARROW_IDS, progress=lambda *a: calls.append(a))
+    except ac.CalibrationError:
+        pass  # too little rotation in 12 frames is fine here; progress must still be reported
+    measure = [c for c in calls if c[0] == "measure"]
+    assert measure and measure[-1][1:] == (4, 4)
+
+
+def test_archive_progress_reports_align(ac, tmp_path, monkeypatch):
+    (tmp_path / "d").mkdir()
+    for i in range(3):
+        (tmp_path / "d" / f"{i}.jpg").write_bytes(b"x")
+
+    class StubPipeline:
+        def __init__(self, config):
+            pass
+
+        def process_whole_image(self, data):
+            return None, type("A", (), {"success": False})()
+
+    monkeypatch.setattr(ac, "ImagePipeline", StubPipeline)
+    calls = []
+    with pytest.raises(ac.CalibrationError):
+        ac.calibrate_from_archive({}, tmp_path, progress=lambda *a: calls.append(a))
+    assert calls == [("align", 1, 3), ("align", 2, 3), ("align", 3, 3)]
+
+
+def test_overrides_roundtrip(ac, tmp_path):
+    path = tmp_path / "cal.json"
+    assert ac.load_pivot_overrides(path) == {}
+    ov = {"analog_1": {"pivot": [127.0, 134.5], "roi": ROIS["analog_1"]}}
+    ac.save_calibration(path, {"analog_2": _true_dial(ac)}, {}, pivot_overrides=ov)
+    assert ac.load_pivot_overrides(path) == ov
+    assert set(ac.load_calibration(path)) == {"analog_2"}
+
+
+def test_render_overlay_shape_and_draws(ac, cv2):
+    crop = render_dial(cv2, 3.3, shift=(12.0, -15.0))
+    out = ac.render_overlay(crop, _true_dial(ac))
+    assert out.shape == crop.shape
+    assert np.count_nonzero(np.any(out != crop, axis=2)) > 500
+
+
+def test_render_overlay_without_dial_returns_crop(ac, cv2):
+    crop = render_dial(cv2, 3.3)
+    assert np.array_equal(ac.render_overlay(crop, None), crop)

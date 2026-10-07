@@ -55,6 +55,11 @@ def gauge_angle(dx, dy):
     return np.degrees(np.arctan2(dx, -dy)) % 360.0
 
 
+def _same_roi(a: dict, b: dict) -> bool:
+    """Same normalised ROI (x, y, width, height)."""
+    return all(abs(float(a.get(k, -1)) - float(b.get(k, -2))) < 1e-6 for k in ("x", "y", "width", "height"))
+
+
 def _wrap(x, period=10.0):
     return (np.asarray(x) + period / 2) % period - period / 2
 
@@ -162,6 +167,55 @@ def measure(mask: np.ndarray, dial: DialCalibration, tip_percentile: float = DEF
     confidence = min(1.0, math.hypot(sx, sy) / float(w.sum()))
     value = (dial.angle_to_value(angle) + dial.offset) % 10.0
     return value, confidence
+
+
+_SOURCE_COLOURS = {  # BGR
+    "needle_axes": (60, 180, 60),
+    "manual": (230, 140, 30),
+    "parallax": (40, 200, 230),
+    "tick_centre": (40, 40, 230),
+}
+
+
+def render_overlay(
+    crop_bgr: np.ndarray,
+    dial: "DialCalibration | None",
+    hue_ranges=None,
+    saturation_min: int = 50,
+    value_min: int = 50,
+    tip_percentile: float = DEFAULT_TIP_PERCENTILE,
+) -> np.ndarray:
+    """Draw the calibration onto a crop: tick ellipse + ticks, pivot (coloured by source), tip pixels, value.
+
+    Without a calibration the crop is returned unchanged.
+    """
+    if dial is None:
+        return crop_bgr
+    out = crop_bgr.copy()
+    (cx, cy), (a, b) = dial.centre, dial.ellipse_axes
+    cv2.ellipse(out, ((cx, cy), (a, b), dial.ellipse_angle), (255, 255, 255), 1, cv2.LINE_AA)
+    inv = np.linalg.inv(dial.rect_matrix())
+    r0 = (a + b) / 4
+    for ang in dial.tick_angles:  # rectified tick angles -> image points on the ellipse
+        t = np.deg2rad(ang)
+        q = inv @ np.array([r0 * np.sin(t), -r0 * np.cos(t)]) + np.array([cx, cy])
+        cv2.circle(out, (int(round(q[0])), int(round(q[1]))), 4, (255, 255, 255), -1, cv2.LINE_AA)
+    mask = needle_mask(crop_bgr, hue_ranges, saturation_min, value_min)
+    value, _conf = measure(mask, dial, tip_percentile)
+    px, py = dial.pivot
+    colour = _SOURCE_COLOURS.get(dial.pivot_source, (255, 255, 255))
+    if value is not None:
+        ys, xs = np.nonzero(mask)
+        q = (np.column_stack([xs, ys]).astype(float) - [px, py]) @ dial.rect_matrix().T
+        r = np.hypot(q[:, 0], q[:, 1])
+        tip = r >= np.percentile(r, tip_percentile)
+        out[ys[tip], xs[tip]] = (255, 255, 0)
+        tx, ty = xs[tip].mean(), ys[tip].mean()
+        cv2.line(out, (int(px), int(py)), (int(tx), int(ty)), colour, 2, cv2.LINE_AA)
+        cv2.putText(out, f"{value:.2f}", (6, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 4, cv2.LINE_AA)
+        cv2.putText(out, f"{value:.2f}", (6, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
+    cv2.drawMarker(out, (int(round(px)), int(round(py))), colour, cv2.MARKER_CROSS, 18, 3, cv2.LINE_AA)
+    return out
 
 
 # --- calibration building blocks ----------------------------------------------------------------
@@ -375,8 +429,14 @@ def calibrate_dials(
     value_min: int = 50,
     tip_percentile: float = DEFAULT_TIP_PERCENTILE,
     min_offset_frames: int = 30,
+    pivot_overrides: dict | None = None,
+    progress: Callable[[str, int, int], None] | None = None,
 ) -> tuple[dict, dict]:
     """Calibrate every dial from frame-aligned crop lists (``crops_by_id[id][i]`` = frame i).
+
+    ``pivot_overrides`` ({roi_id: {"pivot": [x, y], "roi": {...}}}) replace the estimated pivot of a dial
+    (``pivot_source: "manual"``) as long as the dial's ROI is unchanged; they also feed the parallax model.
+    ``progress(stage, done, total)`` is called once per measured dial (stage ``"measure"``).
 
     Returns:
         (calibrations by ROI id, report dict)
@@ -407,6 +467,18 @@ def calibrate_dials(
         sx, sy = w / roi["width"], h / roi["height"]  # crop px per normalised unit = aligned image size
         return np.array([(roi["x"] + roi["width"] / 2) * sx, (roi["y"] + roi["height"] / 2) * sy]), (sx, sy)
 
+    manual, ignored = {}, set()
+    for rid, ov in (pivot_overrides or {}).items():
+        if rid not in geo:
+            continue
+        if rid in rois and _same_roi(ov.get("roi", {}), rois[rid]):
+            manual[rid] = tuple(float(v) for v in ov["pivot"])
+        else:
+            ignored.add(rid)
+            logger.warning(f"Arrow calibration: manual pivot for {rid} ignored (ROI changed since it was set)")
+    for rid, p in manual.items():
+        pivots[rid] = (np.asarray(p), 0.0)  # a manual pivot is as good as a measured one
+
     good = [r for r in geo if r in rois and pivots[r][1] <= MAX_PIVOT_CONDITION]
     samples = [(full_position(r)[0], np.asarray(pivots[r][0]) - np.asarray(geo[r]["centre"])) for r in good]
     parallax = None
@@ -417,7 +489,9 @@ def calibrate_dials(
     dials = {}
     for rid, g in geo.items():
         pivot_px, cond = pivots[rid]
-        if cond <= MAX_PIVOT_CONDITION:
+        if rid in manual:
+            pivot, source = manual[rid], "manual"
+        elif cond <= MAX_PIVOT_CONDITION:
             pivot, source = tuple(float(v) for v in pivot_px), "needle_axes"
         elif parallax is not None and rid in rois:
             pivot = tuple(float(v) for v in np.asarray(g["centre"]) + parallax(full_position(rid)[0]))
@@ -443,6 +517,8 @@ def calibrate_dials(
                 values[i, j] = np.nan if v is None else v
             v, _ = opencv._detect(crops_by_id[rid][i])
             baseline[i, j] = np.nan if v is None else v
+        if progress:
+            progress("measure", j + 1, len(cols))
     applied, raw = fit_offsets(values, min_frames=min_offset_frames)
     for j, rid in enumerate(cols):
         if rid in dials:
@@ -462,6 +538,7 @@ def calibrate_dials(
                 "centre": [round(v, 1) for v in d.centre],
                 "offset": round(d.offset, 4),
                 "offset_raw": None if not math.isfinite(raw[j]) else round(raw[j], 4),
+                "override_ignored": rid in ignored,
             }
     return dials, report
 
@@ -469,8 +546,8 @@ def calibrate_dials(
 # --- persistence + archive runner ---------------------------------------------------------------
 
 
-def save_calibration(path, dials: dict, report: dict) -> None:
-    """Write the calibration JSON atomically."""
+def save_calibration(path, dials: dict, report: dict, pivot_overrides: dict | None = None) -> None:
+    """Write the calibration JSON atomically (manual pivot overrides travel with it)."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     doc = {
@@ -478,6 +555,7 @@ def save_calibration(path, dials: dict, report: dict) -> None:
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "dials": {rid: d.to_dict() for rid, d in dials.items()},
         "report": report,
+        "pivot_overrides": pivot_overrides or {},
     }
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(doc, indent=2))
@@ -492,7 +570,22 @@ def load_calibration(path) -> dict:
     return {rid: DialCalibration.from_dict(d) for rid, d in doc["dials"].items()}
 
 
-def calibrate_from_archive(config: dict, archive_dir, max_frames: int = 300, reference_path=None):
+def load_pivot_overrides(path) -> dict:
+    """Manual pivot overrides stored with a calibration ({} without file or key)."""
+    try:
+        return dict(json.loads(Path(path).read_text()).get("pivot_overrides") or {})
+    except (OSError, ValueError):
+        return {}
+
+
+def calibrate_from_archive(
+    config: dict,
+    archive_dir,
+    max_frames: int = 300,
+    reference_path=None,
+    pivot_overrides: dict | None = None,
+    progress: Callable[[str, int, int], None] | None = None,
+):
     """Calibrate from archived whole images, cropped exactly like production does.
 
     Frames are spread evenly over the whole archive (more needle rotation -> better pivot fit).
@@ -507,7 +600,9 @@ def calibrate_from_archive(config: dict, archive_dir, max_frames: int = 300, ref
         pipeline.REFERENCE_PATH = Path(reference_path)
 
     crops_by_id: dict = {}
-    for f in files:
+    for n, f in enumerate(files, start=1):
+        if progress:
+            progress("align", n, len(files))
         try:
             rois, alignment = pipeline.process_whole_image(f.read_bytes())
         except Exception as e:  # corrupt archive file: skip, don't abort the calibration
@@ -541,4 +636,6 @@ def calibrate_from_archive(config: dict, archive_dir, max_frames: int = 300, ref
         saturation_min=color_cfg.get("saturation_min", 50),
         value_min=color_cfg.get("value_min", 50),
         tip_percentile=cal_cfg.get("tip_percentile", DEFAULT_TIP_PERCENTILE),
+        pivot_overrides=pivot_overrides,
+        progress=progress,
     )

@@ -17,6 +17,7 @@ import numpy as np
 from watermeter.arrow_calibration import (
     DEFAULT_TIP_PERCENTILE,
     DialCalibration,
+    _same_roi,
     load_calibration,
     measure,
     needle_mask,
@@ -52,10 +53,6 @@ def analog_rois_from_config(config: dict) -> dict[str, dict] | None:
         return None
     analog_rois = config.get("detection", {}).get("analogs", {}).get("rois", [])
     return {f"analog_{i + 1}": dict(r) for i, r in enumerate(analog_rois)}
-
-
-def _same_roi(a: dict, b: dict) -> bool:
-    return all(abs(float(a.get(k, -1)) - float(b.get(k, -2))) < 1e-6 for k in ("x", "y", "width", "height"))
 
 
 class CalibratedArrowDetector:
