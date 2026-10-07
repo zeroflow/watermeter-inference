@@ -263,3 +263,72 @@ def test_timestamps_carry_timezone(env):
     st = s.status()
     for ts in (st["started_at"], st["last_frame_at"]):
         assert datetime.fromisoformat(ts).tzinfo is not None
+
+
+# --- final review fixes ---------------------------------------------------------------------------
+
+
+def test_target_reached_during_running_job_does_not_clobber_it(env):
+    s = env["make"]()
+    s.start("frames", MIN_FRAMES + 1)
+    _feed(s, MIN_FRAMES)
+    s._state["job"]["state"] = "running"  # a manual "Calibrate now" is in progress
+    _feed(s, 1)  # target reached -> run() is busy
+    assert s.status()["job"]["state"] == "running"
+    assert env["cal"].calls == []
+
+
+def test_on_calibrated_gets_the_live_config(env, tmp_path):
+    live = {"cfg": env["cfg"]}
+    seen = []
+    switched = dict(env["cfg"], inference=dict(env["cfg"]["inference"], arrows_mode="opencv"))
+
+    def calibrate(config, archive_dir, **kw):
+        live["cfg"] = switched  # user switches the mode while the job runs
+        return {}, {}
+
+    s = CalibrationSession(
+        tmp_path,
+        get_config=lambda: live["cfg"],
+        on_calibrated=seen.append,
+        clock=env["clock"],
+        calibrate_fn=calibrate,
+        start_thread=False,
+    )
+    s.start("frames", 100)
+    _feed(s, MIN_FRAMES)
+    s.run()
+    assert seen == [switched]
+
+
+def test_collection_capped_by_stored_frames(env, monkeypatch):
+    import watermeter.calibration_session as cs
+
+    monkeypatch.setattr(cs, "MAX_FRAMES_TARGET", MIN_FRAMES + 2)
+    s = env["make"]()
+    s.start("frames", MIN_FRAMES + 2)
+    _feed(s, MIN_FRAMES + 2, aligned=False)  # camera moved: nothing aligns, target never reached
+    st = s.status()
+    assert st["collecting"] is False
+    assert "limit" in st["stop_reason"]
+
+
+def test_collection_capped_by_max_duration(env):
+    s = env["make"]()
+    s.start("frames", 5000)
+    _feed(s, MIN_FRAMES)
+    env["clock"].advance(hours=337)
+    _feed(s, 1)
+    st = s.status()
+    assert st["collecting"] is False and "limit" in st["stop_reason"]
+    assert st["job"]["state"] == "done"  # enough frames: calibrate with what was collected
+
+
+def test_pivot_override_not_stored_without_frames(env):
+    s = env["make"]()
+    with pytest.raises(SessionError):
+        s.set_pivot_override("analog_1", 10, 10)
+    assert s.status()["pending_overrides"] == {}
+    with pytest.raises(SessionError):
+        s.clear_pivot_override("analog_1")
+    assert s.status()["pending_overrides"] == {}

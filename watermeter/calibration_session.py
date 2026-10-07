@@ -47,6 +47,8 @@ def _initial_state() -> dict:
         "started_at": None,
         "target": None,
         "frames": 0,
+        "stored": 0,
+        "stop_reason": None,
         "last_frame_at": None,
         "job": _idle_job(),
         "pending_overrides": {},
@@ -135,6 +137,8 @@ class CalibrationSession:
                 started_at=self._now_iso(),
                 target={"type": target_type, "value": value},
                 frames=0,
+                stored=0,
+                stop_reason=None,
                 last_frame_at=None,
             )
             self._save()
@@ -146,19 +150,28 @@ class CalibrationSession:
             if not self._state["collecting"]:
                 raise SessionBusy("not collecting")
             self._state["collecting"] = False
+            self._state["stop_reason"] = "stopped by user"
             self._save()
         logger.info("Calibration collection stopped")
 
-    def _target_reached(self) -> bool:
+    def _elapsed(self) -> timedelta:
+        started = datetime.fromisoformat(self._state["started_at"])
+        if started.tzinfo is None:  # state written by an older version
+            started = started.astimezone()
+        return self._now() - started
+
+    def _stop_reason(self) -> str | None:
+        """Why collecting ends now: target reached or a storage limit (whatever the target type)."""
         target = self._state["target"] or {}
-        if target.get("type") == "frames":
-            return self._state["frames"] >= target["value"]
-        if target.get("type") == "hours":
-            started = datetime.fromisoformat(self._state["started_at"])
-            if started.tzinfo is None:  # state written by an older version
-                started = started.astimezone()
-            return self._now() - started >= timedelta(hours=target["value"])
-        return False
+        if target.get("type") == "frames" and self._state["frames"] >= target["value"]:
+            return "target reached"
+        if target.get("type") == "hours" and self._elapsed() >= timedelta(hours=target["value"]):
+            return "target reached"
+        if self._state.get("stored", 0) >= MAX_FRAMES_TARGET:
+            return f"storage limit reached ({MAX_FRAMES_TARGET} frames)"
+        if self._elapsed() >= timedelta(hours=MAX_HOURS_TARGET):
+            return f"time limit reached ({MAX_HOURS_TARGET} h)"
+        return None
 
     def on_frame(self, image_bytes: bytes, aligned: bool) -> None:
         """Store one raw whole image while collecting; unaligned frames are kept but not counted."""
@@ -171,18 +184,23 @@ class CalibrationSession:
             while target.exists():  # same timestamp (coarse clock): keep both
                 target, n = self.frames_dir / f"{stem}_{n}.jpg", n + 1
             target.write_bytes(image_bytes)
+            self._state["stored"] = self._state.get("stored", 0) + 1
             if aligned:
                 self._state["frames"] += 1
             self._state["last_frame_at"] = self._now_iso()
-            reached = self._target_reached()
+            reason = self._stop_reason()
+            reached = reason is not None
             if reached:
                 self._state["collecting"] = False
+                self._state["stop_reason"] = reason
             self._save()
         if reached:
-            logger.info("Calibration collection target reached -- starting calibration")
+            logger.info(f"Calibration collection ended ({reason}) -- starting calibration")
             try:
                 self.run()
-            except (SessionError, SessionBusy) as e:
+            except SessionBusy:
+                logger.info("Calibration already running -- it will produce the calibration")
+            except SessionError as e:
                 with self._lock:
                     self._state["job"] = {**_idle_job(), "state": "failed", "message": str(e)}
                     self._save()
@@ -193,14 +211,17 @@ class CalibrationSession:
     def frames_on_disk(self) -> int:
         return len(list(self.frames_dir.glob("*.jpg"))) if self.frames_dir.exists() else 0
 
+    def _check_can_run(self) -> None:
+        if self._state["job"]["state"] == "running":
+            raise SessionBusy("calibration already running")
+        n = self.frames_on_disk()
+        if n < MIN_FRAMES:
+            raise SessionError(f"need at least {MIN_FRAMES} collected frames, have {n}")
+
     def run(self) -> None:
         """Start the calibration job (background thread unless start_thread=False)."""
         with self._lock:
-            if self._state["job"]["state"] == "running":
-                raise SessionBusy("calibration already running")
-            n = self.frames_on_disk()
-            if n < MIN_FRAMES:
-                raise SessionError(f"need at least {MIN_FRAMES} collected frames, have {n}")
+            self._check_can_run()
             self._state["job"] = {**_idle_job(), "state": "running", "started_at": self._now_iso()}
             self._save()
         if self._start_thread:
@@ -248,7 +269,7 @@ class CalibrationSession:
         logger.info(f"Arrow calibration written to {path}")
         if self._on_calibrated:
             try:
-                self._on_calibrated(config)
+                self._on_calibrated(self._get_config())  # live config: it may have changed during the job
             except Exception as e:
                 logger.error(f"Reload after calibration failed: {e}")
 
@@ -264,8 +285,7 @@ class CalibrationSession:
         """Set a manual needle pivot (crop px) for a dial and recalibrate."""
         roi = self._check_roi_id(roi_id)
         with self._lock:
-            if self._state["job"]["state"] == "running":
-                raise SessionBusy("calibration running")
+            self._check_can_run()
             self._state["pending_overrides"][roi_id] = {"pivot": [float(x), float(y)], "roi": dict(roi)}
             self._save()
         self.run()
@@ -274,8 +294,7 @@ class CalibrationSession:
         """Back to the automatic pivot for a dial and recalibrate."""
         self._check_roi_id(roi_id)
         with self._lock:
-            if self._state["job"]["state"] == "running":
-                raise SessionBusy("calibration running")
+            self._check_can_run()
             self._state["pending_overrides"][roi_id] = None
             self._save()
         self.run()

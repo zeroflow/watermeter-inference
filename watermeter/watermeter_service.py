@@ -718,6 +718,9 @@ class WatermeterService:
                         None, self.process_whole_image, whole_image
                     )
                     await self._feed_calibration_session(whole_image, alignment.success)
+                    if alignment.success:
+                        # which ROIs the crops of this reading came from (calibration tab pivot clicks)
+                        self.current_state["analog_rois"] = analog_rois_from_config(self.config)
                     # Fail-closed: if alignment failed, persist + short-circuit before inference.
                     if not alignment.success:
                         self._failure_store.record_failure(

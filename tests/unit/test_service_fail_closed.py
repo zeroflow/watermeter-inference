@@ -320,3 +320,16 @@ def test_calibration_session_error_does_not_break_reading():
     asyncio.run(svc.process_reading())
 
     assert svc.current_state.get("status") == "alignment_failed"
+
+
+def test_crop_rois_recorded_with_aligned_reading():
+    """The calibration tab must know which ROIs the displayed crops came from (pivot clicks)."""
+    svc = _make_service_with_alignment_success()
+    roi = {"x": 0.6, "y": 0.6, "width": 0.15, "height": 0.17}
+    svc.config["detection"]["analogs"] = {"rois": [roi]}
+    svc.calibration_session = MagicMock()
+    svc.run_inference = AsyncMock(side_effect=RuntimeError("stop after the crops"))
+
+    asyncio.run(svc.process_reading())
+
+    assert svc.current_state["analog_rois"] == {"analog_1": roi}

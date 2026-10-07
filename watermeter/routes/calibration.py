@@ -19,6 +19,7 @@ from ..arrow_calibration import (
     calibrate_from_archive,
     decode_image,
     encode_jpeg,
+    load_pivot_overrides,
     render_overlay,
     save_calibration,
 )
@@ -62,7 +63,10 @@ async def calibrate_arrows(request: Optional[CalibrateRequest] = None):
         archive_dir = Path(config.get("alignment", {}).get("archive_dir", "/data/raw_archive"))
         max_frames = (request or CalibrateRequest()).max_frames
         try:
-            dials, report = await asyncio.to_thread(calibrate_from_archive, config, archive_dir, max_frames)
+            overrides = load_pivot_overrides(path)  # manual pivots set in the calibration tab survive
+            dials, report = await asyncio.to_thread(
+                calibrate_from_archive, config, archive_dir, max_frames, pivot_overrides=overrides
+            )
         except CalibrationError as e:
             logger.warning(f"Arrow calibration failed: {e}")
             return JSONResponse({"success": False, "message": str(e)}, status_code=422)
@@ -70,7 +74,7 @@ async def calibrate_arrows(request: Optional[CalibrateRequest] = None):
             logger.error(f"Arrow calibration error: {e}")
             return JSONResponse({"success": False, "message": f"Error: {e}"}, status_code=500)
 
-        save_calibration(path, dials, report)
+        save_calibration(path, dials, report, pivot_overrides=overrides)
         reloaded = config.get("inference", {}).get("arrows_mode") == "calibrated"
         if reloaded:
             get_inference_service().reload_models(config)
@@ -257,6 +261,14 @@ async def calibration_set_pivot(roi_id: str, request: PivotRequest):
     crop = _current_crop(service, roi_id)
     if crop is None:
         return JSONResponse({"success": False, "message": "no reading for this dial yet"}, status_code=400)
+    rois = analog_rois_from_config(service.config) or {}
+    crop_roi = ((service.current_state or {}).get("analog_rois") or {}).get(roi_id)
+    if roi_id not in rois or crop_roi is None or not _same_roi(crop_roi, rois[roi_id]):
+        # the ROI wizard changed the config after the last reading: the preview shows the old crop
+        return JSONResponse(
+            {"success": False, "message": "the ROI changed since the last reading -- take a new reading first"},
+            status_code=409,
+        )
     h, w = crop.shape[:2]
     if not (0 <= request.x < w and 0 <= request.y < h):
         return JSONResponse({"success": False, "message": f"pivot outside the {w}x{h} crop"}, status_code=400)

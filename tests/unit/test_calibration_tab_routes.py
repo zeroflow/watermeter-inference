@@ -68,7 +68,10 @@ def _set_crop(service, roi_id="analog_2", value=3.3):
 
     crop = render_dial(real, value, shift=(12.0, -15.0))
     b64 = base64.b64encode(real.imencode(".png", crop)[1].tobytes()).decode()
-    service.current_state = {"predictions": [{"id": roi_id, "class": "3.30", "image_base64": b64}]}
+    service.current_state = {
+        "predictions": [{"id": roi_id, "class": "3.30", "image_base64": b64}],
+        "analog_rois": {"analog_1": ROI, "analog_2": ROI},
+    }
     return crop
 
 
@@ -214,3 +217,31 @@ def test_arrows_mode_rejects_unknown(test_client, mock_service):
     with patch("watermeter.config_utils.update_config") as upd:
         assert test_client.post("/api/config/arrows-mode", json={"mode": "magic"}).status_code == 400
     upd.assert_not_called()
+
+
+def test_pivot_rejected_when_crop_from_old_roi(setup):
+    """After a ROI edit the preview still shows the old crop until the next reading: refuse the click."""
+    _feed(setup)
+    _set_crop(setup["service"])
+    setup["service"].current_state["analog_rois"] = {"analog_2": dict(ROI, x=0.1)}
+    resp = setup["client"].post("/api/calibration/pivot/analog_2", json={"x": 130.0, "y": 120.0})
+    assert resp.status_code == 409
+    assert setup["fake"].calls == []
+
+
+def test_legacy_calibrate_endpoint_keeps_manual_pivots(setup):
+    from watermeter.arrow_calibration import load_pivot_overrides, save_calibration
+
+    path = setup["dir"] / "cal.json"
+    ov = {"analog_2": {"pivot": [1.0, 2.0], "roi": ROI}}
+    save_calibration(path, {}, {}, pivot_overrides=ov)
+    seen = {}
+
+    def fake(config, archive_dir, max_frames, pivot_overrides=None):
+        seen["ov"] = pivot_overrides
+        return {}, {}
+
+    with patch("watermeter.routes.calibration.calibrate_from_archive", side_effect=fake):
+        assert setup["client"].post("/api/arrows/calibrate").status_code == 200
+    assert seen["ov"] == ov
+    assert load_pivot_overrides(path) == ov
