@@ -20,6 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 ## Phase Details
 
 ### Phase 1: Auth Core and Test/Script Plumbing
+
 **Goal**: Every page and API on a fresh or upgraded install is protected by one admin password that the owner sets on first visit, and the existing tests, CI and helper scripts keep working with auth on.
 **Depends on**: Nothing (first phase)
 **Requirements**: AUTH-01, AUTH-02, AUTH-03, AUTH-04, AUTH-05, AUTH-06, AUTH-07, AUTH-08, AUTH-09, AUTH-10, AUTH-11, AUTH-12, AUTH-13, AUTH-14, AUTH-15
@@ -29,10 +30,27 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. A request without a valid session to anything outside the allowlist (including `/docs`, `/openapi.json` and routes added later) is refused. Full pages redirect to login and return to the original page afterwards, HTMX and `fetch()` calls get a 401 that sends the browser to login (no login HTML ever appears inside a page fragment), and a cross-site page cannot perform a state-changing request with the owner's cookie.
   4. Repeated failed logins from one client get a 429 with Retry-After without ever locking the owner out permanently. A locked-out owner can recover with host access only (`python -m watermeter set-password` or deleting the auth file), an operator can pre-seed the password with `WATERMETER_ADMIN_PASSWORD` (or `_FILE`) and optionally require a one-time setup token, and the README documents recovery and the upgrade notice.
   5. Unit tests, integration tests, the CI smoke test, `debug_clean.sh` and `oneshot_test.sh` all pass with auth enabled, and no auth-disable switch exists in production code.
-**Plans**: TBD
+
+**Plans**: 5 plans
+
+Plans:
+**Wave 1**
+- [ ] 01-01-PLAN.md — Auth core: credential store (scrypt, 0600 atomic auth.json), session tokens, throttle, set-password CLI (unwired)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 01-02-PLAN.md — Default-deny AuthMiddleware (CSRF, 401 contract, sliding refresh) and auth.js shim, proven on a harness app
+- [ ] 01-03-PLAN.md — Setup, login, logout, account and change-password routes with themed pages, proven on a harness app
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 01-04-PLAN.md — The switch: wire gate and routers, disable docs, shim and nav on every page, logged-in fixtures, route inventory, startup seed, CI smoke
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [ ] 01-05-PLAN.md — Integration fixtures, debug/clean scripts, README/DOCKER docs, live verification on :8002/:8003 and one-shot
+
 **UI hint**: yes
 
 ### Phase 2: Hardening Behind Auth
+
 **Goal**: Secrets never leave the server, the server cannot be turned against internal addresses, heavy jobs cannot be stacked, and the app serves itself safely on offline LANs.
 **Depends on**: Phase 1
 **Requirements**: HARD-01, HARD-02, HARD-03, HARD-04, HARD-05, HARD-06, HARD-07, HARD-08, HARD-09, HARD-10
@@ -42,10 +60,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Starting training, synthetic generation, trigger or a mislabel scan while one is already running is refused (409), and rapid repeats are rate limited, each with a visible message in the UI.
   4. Every response carries security headers (nosniff, referrer policy, light CSP, configurable frame-ancestors so Home Assistant iframe embedding stays possible), and the dashboard works on an offline LAN because htmx is served from the app itself.
   5. `docs/decisions.md` records AD-01 and AD-02 as superseded and notes the accepted SSRF DNS-rebinding gap.
+
 **Plans**: TBD
 **UI hint**: yes
 
 ### Phase 3: Home Assistant Visibility
+
 **Goal**: Home Assistant always knows whether the service is alive and whether the reading it shows is trustworthy, and it flags the cases where it is not.
 **Depends on**: Phase 2
 **Requirements**: HAV-01, HAV-02, HAV-03, HAV-04, HAV-05, HAV-06, HAV-07, HAV-08, HAV-09, HAV-10
@@ -55,9 +75,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. HA shows a last-good-reading timestamp (time of the last accepted reading, not the last publish) and a pipeline-status sensor (OK/DEGRADED/FAILED/STALE) with the last error as an attribute.
   4. A hung service (alive but not working) is detected by HA because the health topic is republished periodically and the problem sensor expires. After a STALE notification, a recovery notification is sent once the pipeline is OK again.
   5. The README has copy-paste HA automation examples for "notify on problem on" and "notify on unavailable for N minutes".
+
 **Plans**: TBD
 
 ### Phase 4: Dashboard Banners
+
 **Goal**: A dashboard user can tell at a glance whether the displayed reading is current and whether the server is reachable, using the same health definition as Home Assistant.
 **Depends on**: Phase 3 (also builds on the Phase 1 401 contract)
 **Requirements**: DASH-01, DASH-02, DASH-03, DASH-04, DASH-05
@@ -66,6 +88,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Every page shows a "connection lost" banner after a few consecutive failed polls and clears it by itself on recovery, while an expired session sends the user to login instead of showing "connection lost".
   3. Returning to a background tab re-polls immediately instead of showing a false "connection lost" or stale state.
   4. Open tabs reload automatically after the container restarts with a new version.
+
 **Plans**: TBD
 **UI hint**: yes
 
@@ -76,7 +99,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Auth Core and Test/Script Plumbing | 0/TBD | Not started | - |
+| 1. Auth Core and Test/Script Plumbing | 0/5 | Planned | - |
 | 2. Hardening Behind Auth | 0/TBD | Not started | - |
 | 3. Home Assistant Visibility | 0/TBD | Not started | - |
 | 4. Dashboard Banners | 0/TBD | Not started | - |

@@ -1,0 +1,1 @@
+No external API integration: Phase 1 uses only the Python standard library (hashlib.scrypt, hmac, secrets) and the FastAPI/Starlette, Jinja2 and htmx stack already in the project; it adds no dependency and calls no third-party API or SDK.
