@@ -105,12 +105,52 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
+| AUTH-01 | Phase 1 | Pending |
+| AUTH-02 | Phase 1 | Pending |
+| AUTH-03 | Phase 1 | Pending |
+| AUTH-04 | Phase 1 | Pending |
+| AUTH-05 | Phase 1 | Pending |
+| AUTH-06 | Phase 1 | Pending |
+| AUTH-07 | Phase 1 | Pending |
+| AUTH-08 | Phase 1 | Pending |
+| AUTH-09 | Phase 1 | Pending |
+| AUTH-10 | Phase 1 | Pending |
+| AUTH-11 | Phase 1 | Pending |
+| AUTH-12 | Phase 1 | Pending |
+| AUTH-13 | Phase 1 | Pending |
+| AUTH-14 | Phase 1 | Pending |
+| AUTH-15 | Phase 1 | Pending |
+| HARD-01 | Phase 2 | Pending |
+| HARD-02 | Phase 2 | Pending |
+| HARD-03 | Phase 2 | Pending |
+| HARD-04 | Phase 2 | Pending |
+| HARD-05 | Phase 2 | Pending |
+| HARD-06 | Phase 2 | Pending |
+| HARD-07 | Phase 2 | Pending |
+| HARD-08 | Phase 2 | Pending |
+| HARD-09 | Phase 2 | Pending |
+| HARD-10 | Phase 2 | Pending |
+| HAV-01 | Phase 3 | Pending |
+| HAV-02 | Phase 3 | Pending |
+| HAV-03 | Phase 3 | Pending |
+| HAV-04 | Phase 3 | Pending |
+| HAV-05 | Phase 3 | Pending |
+| HAV-06 | Phase 3 | Pending |
+| HAV-07 | Phase 3 | Pending |
+| HAV-08 | Phase 3 | Pending |
+| HAV-09 | Phase 3 | Pending |
+| HAV-10 | Phase 3 | Pending |
+| DASH-01 | Phase 4 | Pending |
+| DASH-02 | Phase 4 | Pending |
+| DASH-03 | Phase 4 | Pending |
+| DASH-04 | Phase 4 | Pending |
+| DASH-05 | Phase 4 | Pending |
 
 **Coverage:**
 - v1 requirements: 40 total
-- Mapped to phases: 0
-- Unmapped: 40 ⚠️
+- Mapped to phases: 40
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-10-11*
-*Last updated: 2026-10-11 after initial definition*
+*Last updated: 2026-10-11 after roadmap creation*
