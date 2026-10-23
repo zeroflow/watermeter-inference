@@ -9,15 +9,16 @@ import hmac
 import json
 import logging
 import os
+import re
 import secrets
 import tempfile
 import threading
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
+from urllib.parse import urlsplit
 
 logger = logging.getLogger(__name__)
 
@@ -159,42 +160,137 @@ def verify_password(password: str, stored: str) -> bool:
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+_SECRET_RE = re.compile(r"[0-9a-f]{64}")
+_INSTANCE_ID_RE = re.compile(r"[0-9a-f]{8}")
+# Serializes "is it unconfigured? then create it" and password replacement across threads (AUTH-02).
+_WRITE_LOCK = threading.Lock()
+
+
+def _is_int(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _parse_record(text: str) -> AuthRecord:
+    """Validate the file content. Raises ValueError naming the first problem."""
+    try:
+        data = json.loads(text)
+    except Exception as exc:  # JSONDecodeError, RecursionError on absurd nesting
+        raise ValueError(f"not valid JSON: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ValueError("not a JSON object")
+    if not _is_int(data.get("version")) or data["version"] != 1:
+        raise ValueError("unsupported version")
+    password_hash = data.get("password_hash")
+    if not isinstance(password_hash, str) or not password_hash.startswith("$scrypt$"):
+        raise ValueError("password_hash missing or not a scrypt hash")
+    secret = data.get("session_secret")
+    if not isinstance(secret, str) or not _SECRET_RE.fullmatch(secret):
+        raise ValueError("session_secret missing or malformed")
+    instance_id = data.get("instance_id")
+    if not isinstance(instance_id, str) or not _INSTANCE_ID_RE.fullmatch(instance_id):
+        raise ValueError("instance_id missing or malformed")
+    epoch = data.get("epoch")
+    if not _is_int(epoch) or epoch < 1:
+        raise ValueError("epoch missing or invalid")
+    created_at = data.get("created_at")
+    if not isinstance(created_at, str):
+        raise ValueError("created_at missing")
+    return AuthRecord(
+        password_hash=password_hash,
+        session_secret=secret,
+        instance_id=instance_id,
+        epoch=epoch,
+        created_at=created_at,
+    )
 
 
 class AuthStore:
-    """auth.json reader and writer. ``path=None`` resolves the location on every call."""
+    """auth.json reader and writer. ``path=None`` resolves the location on every call.
+
+    The file is re-parsed only when ``(st_mtime_ns, st_size, st_ino)`` changes, so a replacement written by another
+    process (the set-password CLI) is picked up by the next call without a restart.
+    """
 
     def __init__(self, path: Path | None = None) -> None:
         self._path = path
+        self._lock = threading.Lock()
+        self._cache_key: tuple | None = None
+        self._cache_value: tuple[AuthState, AuthRecord | None] = (AuthState.UNAVAILABLE, None)
+        self._logged: tuple | None = None
 
     def path(self) -> Path:
         """File this store reads and writes."""
         return self._path if self._path is not None else auth_file_path()
 
-    def _load(self) -> AuthRecord | None:
-        try:
-            raw = self.path().read_text(encoding="utf-8")
-        except FileNotFoundError:
-            return None
-        data = json.loads(raw)
-        return AuthRecord(
-            password_hash=data["password_hash"],
-            session_secret=data["session_secret"],
-            instance_id=data["instance_id"],
-            epoch=data["epoch"],
-            created_at=data["created_at"],
+    def _log_unavailable(self, key: tuple, path: Path, reason: str) -> None:
+        if self._logged == key:
+            return
+        self._logged = key
+        logger.error(
+            f"Auth file {path} is unreadable or invalid ({reason}); refusing every request except /health. "
+            "Fix or delete it to recover (see README)."
         )
 
+    def _load(self) -> tuple[AuthState, AuthRecord | None]:
+        path = self.path()
+        try:
+            info = os.stat(path)
+        except FileNotFoundError:
+            return AuthState.UNCONFIGURED, None
+        except OSError as exc:
+            # Anything else (permissions on the directory, a file where the directory should be) fails closed.
+            with self._lock:
+                self._log_unavailable((str(path), "stat", exc.errno), path, str(exc))
+            return AuthState.UNAVAILABLE, None
+        # mode, uid and gid join the documented (mtime, size, inode) key so that a chmod or chown that makes the file
+        # unreadable is noticed instead of being served from the cache.
+        key = (str(path), info.st_mtime_ns, info.st_size, info.st_ino, info.st_mode, info.st_uid, info.st_gid)
+        with self._lock:
+            if key == self._cache_key:
+                return self._cache_value
+            try:
+                text = path.read_bytes().decode("utf-8")
+            except FileNotFoundError:
+                return AuthState.UNCONFIGURED, None  # deleted between stat and read
+            except OSError as exc:
+                # Not cached: fixing the permissions must take effect without touching the file's mtime.
+                self._log_unavailable(key + ("read", exc.errno), path, str(exc))
+                return AuthState.UNAVAILABLE, None
+            except UnicodeDecodeError as exc:
+                value: tuple[AuthState, AuthRecord | None] = (AuthState.UNAVAILABLE, None)
+                self._log_unavailable(key, path, f"not UTF-8: {exc}")
+            else:
+                try:
+                    value = (AuthState.CONFIGURED, _parse_record(text))
+                except ValueError as exc:
+                    value = (AuthState.UNAVAILABLE, None)
+                    self._log_unavailable(key, path, str(exc))
+            self._cache_key = key
+            self._cache_value = value
+            return value
+
+    def _invalidate(self) -> None:
+        with self._lock:
+            self._cache_key = None
+
     def state(self) -> AuthState:
-        """UNCONFIGURED when no file exists, CONFIGURED when it holds a record."""
-        return AuthState.CONFIGURED if self._load() is not None else AuthState.UNCONFIGURED
+        """UNCONFIGURED when no file exists, CONFIGURED for a valid one, UNAVAILABLE for anything else.
+
+        Deliberate deviation from "a file without password_hash is unconfigured": no code path writes such a file,
+        and no-clobber creation needs the path to be absent, so treating it as unconfigured would open a setup page
+        that cannot complete.
+        """
+        return self._load()[0]
 
     def record(self) -> AuthRecord | None:
         """The stored record, or None unless the state is CONFIGURED."""
-        return self._load()
+        return self._load()[1]
 
     def _write_temp(self, data: dict) -> str:
+        """Write ``data`` to a fsynced 0600 temp file next to auth.json and return its path."""
         path = self.path()
         fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")  # created 0600
         try:
@@ -202,50 +298,62 @@ class AuthStore:
                 json.dump(data, handle)
                 handle.flush()
                 os.fsync(handle.fileno())
+            if os.geteuid() == 0:
+                # `docker exec` runs as root while the app runs as an unprivileged user: hand the file to the owner of
+                # the data directory so the app can still read the 0600 file.
+                parent = os.stat(path.parent)
+                os.chown(tmp, parent.st_uid, parent.st_gid)
         except BaseException:
             os.unlink(tmp)
             raise
         return tmp
 
     def create(self, password_hash: str) -> bool:
-        """Create auth.json with a fresh secret and instance ID. False if the file already exists (AUTH-02)."""
+        """Create auth.json with a fresh secret and instance ID. False if a file exists in any state (AUTH-02)."""
         path = self.path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        record = AuthRecord(
-            password_hash=password_hash,
-            session_secret=secrets.token_hex(32),
-            instance_id=secrets.token_hex(4),
-            epoch=1,
-            created_at=_utc_now_iso(),
-        )
-        tmp = self._write_temp(record.to_dict())
-        try:
-            os.link(tmp, path)  # atomic and no-clobber: raises FileExistsError when the file is already there
-        except FileExistsError:
-            return False
-        finally:
-            os.unlink(tmp)
-        return True
+        with _WRITE_LOCK:
+            if self.state() is not AuthState.UNCONFIGURED:
+                return False
+            path.parent.mkdir(parents=True, exist_ok=True)
+            record = AuthRecord(
+                password_hash=password_hash,
+                session_secret=secrets.token_hex(32),
+                instance_id=secrets.token_hex(4),
+                epoch=1,
+                created_at=_utc_now_iso(),
+            )
+            tmp = self._write_temp(record.to_dict())
+            try:
+                os.link(tmp, path)  # atomic and no-clobber: raises FileExistsError if another process won
+            except FileExistsError:
+                return False
+            finally:
+                os.unlink(tmp)
+                self._invalidate()
+            return True
 
     def replace_password(self, password_hash: str) -> AuthRecord:
         """Swap the password hash, keep secret and instance ID, and bump the epoch to end every other session."""
-        current = self._load()
-        if current is None:
-            raise AuthStoreError("no admin password is set")
-        updated = AuthRecord(
-            password_hash=password_hash,
-            session_secret=current.session_secret,
-            instance_id=current.instance_id,
-            epoch=current.epoch + 1,
-            created_at=current.created_at,
-        )
-        tmp = self._write_temp(updated.to_dict())
-        try:
-            os.replace(tmp, self.path())
-        except BaseException:
-            os.unlink(tmp)
-            raise
-        return updated
+        with _WRITE_LOCK:
+            current = self.record()
+            if current is None:
+                raise AuthStoreError("no valid admin password record to replace")
+            updated = AuthRecord(
+                password_hash=password_hash,
+                session_secret=current.session_secret,
+                instance_id=current.instance_id,
+                epoch=current.epoch + 1,
+                created_at=current.created_at,
+            )
+            tmp = self._write_temp(updated.to_dict())
+            try:
+                os.replace(tmp, self.path())
+            except BaseException:
+                os.unlink(tmp)
+                raise
+            finally:
+                self._invalidate()
+            return updated
 
 
 _store = AuthStore()
@@ -324,3 +432,146 @@ def build_session_cookie(record: AuthRecord, token: str, secure: bool) -> str:
 def build_clear_cookie(record: AuthRecord, secure: bool) -> str:
     """Set-Cookie value that removes the session cookie."""
     return _cookie_header(record.cookie_name, "", 0, secure)
+
+
+# -- Password policy -------------------------------------------------------------------------------------------------
+
+
+def validate_new_password(password: str, confirm: str) -> str | None:
+    """Error message for a new password, or None when it is acceptable.
+
+    Length counts Unicode code points (the decoded str), so eight multi-byte characters pass. Passwords are encoded
+    as UTF-8 without normalization, so only the identical code point sequence verifies later.
+    """
+    if not password:
+        return "Password is required"
+    if len(password) < MIN_PASSWORD_LENGTH:
+        return f"Password must be at least {MIN_PASSWORD_LENGTH} characters"
+    if len(password) > MAX_PASSWORD_LENGTH:
+        return f"Password must be at most {MAX_PASSWORD_LENGTH} characters"
+    if password != confirm:
+        return "Passwords do not match"
+    return None
+
+
+# -- Redirect targets ------------------------------------------------------------------------------------------------
+
+_MAX_NEXT_LENGTH = 2048
+_AUTH_PAGES = frozenset({LOGIN_PATH, SETUP_PATH, LOGOUT_PATH})
+
+
+def safe_next(value: str | None) -> str:
+    """A same-origin relative path that is safe to redirect to, otherwise ``/`` (T-01-09)."""
+    if not isinstance(value, str) or not value or len(value) > _MAX_NEXT_LENGTH:
+        return "/"
+    if not value.startswith("/") or value.startswith("//") or "\\" in value:
+        return "/"
+    if any(ord(char) < 0x20 or ord(char) == 0x7F for char in value):
+        return "/"
+    try:
+        parts = urlsplit(value)
+    except ValueError:
+        return "/"
+    if parts.scheme or parts.netloc:
+        return "/"
+    if (parts.path.rstrip("/") or "/") in _AUTH_PAGES:
+        return "/"
+    return value
+
+
+def next_from_hx_current_url(hx_current_url: str | None, host: str | None) -> str:
+    """Page to return to after login for an HTMX request, taken from its HX-Current-URL header.
+
+    The fragment URL being polled must never become the target, so only the page the user is looking at counts, and
+    only when it is on the same host.
+    """
+    if not hx_current_url or not host:
+        return "/"
+    try:
+        parts = urlsplit(hx_current_url)
+    except ValueError:
+        return "/"
+    if not parts.netloc or parts.netloc.lower() != host.lower():
+        return "/"
+    target = parts.path or "/"
+    if parts.query:
+        target += "?" + parts.query
+    return safe_next(target)
+
+
+# -- Setup token (AUTH-14, D-09) -------------------------------------------------------------------------------------
+
+_setup_token: str | None = None
+_setup_token_lock = threading.Lock()
+
+
+def setup_token_required() -> bool:
+    """True when WATERMETER_SETUP_TOKEN_REQUIRED is 1, true or yes (any case). Read at call time."""
+    return os.environ.get(SETUP_TOKEN_ENV, "").strip().lower() in {"1", "true", "yes"}
+
+
+def get_setup_token() -> str | None:
+    """The per-process setup token (memory only, logged when generated), or None when the flag is off."""
+    global _setup_token
+    if not setup_token_required():
+        return None
+    with _setup_token_lock:
+        if _setup_token is None:
+            _setup_token = secrets.token_hex(8)
+            logger.warning(f"Setup token required on the setup page: {_setup_token}")
+        return _setup_token
+
+
+def check_setup_token(candidate: str | None) -> bool:
+    """True when no token is required, otherwise whether ``candidate`` equals it (constant-time compare)."""
+    token = get_setup_token()
+    if token is None:
+        return True
+    if not candidate:
+        return False
+    return hmac.compare_digest(candidate.strip().encode("utf-8"), token.encode("ascii"))
+
+
+# -- Environment seed (AUTH-09) --------------------------------------------------------------------------------------
+
+
+def _read_seed_from_env() -> str | None:
+    """Seed password from the _FILE variable (preferred) or the plain variable. None when absent or unreadable."""
+    file_path = os.environ.get(ADMIN_PASSWORD_FILE_ENV)
+    if file_path:
+        try:
+            raw = Path(file_path).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            logger.error(f"Cannot read the password file named by {ADMIN_PASSWORD_FILE_ENV}: {exc}")
+            return None
+        if raw.endswith("\r\n"):
+            return raw[:-2]
+        return raw[:-1] if raw.endswith("\n") else raw
+    return os.environ.get(ADMIN_PASSWORD_ENV) or None
+
+
+def bootstrap_from_env(store: AuthStore | None = None) -> bool:
+    """Create auth.json from the environment while no password exists. True only when a file was written.
+
+    The value is a seed, never an override: once a password exists the variables are ignored. The seed itself is never
+    logged.
+    """
+    seed = _read_seed_from_env()
+    if seed is None:
+        return False
+    store = get_store() if store is None else store
+    state = store.state()
+    if state is AuthState.CONFIGURED:
+        logger.info("Admin password seed from the environment ignored: a password already exists")
+        return False
+    if state is AuthState.UNAVAILABLE:
+        return False  # the store already logged why
+    problem = validate_new_password(seed, seed)
+    if problem is not None:
+        logger.error(f"Admin password seed from the environment rejected: {problem}")
+        return False
+    if not store.create(hash_password(seed)):
+        logger.info("Admin password seed from the environment not applied: auth.json appeared meanwhile")
+        return False
+    logger.info("Admin password seeded from the environment")
+    return True
