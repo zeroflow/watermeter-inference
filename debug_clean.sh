@@ -5,17 +5,23 @@ set -e
 # No persistent volumes — everything lives inside the container and vanishes on stop.
 # Serves a committed meter snapshot via nginx sidecar.
 # Maps to host port 8003 (separate from debug=8002 and prod=8001).
+#
+# Auth: by default the container is seeded with a fresh random admin password that this
+# script prints (the instance is throwaway and has no volumes). With --setup nothing is
+# seeded, so the real first-boot setup page appears at /setup.
 
 CONTAINER_NAME="watermeter-dashboard-clean"
 STUB_CONTAINER="watermeter-stub"
 NETWORK_NAME="watermeter-clean-net"
 PORT=8003
 DETACH=0
+SETUP=0
 
 for arg in "$@"; do
     case "$arg" in
         --detach) DETACH=1 ;;
-        *) echo "Unknown option: $arg"; echo "Usage: $0 [--detach]"; exit 1 ;;
+        --setup) SETUP=1 ;;
+        *) echo "Unknown option: $arg"; echo "Usage: $0 [--detach] [--setup]"; exit 1 ;;
     esac
 done
 
@@ -56,6 +62,20 @@ if [[ -e "$DRI_DEVICE" ]]; then
     DRI_FLAGS="--device $DRI_DEVICE:$DRI_DEVICE --group-add=$(stat -c "%g" $DRI_DEVICE)"
 fi
 
+# --- Admin password for this throwaway instance ---
+ADMIN_PW=""
+if [[ $SETUP -eq 0 ]]; then
+    ADMIN_PW=$(openssl rand -hex 16)
+fi
+
+report_login() {
+    if [[ $SETUP -eq 1 ]]; then
+        echo "First-boot setup page: http://localhost:${PORT}/setup"
+    else
+        echo "Admin password for this throwaway instance: $ADMIN_PW"
+    fi
+}
+
 # --- Create stub config pointing at sidecar ---
 # Copy repo config (clean, no ROI coordinates) as base
 cp config.yaml "$STUB_DIR/config.yaml"
@@ -94,6 +114,8 @@ if [[ $DETACH -eq 1 ]]; then
         --network "$NETWORK_NAME" \
         -v "$STUB_DIR:/config" \
         -p ${PORT}:8001 \
+        -e PUID=$(id -u) -e PGID=$(id -g) \
+        ${ADMIN_PW:+-e WATERMETER_ADMIN_PASSWORD="$ADMIN_PW"} \
         watermeter-dashboard
 
     echo "Waiting for container to become ready..."
@@ -103,9 +125,10 @@ if [[ $DETACH -eq 1 ]]; then
             docker logs "$CONTAINER_NAME" --tail 20
             exit 1
         fi
-        if curl -sf http://localhost:${PORT}/ >/dev/null 2>&1; then
+        if curl -sf http://localhost:${PORT}/health >/dev/null 2>&1; then
             echo ""
             echo "Clean-install container ready on http://localhost:${PORT}"
+            report_login
             # Don't cleanup on success in detach mode — user will stop manually
             trap - EXIT
             echo ""
@@ -121,11 +144,14 @@ if [[ $DETACH -eq 1 ]]; then
     docker logs "$CONTAINER_NAME" --tail 20
     exit 1
 else
+    report_login
     docker run -it --rm \
         --name "$CONTAINER_NAME" \
         $DRI_FLAGS \
         --network "$NETWORK_NAME" \
         -v "$STUB_DIR:/config" \
         -p ${PORT}:8001 \
+        -e PUID=$(id -u) -e PGID=$(id -g) \
+        ${ADMIN_PW:+-e WATERMETER_ADMIN_PASSWORD="$ADMIN_PW"} \
         watermeter-dashboard
 fi
