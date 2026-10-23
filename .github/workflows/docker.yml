@@ -53,14 +53,14 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Smoke test (container starts, /health responds)
+      - name: Smoke test (health, auth gate, login)
         run: |
-          docker run -d --name smoke -p 8001:8001 watermeter-smoke:ci
-          for i in $(seq 1 60); do
-            if curl -sf http://localhost:8001/health; then echo; echo "healthy after ${i}x2s"; exit 0; fi
-            sleep 2
-          done
-          echo "container did not become healthy"; docker logs smoke; exit 1
+          PW=$(openssl rand -hex 16)
+          docker run -d --name smoke -p 8001:8001 -e WATERMETER_ADMIN_PASSWORD="$PW" watermeter-smoke:ci
+          if ! bash scripts/auth_smoke.sh http://localhost:8001 "$PW"; then
+            docker logs smoke
+            exit 1
+          fi
 
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'

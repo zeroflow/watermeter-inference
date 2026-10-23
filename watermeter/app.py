@@ -7,12 +7,14 @@ Route handlers are organized in watermeter/routes/.
 
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from . import auth
 from .auth_middleware import AuthMiddleware
 from .image_hash import purge_duplicates
 from .watermeter_service import get_service
@@ -40,11 +42,47 @@ def _create_background_task(coro):
     return task
 
 
+async def _auth_startup() -> None:
+    """Seed the admin password from the environment and announce the auth state in the log.
+
+    Never raises (D-07): the gate covers HTTP only, so a failure here must not delay the reading loop, MQTT or the
+    stats loop. If the store is unusable the middleware keeps the web UI locked on its own.
+    """
+    try:
+        # AUTH-09: seed only, never an override. The value is never logged, only the variable that supplied it.
+        if await asyncio.to_thread(auth.bootstrap_from_env):
+            source = (
+                auth.ADMIN_PASSWORD_FILE_ENV
+                if os.environ.get(auth.ADMIN_PASSWORD_FILE_ENV)
+                else auth.ADMIN_PASSWORD_ENV
+            )
+            logger.info(f"Admin password set from {source}; the setup page stays closed")
+        state = auth.get_store().state()
+        if state is auth.AuthState.UNCONFIGURED:
+            logger.warning(
+                "No admin password is set: the setup page at /setup is open to anyone who can reach this port. "
+                f"Set the password now, or set {auth.ADMIN_PASSWORD_ENV}."
+            )
+            if auth.setup_token_required():
+                auth.get_setup_token()  # logs the token when it generates it (D-09)
+        seeded_by_env = bool(os.environ.get(auth.ADMIN_PASSWORD_ENV) or os.environ.get(auth.ADMIN_PASSWORD_FILE_ENV))
+        data_dir = auth.auth_file_path().parent
+        if not seeded_by_env and not os.path.ismount(str(data_dir)):
+            logger.warning(
+                f"{data_dir} is not a mounted volume: the admin password and all sessions are lost when the "
+                f"container is recreated. Mount a persistent volume (for example ./data:/data) or set "
+                f"{auth.ADMIN_PASSWORD_ENV} so the password is seeded on every start."
+            )
+    except Exception as e:
+        logger.error(f"Auth startup checks failed: {e}; the web UI stays locked, readings and MQTT continue")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifecycle manager for FastAPI app."""
     # Startup
     logger.info("Starting Water Meter Dashboard...")
+    await _auth_startup()
     service = get_service()
     trigger_mode = service.trigger_mode
 
