@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 01
 current_phase_name: Auth Core and Test/Script Plumbing
 status: executing
-stopped_at: Completed 01-03-PLAN.md
-last_updated: "2026-10-23T08:33:10.784Z"
+stopped_at: Completed 01-04-PLAN.md
+last_updated: "2026-10-23T08:44:19.613Z"
 last_activity: 2026-10-23
 last_activity_desc: Phase 01 execution started
-state_head: 93dda53a4808838528634259e5618c633342195d
+state_head: f77864a1f9548fbca9f54fa89f9e6706bbad97b6
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 5
-  completed_plans: 3
+  completed_plans: 4
   percent: 0
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-10-11)
 ## Current Position
 
 Phase: 01 (Auth Core and Test/Script Plumbing) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-10-23 — Phase 01 execution started
 
@@ -59,6 +59,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P01 | 9 min | 3 tasks | 7 files |
 | Phase 01 P02 | 7 min | 3 tasks | 5 files |
 | Phase 01 P03 | 5 min | 3 tasks | 7 files |
+| Phase 01 P04 | 14 min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -78,6 +79,9 @@ Recent decisions affecting current work:
 - [Phase 01]: 01-02: sliding refresh skipped when the response already sets the session cookie (logout and password change stay effective)
 - [Phase 01]: 01-03: setup token is checked before password validation; throttle keys are <ip>, setup:<ip>, pw:<ip>
 - [Phase 01]: 01-03: wrong current password on /api/auth/password answers 403 (auth.js treats 401 as expired session); same-password change allowed and bumps epoch
+- [Phase 01]: 01-04: AuthMiddleware is installed unconditionally with no bypass flag; tests authenticate through a real auth.json and a minted cookie
+- [Phase 01]: 01-04: _auth_startup never raises and logs only the name of the seed variable, never the value; the volume warning is skipped when a seed variable is set
+- [Phase 01]: 01-04: CI smoke logic lives in scripts/auth_smoke.sh and runs before the GHCR push, so a broken gate blocks :dev
 
 ### Pending Todos
 
@@ -101,6 +105,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-23T08:33:10.761Z
-Stopped at: Completed 01-03-PLAN.md
+Last session: 2026-10-23T08:44:19.588Z
+Stopped at: Completed 01-04-PLAN.md
 Resume file: None
