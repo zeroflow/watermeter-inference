@@ -9,17 +9,17 @@
 
 - [ ] **AUTH-01**: On a fresh or upgraded install with no admin password, every page redirects to a setup page where the owner sets the password (min. 8 chars, confirm field). Only `/health`, the setup page and static assets are reachable until then.
 - [ ] **AUTH-02**: Once a password is set, the setup page is permanently closed (a second setup attempt is refused, including concurrent submissions).
-- [ ] **AUTH-03**: Owner can log in with the admin password and stays logged in across browser restarts (sliding session, default about 30 days).
+- [x] **AUTH-03**: Owner can log in with the admin password and stays logged in across browser restarts (sliding session, default about 30 days).
 - [ ] **AUTH-04**: Owner can log out from any page (POST), which ends that session.
-- [ ] **AUTH-05**: Owner can change the password in the UI (current password required); every other existing session is logged out.
+- [x] **AUTH-05**: Owner can change the password in the UI (current password required); every other existing session is logged out.
 - [ ] **AUTH-06**: Every route except the explicit allowlist (`/health`, `/login`, `/setup` while unconfigured, `/logout`, `/static/*`) rejects unauthenticated requests, including `/docs`/`/openapi.json` and routes added later (enforced by a route-inventory test).
 - [ ] **AUTH-07**: An unauthenticated or expired session never shows login HTML inside a page fragment: full pages redirect to login and return to the original page afterwards; HTMX and `fetch()` calls get a 401 that sends the browser to login.
 - [ ] **AUTH-08**: A cross-site page cannot perform state-changing requests with the owner's cookie (Origin check plus required custom header on writes, works over plain HTTP on a LAN).
 - [ ] **AUTH-09**: Operator can pre-seed the admin password via `WATERMETER_ADMIN_PASSWORD` (or `_FILE`). It is used only when no password exists yet and is ignored afterwards.
 - [ ] **AUTH-10**: A locked-out owner can reset the password with host access only (`python -m watermeter set-password` in the container, or deleting the auth file and restarting), documented in the README.
-- [ ] **AUTH-11**: Repeated failed logins from one client are throttled (429 with Retry-After), without ever locking the owner's account permanently; failures are logged with client IP, never the attempted password.
+- [x] **AUTH-11**: Repeated failed logins from one client are throttled (429 with Retry-After), without ever locking the owner's account permanently; failures are logged with client IP, never the attempted password.
 - [ ] **AUTH-12**: Prod and debug instances on the same host keep separate login sessions (per-instance cookie name).
-- [ ] **AUTH-13**: Session cookie is HttpOnly and SameSite=Lax, and Secure only when the request is HTTPS, so login works on plain-HTTP LANs and behind a TLS proxy. The signing secret persists in `/data` across restarts.
+- [x] **AUTH-13**: Session cookie is HttpOnly and SameSite=Lax, and Secure only when the request is HTTPS, so login works on plain-HTTP LANs and behind a TLS proxy. The signing secret persists in `/data` across restarts.
 - [ ] **AUTH-14**: Operator can opt in (env flag) to requiring a one-time setup token, printed in the container log, on the setup page.
 - [ ] **AUTH-15**: Unit tests, integration tests, CI smoke test, `debug_clean.sh` and `oneshot_test.sh` pass with auth enabled, without any auth-disable switch in production code.
 
@@ -107,17 +107,17 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | AUTH-01 | Phase 1 | Pending |
 | AUTH-02 | Phase 1 | Pending |
-| AUTH-03 | Phase 1 | Pending |
+| AUTH-03 | Phase 1 | Complete |
 | AUTH-04 | Phase 1 | Pending |
-| AUTH-05 | Phase 1 | Pending |
+| AUTH-05 | Phase 1 | Complete |
 | AUTH-06 | Phase 1 | Pending |
 | AUTH-07 | Phase 1 | Pending |
 | AUTH-08 | Phase 1 | Pending |
 | AUTH-09 | Phase 1 | Pending |
 | AUTH-10 | Phase 1 | Pending |
-| AUTH-11 | Phase 1 | Pending |
+| AUTH-11 | Phase 1 | Complete |
 | AUTH-12 | Phase 1 | Pending |
-| AUTH-13 | Phase 1 | Pending |
+| AUTH-13 | Phase 1 | Complete |
 | AUTH-14 | Phase 1 | Pending |
 | AUTH-15 | Phase 1 | Pending |
 | HARD-01 | Phase 2 | Pending |
