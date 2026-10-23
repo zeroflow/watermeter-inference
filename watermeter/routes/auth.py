@@ -126,6 +126,31 @@ async def setup_submit(request: Request):
     if state is not auth.AuthState.UNCONFIGURED:
         return _setup_closed(request, state, store.record())
     ip = _client_ip(request)
+    if auth.setup_token_required():
+        key = f"setup:{ip}"
+        wait = limiter.retry_after(key)
+        if wait > 0:
+            throttled = _render(
+                request,
+                "setup.html",
+                _setup_context(f"Too many attempts, try again in {wait} s"),
+                status_code=429,
+            )
+            throttled.headers["Retry-After"] = str(wait)
+            return throttled
+        if not auth.check_setup_token(form.get("token")):
+            limiter.record_failure(key)
+            # D-09: the owner reads the token from the container log, so it is repeated on every failed attempt.
+            logger.warning(
+                f"Setup attempt from {ip} with a wrong or missing setup token; "
+                f"the current token is {auth.get_setup_token()}"
+            )
+            return _render(
+                request,
+                "setup.html",
+                _setup_context("Wrong or missing setup token (see the container log)"),
+                status_code=403,
+            )
     password = form.get("password", "")
     problem = auth.validate_new_password(password, form.get("confirm", ""))
     if problem is not None:

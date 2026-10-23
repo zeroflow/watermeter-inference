@@ -12,11 +12,22 @@
     <main class="auth-card">
         <h1>Set admin password</h1>
         <p class="auth-lead">Choose the password that protects this Watermeter. You will be logged in right after.</p>
+        {% if upgrade %}
+        <div class="auth-notice">
+            This version requires an admin password. Your configuration and readings are unchanged and MQTT publishing keeps running.
+            <a href="{{ readme_url }}">Read more</a>
+        </div>
+        {% endif %}
         {% if error %}
         <div class="auth-error" role="alert">{{ error }}</div>
         {% endif %}
         <form method="post" action="/setup" class="auth-form">
             <input type="text" name="username" value="admin" autocomplete="username" class="visually-hidden" tabindex="-1" aria-hidden="true">
+            {% if token_required %}
+            <label for="setup-token">Setup token</label>
+            <input type="text" id="setup-token" name="token" autocomplete="off" required>
+            <p class="auth-hint">Printed in the container log (docker logs &lt;container&gt;)</p>
+            {% endif %}
             <label for="setup-password">Password</label>
             <input type="password" id="setup-password" name="password" autocomplete="new-password" minlength="8" maxlength="1024" required autofocus>
             <label for="setup-confirm">Repeat password</label>
