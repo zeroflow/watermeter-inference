@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="auto">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Account - Watermeter</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💧</text></svg>">
+    {% include '_theme.html' %}
+</head>
+<body>
+    {% include '_nav.html' %}
+    <div class="container">
+        <header>
+            <h1>Account</h1>
+        </header>
+        <section class="auth-card account-panel">
+            <h2>Change password</h2>
+            <p class="auth-lead">Changing the password logs out every other browser. This one stays logged in.</p>
+            <form id="change-password-form" class="auth-form">
+                <input type="text" name="username" value="admin" autocomplete="username" class="visually-hidden" tabindex="-1" aria-hidden="true">
+                <label for="account-current">Current password</label>
+                <input type="password" id="account-current" name="current" autocomplete="current-password" required>
+                <label for="account-new">New password</label>
+                <input type="password" id="account-new" name="new" autocomplete="new-password" minlength="8" maxlength="1024" required>
+                <label for="account-confirm">Repeat new password</label>
+                <input type="password" id="account-confirm" name="confirm" autocomplete="new-password" minlength="8" maxlength="1024" required>
+                <button type="submit" class="btn btn-primary">Change password</button>
+            </form>
+            <div id="account-message" role="status"></div>
+        </section>
+        <section class="auth-card account-panel">
+            <h2>Log out</h2>
+            <form method="post" action="/logout" class="auth-form">
+                <button type="submit" class="btn btn-secondary">Log out</button>
+            </form>
+        </section>
+    </div>
+    <script src="/static/account.js"></script>
+</body>
+</html>

@@ -6,8 +6,9 @@ from pathlib import Path
 from urllib.parse import parse_qs
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
 from .. import auth
 from ..ratelimit import FailureLimiter
@@ -249,4 +250,73 @@ async def logout(request: Request):
     record = auth.get_store().record()
     if record is not None:
         response.headers.append("set-cookie", auth.build_clear_cookie(record, _is_secure(request)))
+    return response
+
+
+class PasswordChangeRequest(BaseModel):
+    """Request body of the change-password API. Defaults keep missing fields inside the {success, message} contract."""
+
+    current: str = ""
+    new: str = ""
+    confirm: str = ""
+
+
+@router.get(
+    "/account",
+    response_class=HTMLResponse,
+    tags=["Auth"],
+    summary="Account page",
+    description="Render the change-password form and the logout button",
+)
+async def account_page(request: Request):
+    """Show the account page (password change and logout). No session details are shown (D-04)."""
+    return _render(request, "account.html", {"nav_active": "account"})
+
+
+def _password_failure(message: str, status_code: int, headers: dict[str, str] | None = None) -> JSONResponse:
+    return JSONResponse({"success": False, "message": message}, status_code=status_code, headers=headers)
+
+
+@router.post(
+    "/api/auth/password",
+    tags=["Auth"],
+    summary="Change the admin password",
+    description="Verify the current password, store the new one and end every other session",
+)
+async def change_password(request: Request, body: PasswordChangeRequest):
+    """Change the password; this browser gets a cookie for the new epoch and stays logged in (D-03)."""
+    ip = _client_ip(request)
+    key = f"pw:{ip}"
+    wait = limiter.retry_after(key)
+    if wait > 0:
+        return _password_failure(f"Too many attempts, try again in {wait} s", 429, headers={"Retry-After": str(wait)})
+    store = auth.get_store()
+    record = store.record()
+    if record is None:
+        return _password_failure("Authentication is unavailable", 503)
+    if not body.current:
+        return _password_failure("Current password is required", 400)
+    ok = False
+    if len(body.current) <= auth.MAX_PASSWORD_LENGTH:
+        ok = await asyncio.to_thread(auth.verify_password, body.current, record.password_hash)
+    if not ok:
+        limiter.record_failure(key)
+        logger.warning(f"Failed password change from {ip}")
+        # 403, not 401: auth.js treats a 401 as an expired session and would send the owner to the login page.
+        return _password_failure("Current password is wrong", 403)
+    problem = auth.validate_new_password(body.new, body.confirm)
+    if problem is not None:
+        return _password_failure(problem, 400)
+    new_hash = await asyncio.to_thread(auth.hash_password, body.new)
+    try:
+        new_record = await asyncio.to_thread(store.replace_password, new_hash)
+    except (auth.AuthStoreError, OSError) as exc:
+        logger.error(f"Could not store the new admin password: {exc}")
+        return _password_failure("Could not store the new password", 500)
+    limiter.reset(key)
+    logger.info(f"Admin password changed from {ip}; other sessions logged out")
+    response = JSONResponse({"success": True, "message": "Password changed. Other sessions were logged out."})
+    response.headers.append(
+        "set-cookie", auth.build_session_cookie(new_record, auth.issue_token(new_record), _is_secure(request))
+    )
     return response

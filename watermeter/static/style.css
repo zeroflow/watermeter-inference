@@ -2215,3 +2215,21 @@ main {
     white-space: nowrap;
     border: 0;
 }
+
+/* Account page: auth cards sit inside the normal page container */
+.account-panel {
+    margin: 24px;
+    max-width: 480px;
+}
+
+.account-panel h2 {
+    font-size: 18px;
+    margin-bottom: 8px;
+}
+
+#account-message:not(:empty) {
+    margin-top: 16px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+}
