@@ -1,4 +1,4 @@
-"""Core service routes: status, trigger, reset, health, training submission."""
+"""Core service routes: status, trigger, reset, training submission."""
 
 import asyncio
 import base64
@@ -219,20 +219,3 @@ async def confirmation_status():
             "details": pending,
         }
     )
-
-
-@router.get(
-    "/health",
-    tags=["Status & Reading"],
-    summary="Health check",
-    description="Health check endpoint for monitoring system availability",
-)
-def health():
-    """Health check endpoint."""
-    service = watermeter_service.get_service()
-    return {
-        "status": "ok",
-        "mqtt_connected": service.mqtt_client.is_connected() if service.mqtt_client else False,
-        "last_update": service.current_state.get("last_update"),
-        "processing": service.current_state["processing"],
-    }

@@ -51,6 +51,10 @@ for _ws_name in ['watermeter_service', 'watermeter.watermeter_service']:
         _ws_mock.get_service = MagicMock()
         sys.modules[_ws_name] = _ws_mock
 
+# auth and ratelimit are stdlib-only leaves, so they are safe to import before the app.
+from watermeter import auth  # noqa: E402
+from watermeter.ratelimit import FailureLimiter  # noqa: E402
+
 
 @pytest.fixture
 def mock_service():
@@ -76,13 +80,32 @@ def mock_service():
     return service
 
 
-@pytest.fixture
-def test_client(mock_service, tmp_path, monkeypatch):
-    """FastAPI TestClient with mocked services.
+# Unit tests only: this password never reaches an image or a running instance.
+TEST_ADMIN_PASSWORD = 'test-password-not-a-secret'
+
+
+@pytest.fixture(scope='session')
+def auth_password_hash():
+    """scrypt hash of TEST_ADMIN_PASSWORD, computed once per session (about 100 tests use the client)."""
+    return auth.hash_password(TEST_ADMIN_PASSWORD)
+
+
+def _make_client(mock_service, tmp_path, monkeypatch):
+    """FastAPI TestClient with mocked services and an empty, isolated credential store.
 
     Provides a working test client where all heavy services are mocked.
-    Uses tmp_path for config file operations.
+    Uses tmp_path for config file operations and for auth.json.
     """
+    monkeypatch.setenv('WATERMETER_AUTH_FILE', str(tmp_path / 'data' / 'auth.json'))
+    for _env in (
+        'WATERMETER_ADMIN_PASSWORD',
+        'WATERMETER_ADMIN_PASSWORD_FILE',
+        'WATERMETER_SETUP_TOKEN_REQUIRED',
+        'WATERMETER_ALLOWED_ORIGINS',
+    ):
+        monkeypatch.delenv(_env, raising=False)
+    monkeypatch.setattr(auth, '_setup_token', None)
+
     # Change working directory to tmp_path so config.yaml operations work
     monkeypatch.chdir(tmp_path)
 
@@ -115,7 +138,11 @@ def test_client(mock_service, tmp_path, monkeypatch):
 
     # Import app after mocking (deferred to avoid import errors at collection time)
     import watermeter.app as app_module
+    import watermeter.routes.auth as auth_routes
     import watermeter.routes.pages as pages_module
+
+    # A fresh throttle per test so failed logins in one test never lock out the next.
+    monkeypatch.setattr(auth_routes, 'limiter', FailureLimiter())
 
     # Override template/static dirs to use test stubs
     monkeypatch.setattr(pages_module, "templates", Jinja2Templates(directory=str(templates_dir)))
@@ -124,5 +151,33 @@ def test_client(mock_service, tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
 
     # Use TestClient without lifespan to avoid MQTT startup
-    client = TestClient(app_module.app, raise_server_exceptions=False)
+    return TestClient(app_module.app, raise_server_exceptions=False)
+
+
+@pytest.fixture
+def test_client(mock_service, tmp_path, monkeypatch, auth_password_hash):
+    """TestClient that is logged in by default: a real auth.json plus a cookie minted with auth.issue_token.
+
+    Tests authenticate through the real gate (D-15); production code has no bypass.
+    """
+    client = _make_client(mock_service, tmp_path, monkeypatch)
+    store = auth.get_store()
+    assert store.create(auth_password_hash)
+    record = store.record()
+    client.cookies.set(record.cookie_name, auth.issue_token(record))
+    client.headers['X-Requested-With'] = 'watermeter'
+    return client
+
+
+@pytest.fixture
+def anon_client(mock_service, tmp_path, monkeypatch):
+    """TestClient with no credentials and no password configured (fresh install, setup state)."""
+    return _make_client(mock_service, tmp_path, monkeypatch)
+
+
+@pytest.fixture
+def anon_client_configured(mock_service, tmp_path, monkeypatch, auth_password_hash):
+    """TestClient on a configured instance but without a cookie or the CSRF header (anonymous visitor)."""
+    client = _make_client(mock_service, tmp_path, monkeypatch)
+    assert auth.get_store().create(auth_password_hash)
     return client

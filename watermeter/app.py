@@ -13,6 +13,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from .auth_middleware import AuthMiddleware
 from .image_hash import purge_duplicates
 from .watermeter_service import get_service
 
@@ -151,7 +152,14 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
     openapi_tags=tags_metadata,
+    # The OpenAPI schema and its viewers would list every route to anyone who could reach the port.
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
+
+# Default-deny login gate for every HTTP request. Installed unconditionally: there is no setting that skips it.
+app.add_middleware(AuthMiddleware)
 
 # Mount static files relative to this package
 _pkg_dir = Path(__file__).resolve().parent
@@ -159,8 +167,10 @@ app.mount("/static", StaticFiles(directory=str(_pkg_dir / "static")), name="stat
 
 # Include route modules (imported here to avoid circular imports at module level;
 # safe_subpath and other shared objects are defined above these imports)
+from .routes.auth import router as auth_router  # noqa: E402
 from .routes.calibration import router as calibration_router  # noqa: E402
 from .routes.config import router as config_router  # noqa: E402
+from .routes.health import router as health_router  # noqa: E402
 from .routes.label import router as label_router  # noqa: E402
 from .routes.metrics import router as metrics_router  # noqa: E402
 from .routes.models import router as models_router  # noqa: E402
@@ -171,6 +181,8 @@ from .routes.service import router as service_router  # noqa: E402
 from .routes.synthetic import router as synthetic_router  # noqa: E402
 from .routes.training import router as training_router  # noqa: E402
 
+app.include_router(health_router)
+app.include_router(auth_router)
 app.include_router(pages_router)
 app.include_router(service_router)
 app.include_router(config_router)
