@@ -52,6 +52,12 @@ services:
       # Optional: Override logging level (DEBUG, INFO, WARNING, ERROR)
       # - LOG_LEVEL=${LOG_LEVEL:-INFO}
 
+      # Optional: pre-seed the admin password (seed-only: used when no password is set yet,
+      # ignored once ./data/auth.json exists). Otherwise set it on the setup page.
+      # - WATERMETER_ADMIN_PASSWORD=${WATERMETER_ADMIN_PASSWORD:-}
+      # Optional: require a setup token (printed in the container log) on the setup page
+      # - WATERMETER_SETUP_TOKEN_REQUIRED=1
+
     # Optional: Intel GPU hardware acceleration
     # Uncomment the following lines to enable GPU inference acceleration
     # 1. Check your GPU device exists: ls -l /dev/dri/renderD128

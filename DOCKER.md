@@ -94,12 +94,17 @@ docker run -d \
 
 ## Web UI Pages
 
+- `/setup` — First-boot page where the admin password is chosen (only answers while no password is set)
+- `/login` — Login page
+- `/account` — Change the admin password (logs out every other session)
 - `/` — Dashboard (live meter reading)
 - `/training` — Model training, benchmarking, and model management
 - `/label` — Interactive labeling of training data
 - `/roi-config` — Visual ROI editor
 - `/config-editor` — Configuration editor
-- `/docs` — Swagger API documentation
+
+All pages except `/setup`, `/login` and `/health` need a login. The interactive API pages
+are disabled.
 
 ## Configuration
 
@@ -132,6 +137,8 @@ Persistent data is stored in separate volume mounts:
 
 **`./data/` directory:**
 - `state.json` - Last reading and application state
+- `auth.json` - Admin password hash and session secret (mode 600). Keep `/data` on a
+  volume: without it the setup page returns after every container recreate.
 
 **`./models/` directory:**
 - `digits/` - Trained digit recognition models
@@ -173,10 +180,27 @@ Optional environment variables (set in `.env` or `docker-compose.yml`):
 - `HF_TOKEN` - Hugging Face API token (optional; required to download pretrained model
   weights from Hugging Face Hub during training). Get a token at
   https://huggingface.co/settings/tokens and set it in `.env`.
+- `WATERMETER_ADMIN_PASSWORD` - Pre-seeds the admin password on startup (for example
+  `change-me-to-a-long-password`, at least 8 characters). Used only while no password
+  exists yet; ignored once `/data/auth.json` exists.
+- `WATERMETER_ADMIN_PASSWORD_FILE` - Path to a file (for example a Docker secret at
+  `/run/secrets/watermeter_admin_password`) holding the seed password. Same seed-only rule.
+- `WATERMETER_SETUP_TOKEN_REQUIRED` - Set to `1` to require a setup token on the setup
+  page. The token is printed in the container log (`docker logs <container>`) and changes
+  on every start.
+- `WATERMETER_ALLOWED_ORIGINS` - Comma-separated extra origins accepted for state-changing
+  browser requests, for a reverse proxy that rewrites the `Host` header (for example
+  `https://meter.example.lan`).
+- `FORWARDED_ALLOW_IPS` - Address of a trusted reverse proxy (for example `192.168.x.x`).
+  The app then trusts its `X-Forwarded-Proto` header, so the session cookie gets the
+  Secure flag over HTTPS. Not needed for plain HTTP on a LAN.
+
+See the README section "Authentication" for how these fit together.
 
 ## Health Check
 
-The service includes a health endpoint:
+The service includes a health endpoint. It stays reachable without a login, so container
+health checks and monitoring keep working:
 ```bash
 curl http://localhost:8001/health
 ```
@@ -209,3 +233,20 @@ docker compose restart
 **Models not found:**
 - Use the `/training` page to train or import a model
 - Check mounted model directory: `docker exec watermeter ls /app/models/digits/`
+
+**Forgot the admin password:**
+- Run `docker exec -it -u watermeter watermeter python3 -m watermeter set-password`
+  (logs out every session, no restart needed), or delete `./data/auth.json` so the setup
+  page returns. Details: [Forgot the admin password](README.md#forgot-the-admin-password).
+
+**Recovery command run without `-u watermeter`:**
+- It still works: the file is handed back to the app user afterwards. Use `-u watermeter`
+  anyway so the file never belongs to root, even briefly.
+
+**HTTP 503 from every page (except `/health`):**
+- `/data/auth.json` is damaged or unreadable. Fix its permissions, restore it from a
+  backup, or delete it so the setup page returns. The container log names the problem.
+
+**The setup page appears after every restart:**
+- `/data` is not on a persistent volume, so `auth.json` is lost when the container is
+  recreated. Mount `./data:/data` (or seed the password with `WATERMETER_ADMIN_PASSWORD`).

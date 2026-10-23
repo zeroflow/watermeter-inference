@@ -11,7 +11,7 @@ AI-powered water meter reader with live dashboard, built-in model training, and 
 >
 > This application was written ("vibe-coded") almost entirely by AI (Claude). The author reviewed outputs and tested against their own hardware setup — that is the full extent of any quality assurance. There have been no security audits, no penetration tests, no human code reviews, no dependency audits, and no benchmarks. It is provided "AS IS", without warranty of any kind, as stated in the [LICENSE](LICENSE) file.
 >
-> **What's at stake:** AI Water Meter stores and transmits MQTT broker credentials, camera URLs with authentication parameters, and Home Assistant integration tokens. The web UI has no authentication layer. Dependencies have not been vetted for supply-chain vulnerabilities.
+> **What's at stake:** AI Water Meter stores and transmits MQTT broker credentials, camera URLs with authentication parameters, and Home Assistant integration tokens. The web UI is protected by a single admin password (see [Authentication](#authentication)), but that login has had no security audit either. Dependencies have not been vetted for supply-chain vulnerabilities.
 >
 > **Do NOT expose this application to the public internet.** Do NOT run it in a shared or untrusted network environment without a thorough independent security review. Anyone deploying this software assumes full responsibility for its operation.
 >
@@ -43,7 +43,7 @@ cd watermeter-inference
 cp .env.example .env
 docker compose pull        # prebuilt image from ghcr.io (or: docker compose up -d --build)
 docker compose up -d
-# Visit http://localhost:8001
+# Visit http://localhost:8001 and set the admin password on the setup page
 ```
 
 On first run the container will:
@@ -67,7 +67,34 @@ Key configuration sections:
 
 The full schema is available at `/api/config/schema.json`.
 
+## Authentication
+
+The whole web UI and API sit behind one admin password. There is no switch to turn the login off.
+
+- **First visit.** On a fresh install every page sends you to a setup page where you choose the admin password (at least 8 characters). Until you do, only the setup page and `/health` answer.
+- **Upgrading from a version without a login.** The same setup page appears once after you update the container. Your configuration and readings are unchanged, and the reading loop and MQTT publishing to Home Assistant keep running while no password is set. Open the web UI and set the password to close the gap.
+- **Sessions.** A login lasts 30 days and renews while you use it, so a browser restart does not log you out. The Account page changes the password (this logs out every other session), and Logout is in the navigation. Each instance uses its own session cookie name, so several instances on one host, for example production and a debug container on other ports, do not log each other out.
+- **Pre-seeding the password.** Set `WATERMETER_ADMIN_PASSWORD`, or `WATERMETER_ADMIN_PASSWORD_FILE` pointing at a Docker secret file, to create the password on startup. It is used only while no password exists yet and is ignored afterwards, so changing it later has no effect.
+- **Setup token.** Set `WATERMETER_SETUP_TOKEN_REQUIRED=1` to add a token field to the setup page. The token is printed in the container log (`docker logs <container>`) and changes on every start, so only someone who can read the log can set the first password.
+- **Persistent data.** The password hash and the session secret live in `./data/auth.json` (mode 600). Keep `/data` on a volume: without one, the setup page returns after every container recreate.
+- **Reverse proxies.** Keep the original `Host` header when forwarding. If the proxy rewrites it, list the public origin in `WATERMETER_ALLOWED_ORIGINS` (comma separated, for example `https://meter.example.lan`). To make the session cookie Secure over HTTPS, set `FORWARDED_ALLOW_IPS` to the proxy address (for example `192.168.x.x`) so the app trusts its `X-Forwarded-Proto` header. Plain HTTP on a LAN works without any proxy.
+- **API clients and automations.** Every endpoint except `/health` needs a logged-in session. A script has to `POST /login` with the password and keep the cookie, and requests to `/api/` must send the header `X-Requested-With: watermeter`. For Home Assistant automations, prefer the MQTT trigger and reset topics over calling the HTTP API.
+
+### Forgot the admin password
+
+Run the recovery command inside the container. It asks for a new password, logs out every session and needs no restart:
+
+```bash
+docker exec -it -u watermeter <container> python3 -m watermeter set-password
+```
+
+Running the command without `-u watermeter` also works, because the file is handed back to the app user afterwards. As an alternative, delete `./data/auth.json` on the host; the setup page then returns, and anyone who can open the page can set a new password, so do this only on a network you trust.
+
+If `auth.json` is damaged or unreadable, the web UI answers HTTP 503 until the file is fixed or deleted; `/health` keeps working.
+
 ## Key API Endpoints
+
+All endpoints below except `/health` need a logged-in session (see [Authentication](#authentication)).
 
 ```
 GET  /api/status                          Current reading and system state (full JSON)
@@ -85,7 +112,7 @@ GET  /api/training/status                 Current training and benchmark status
 GET  /health                              Health check
 ```
 
-See `/docs` (Swagger UI) or `/redoc` (ReDoc) for the complete API reference (45+ endpoints).
+There are 45+ endpoints in total. The interactive API pages are disabled; the route modules under `watermeter/routes/` are the reference.
 
 ## Development
 
@@ -109,6 +136,8 @@ bash debug.sh --purge-models     # wipe the debug models directory first
 # Access at http://localhost:8002
 ```
 
+The debug container keeps its state in `data_debug/`. To pick the admin password yourself, start it with `WATERMETER_ADMIN_PASSWORD=<your password> bash debug.sh --detach` (also read from `.env`). The value is passed through to the container and applies only while `data_debug/auth.json` does not exist; otherwise open the page and use the setup form, or reset it with `docker exec -it -u watermeter watermeter-dashboard-debug python3 -m watermeter set-password`. `WATERMETER_SETUP_TOKEN_REQUIRED` is passed through as well.
+
 ### Clean-Install Test Container
 
 `debug_clean.sh` tests the first-boot experience in an ephemeral container on port 8003. It has no persistent volumes, serves `tests/fixtures/meter_snapshot.jpg` through an nginx sidecar as the image source, and removes its containers and network on exit:
@@ -116,7 +145,10 @@ bash debug.sh --purge-models     # wipe the debug models directory first
 ```bash
 bash debug_clean.sh              # foreground; cleans up on exit
 bash debug_clean.sh --detach     # background; stop manually (see script output)
+bash debug_clean.sh --setup      # no seeded password: shows the real first-boot setup page at /setup
 ```
+
+By default the script seeds a fresh random admin password and prints it ("Admin password for this throwaway instance"); the container has no volumes, so the password disappears with it. With `--setup` nothing is seeded and you set the password on the setup page, exactly as a new user would.
 
 ### Tests
 
@@ -124,9 +156,19 @@ bash debug_clean.sh --detach     # background; stop manually (see script output)
 # Unit tests (no running container required)
 .venv/bin/python -m pytest tests/unit/
 
-# Integration tests (requires running container)
-.venv/bin/python -m pytest tests/integration/ --base-url=http://localhost:8002
+# Integration tests (need Docker; plain pytest deselects them, so pass -m integration)
+.venv/bin/python -m pytest tests/integration -m integration
 ```
+
+Without `--base-url` the integration tests build the image, start their own container and seed it with a random per-run admin password. To test an already running instance, pass its URL and password:
+
+```bash
+WATERMETER_TEST_PASSWORD=<admin password> \
+  .venv/bin/python -m pytest tests/integration -m integration --base-url=http://localhost:8002
+# or: --admin-password <admin password> (falls back to WATERMETER_ADMIN_PASSWORD)
+```
+
+When the password is missing or rejected, the tests that need a login are skipped with a message naming these options; two tests that check the unauthenticated behavior still run.
 
 The test suite includes 45 unit test files, 8 integration test files, 2 regression test files, and 1 export test file.
 
@@ -222,7 +264,7 @@ tests/
 | Host path | Container path | Purpose |
 |-----------|---------------|---------|
 | `./config` | `/config` | Configuration files (`config.yaml` — auto-created on first run) |
-| `./data` | `/data` | Persistent state (`state.json`, readings history) |
+| `./data` | `/data` | Persistent state (`state.json`, readings history, `auth.json` with the admin password hash and session secret) |
 | `./models` | `/app/models` | Trained model binaries and metadata |
 | `./training/digits` | `/training/digits` | Digit training data (`input/`, `ground_truth/`) |
 | `./training/arrows` | `/training/arrows` | Arrow training data (`input/`, `ground_truth/`) |
@@ -248,8 +290,8 @@ If you do not have an existing MQTT broker, uncomment the `mosquitto` service bl
 
 | Script | Purpose |
 |--------|---------|
-| `debug.sh` | Launch the debug container on port 8002 with source volume mounts (`--detach`, `--purge-models`) |
-| `debug_clean.sh` | Ephemeral first-boot test container on port 8003 with an nginx stub image source; no volumes, cleaned up on exit |
+| `debug.sh` | Launch the debug container on port 8002 with source volume mounts (`--detach`, `--purge-models`); passes `WATERMETER_ADMIN_PASSWORD` through |
+| `debug_clean.sh` | Ephemeral first-boot test container on port 8003 with an nginx stub image source; no volumes, cleaned up on exit; prints a throwaway admin password (`--setup` shows the real setup page instead) |
 | `setup.sh` | Create `.venv` and install `requirements.txt` + `requirements-dev.txt` via `uv` |
 | `scripts/fetch_upstream_data.sh` | Download upstream training data from jomjol/AI-on-the-edge-device (see `DATA_PROVENANCE.md`) |
 
@@ -266,7 +308,7 @@ Known documentation gaps:
 - [ ] Detailed leak detection configuration guide
 - [ ] User confirmation flow walkthrough
 - [ ] Correction engine algorithm description
-- [ ] Complete API endpoint documentation (see `/docs` for now)
+- [ ] Complete API endpoint documentation (the interactive API pages are disabled; see `watermeter/routes/` for now)
 
 ## License
 
