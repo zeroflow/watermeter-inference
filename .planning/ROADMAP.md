@@ -31,14 +31,14 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. Repeated failed logins from one client get a 429 with Retry-After without ever locking the owner out permanently. A locked-out owner can recover with host access only (`python -m watermeter set-password` or deleting the auth file), an operator can pre-seed the password with `WATERMETER_ADMIN_PASSWORD` (or `_FILE`) and optionally require a one-time setup token, and the README documents recovery and the upgrade notice.
   5. Unit tests, integration tests, the CI smoke test, `debug_clean.sh` and `oneshot_test.sh` all pass with auth enabled, and no auth-disable switch exists in production code.
 
-**Plans**: 1/5 plans executed
+**Plans**: 2/5 plans executed
 
 Plans:
 **Wave 1**
 - [x] 01-01-PLAN.md — Auth core: credential store (scrypt, 0600 atomic auth.json), session tokens, throttle, set-password CLI (unwired)
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 01-02-PLAN.md — Default-deny AuthMiddleware (CSRF, 401 contract, sliding refresh) and auth.js shim, proven on a harness app
+- [x] 01-02-PLAN.md — Default-deny AuthMiddleware (CSRF, 401 contract, sliding refresh) and auth.js shim, proven on a harness app
 - [ ] 01-03-PLAN.md — Setup, login, logout, account and change-password routes with themed pages, proven on a harness app
 
 **Wave 3** *(blocked on Wave 2 completion)*
@@ -99,7 +99,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Auth Core and Test/Script Plumbing | 1/5 | In Progress|  |
+| 1. Auth Core and Test/Script Plumbing | 2/5 | In Progress|  |
 | 2. Hardening Behind Auth | 0/TBD | Not started | - |
 | 3. Home Assistant Visibility | 0/TBD | Not started | - |
 | 4. Dashboard Banners | 0/TBD | Not started | - |
