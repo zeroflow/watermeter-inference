@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="auto">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Log in - Watermeter</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💧</text></svg>">
+    {% include '_theme.html' %}
+</head>
+<body class="auth-page">
+    <main class="auth-card">
+        <h1>Log in</h1>
+        <p class="auth-lead">Enter the admin password to open Watermeter.</p>
+        {% if error %}
+        <div class="auth-error" role="alert">{{ error }}</div>
+        {% endif %}
+        <form method="post" action="/login" class="auth-form">
+            <input type="text" name="username" value="admin" autocomplete="username" class="visually-hidden" tabindex="-1" aria-hidden="true">
+            <input type="hidden" name="next" value="{{ next }}">
+            <label for="login-password">Password</label>
+            <input type="password" id="login-password" name="password" autocomplete="current-password" required autofocus>
+            <button type="submit" class="btn btn-primary">Log in</button>
+        </form>
+        <p class="auth-hint">Forgot it? <a href="{{ recovery_url }}">See README</a></p>
+    </main>
+</body>
+</html>

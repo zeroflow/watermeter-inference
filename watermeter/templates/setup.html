@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="auto">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Set admin password - Watermeter</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💧</text></svg>">
+    {% include '_theme.html' %}
+</head>
+<body class="auth-page">
+    <main class="auth-card">
+        <h1>Set admin password</h1>
+        <p class="auth-lead">Choose the password that protects this Watermeter. You will be logged in right after.</p>
+        {% if error %}
+        <div class="auth-error" role="alert">{{ error }}</div>
+        {% endif %}
+        <form method="post" action="/setup" class="auth-form">
+            <input type="text" name="username" value="admin" autocomplete="username" class="visually-hidden" tabindex="-1" aria-hidden="true">
+            <label for="setup-password">Password</label>
+            <input type="password" id="setup-password" name="password" autocomplete="new-password" minlength="8" maxlength="1024" required autofocus>
+            <label for="setup-confirm">Repeat password</label>
+            <input type="password" id="setup-confirm" name="confirm" autocomplete="new-password" minlength="8" maxlength="1024" required>
+            <button type="submit" class="btn btn-primary">Set password</button>
+        </form>
+    </main>
+</body>
+</html>

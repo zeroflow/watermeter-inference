@@ -1,0 +1,227 @@
+"""Setup, login, logout, account and password-change routes for the single admin."""
+
+import asyncio
+import logging
+from pathlib import Path
+from urllib.parse import parse_qs
+
+from fastapi import APIRouter, Request
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+
+from .. import auth
+from ..ratelimit import FailureLimiter
+from .pages import register_template_globals
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
+# Own template instance so a test stubbing the pages templates never changes how these pages render.
+templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
+register_template_globals(templates)
+
+# Failure-only throttle shared by the login, setup token and password change checks (AUTH-11).
+limiter = FailureLimiter()
+
+# Setup and login forms carry a handful of short fields; anything larger is an attack or a mistake (T-01-21).
+MAX_FORM_BYTES = 16384
+
+
+def _client_ip(request: Request) -> str:
+    """Peer address of the connection. X-Forwarded-For is never trusted: any client could forge it."""
+    return request.client.host if request.client else "unknown"
+
+
+def _is_secure(request: Request) -> bool:
+    return request.url.scheme == "https"
+
+
+def _is_authenticated(request: Request, record: auth.AuthRecord | None) -> bool:
+    return auth.session_issued_at(record, request.cookies) is not None
+
+
+def _is_upgrade() -> bool:
+    """True when the data directory already holds meter data, i.e. this instance ran before auth existed (D-06)."""
+    data_dir = auth.auth_file_path().parent
+    return (data_dir / "reference_raw.jpg").exists() or (data_dir / "state.json").exists()
+
+
+async def _read_form(request: Request) -> dict[str, str] | None:
+    """Parse an urlencoded form body, or None when it is larger than MAX_FORM_BYTES.
+
+    The cap holds with and without a Content-Length header: the bytes are counted while the stream is read.
+    """
+    declared = request.headers.get("content-length")
+    if declared is not None and declared.isdigit() and int(declared) > MAX_FORM_BYTES:
+        return None
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > MAX_FORM_BYTES:
+            return None
+    parsed = parse_qs(body.decode("utf-8", "replace"), keep_blank_values=True, max_num_fields=20)
+    return {key: values[0] for key, values in parsed.items()}
+
+
+def _render(request: Request, template: str, context: dict, status_code: int = 200):
+    response = templates.TemplateResponse(request, template, context=context, status_code=status_code)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+def _too_large() -> PlainTextResponse:
+    return PlainTextResponse("Request body too large", status_code=413)
+
+
+def _setup_context(error: str | None) -> dict:
+    return {
+        "error": error,
+        "token_required": auth.setup_token_required(),
+        "upgrade": _is_upgrade(),
+        "readme_url": auth.README_AUTH_URL,
+    }
+
+
+def _login_context(next_target: str, error: str | None) -> dict:
+    return {"next": next_target, "error": error, "recovery_url": auth.README_RECOVERY_URL}
+
+
+def _setup_closed(request: Request, state: auth.AuthState, record: auth.AuthRecord | None):
+    """Answer for /setup once the instance is configured or the store is broken; never the form."""
+    if state is auth.AuthState.UNAVAILABLE:
+        return PlainTextResponse("Authentication is unavailable: the auth file cannot be read.", status_code=503)
+    return RedirectResponse("/" if _is_authenticated(request, record) else auth.LOGIN_PATH, status_code=303)
+
+
+@router.get(
+    "/setup",
+    response_class=HTMLResponse,
+    tags=["Auth"],
+    summary="First-run setup page",
+    description="Render the page where the admin password is set on an unconfigured instance",
+)
+async def setup_page(request: Request):
+    """Show the setup form while no admin password exists."""
+    store = auth.get_store()
+    state = store.state()
+    if state is not auth.AuthState.UNCONFIGURED:
+        return _setup_closed(request, state, store.record())
+    return _render(request, "setup.html", _setup_context(None))
+
+
+@router.post(
+    "/setup",
+    tags=["Auth"],
+    summary="Set the admin password",
+    description="Create the admin credential on an unconfigured instance and log the owner in",
+)
+async def setup_submit(request: Request):
+    """Create the admin password, log in and go to the dashboard (D-10)."""
+    form = await _read_form(request)
+    if form is None:
+        return _too_large()
+    store = auth.get_store()
+    state = store.state()
+    if state is not auth.AuthState.UNCONFIGURED:
+        return _setup_closed(request, state, store.record())
+    ip = _client_ip(request)
+    password = form.get("password", "")
+    problem = auth.validate_new_password(password, form.get("confirm", ""))
+    if problem is not None:
+        return _render(request, "setup.html", _setup_context(problem), status_code=400)
+    password_hash = await asyncio.to_thread(auth.hash_password, password)
+    created = await asyncio.to_thread(store.create, password_hash)
+    record = store.record()
+    if not created or record is None:
+        # Someone else finished setup first (AUTH-02): never log this request in.
+        return RedirectResponse(auth.LOGIN_PATH, status_code=303)
+    response = RedirectResponse("/", status_code=303)
+    response.headers.append(
+        "set-cookie", auth.build_session_cookie(record, auth.issue_token(record), _is_secure(request))
+    )
+    logger.info(f"Admin password set via the setup page from {ip}")
+    return response
+
+
+@router.get(
+    "/login",
+    response_class=HTMLResponse,
+    tags=["Auth"],
+    summary="Login page",
+    description="Render the login form",
+)
+async def login_page(request: Request):
+    """Show the login form, or send the visitor where they belong."""
+    store = auth.get_store()
+    state = store.state()
+    if state is auth.AuthState.UNCONFIGURED:
+        return RedirectResponse(auth.SETUP_PATH, status_code=303)
+    if state is auth.AuthState.UNAVAILABLE:
+        return PlainTextResponse("Authentication is unavailable: the auth file cannot be read.", status_code=503)
+    next_target = auth.safe_next(request.query_params.get("next"))
+    if _is_authenticated(request, store.record()):
+        return RedirectResponse(next_target, status_code=303)
+    return _render(request, "login.html", _login_context(next_target, None))
+
+
+@router.post(
+    "/login",
+    tags=["Auth"],
+    summary="Log in",
+    description="Check the admin password and start a session",
+)
+async def login_submit(request: Request):
+    """Verify the password. Throttled clients are refused before any hashing happens (D-08)."""
+    form = await _read_form(request)
+    if form is None:
+        return _too_large()
+    store = auth.get_store()
+    state = store.state()
+    if state is auth.AuthState.UNCONFIGURED:
+        return RedirectResponse(auth.SETUP_PATH, status_code=303)
+    record = store.record()
+    if state is auth.AuthState.UNAVAILABLE or record is None:
+        return PlainTextResponse("Authentication is unavailable: the auth file cannot be read.", status_code=503)
+    ip = _client_ip(request)
+    next_target = auth.safe_next(form.get("next"))
+    wait = limiter.retry_after(ip)
+    if wait > 0:
+        throttled = _render(
+            request,
+            "login.html",
+            _login_context(next_target, f"Too many attempts, try again in {wait} s"),
+            status_code=429,
+        )
+        throttled.headers["Retry-After"] = str(wait)
+        return throttled
+    password = form.get("password", "")
+    ok = False
+    if len(password) <= auth.MAX_PASSWORD_LENGTH:
+        ok = await asyncio.to_thread(auth.verify_password, password, record.password_hash)
+    if not ok:
+        limiter.record_failure(ip)
+        logger.warning(f"Failed login from {ip}")
+        return _render(request, "login.html", _login_context(next_target, "Wrong password"), status_code=401)
+    limiter.reset(ip)
+    logger.info(f"Login from {ip}")
+    response = RedirectResponse(next_target, status_code=303)
+    response.headers.append(
+        "set-cookie", auth.build_session_cookie(record, auth.issue_token(record), _is_secure(request))
+    )
+    return response
+
+
+@router.post(
+    "/logout",
+    tags=["Auth"],
+    summary="Log out",
+    description="End the session of this browser and return to the login page",
+)
+async def logout(request: Request):
+    """Clear the session cookie of this browser."""
+    response = RedirectResponse(auth.LOGIN_PATH, status_code=303)
+    record = auth.get_store().record()
+    if record is not None:
+        response.headers.append("set-cookie", auth.build_clear_cookie(record, _is_secure(request)))
+    return response
