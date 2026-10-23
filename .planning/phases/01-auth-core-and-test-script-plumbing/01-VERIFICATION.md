@@ -5,6 +5,16 @@ status: human_needed
 score: 5/5 roadmap success criteria verified (15/15 requirements satisfied at code and live-instance level); 0 failed
 covered_files:
   - .github/workflows/docker.yml
+  - .planning/phases/01-auth-core-and-test-script-plumbing/01-01-PLAN.md
+  - .planning/phases/01-auth-core-and-test-script-plumbing/01-01-SUMMARY.md
+  - .planning/phases/01-auth-core-and-test-script-plumbing/01-02-PLAN.md
+  - .planning/phases/01-auth-core-and-test-script-plumbing/01-02-SUMMARY.md
+  - .planning/phases/01-auth-core-and-test-script-plumbing/01-03-PLAN.md
+  - .planning/phases/01-auth-core-and-test-script-plumbing/01-03-SUMMARY.md
+  - .planning/phases/01-auth-core-and-test-script-plumbing/01-04-PLAN.md
+  - .planning/phases/01-auth-core-and-test-script-plumbing/01-04-SUMMARY.md
+  - .planning/phases/01-auth-core-and-test-script-plumbing/01-05-PLAN.md
+  - .planning/phases/01-auth-core-and-test-script-plumbing/01-05-SUMMARY.md
   - DOCKER.md
   - README.md
   - debug.sh
@@ -28,7 +38,7 @@ covered_files:
   - watermeter/templates/account.html
   - watermeter/templates/login.html
   - watermeter/templates/setup.html
-covered_digest: "v2:sha256:9bc3cd05232ac8291697a39b254e72e0051ce796476918ae7c25080826e852ed"
+covered_digest: "v2:sha256:e6a169926b2a309379fb81e38650bb665bf32138b216d4fb8b42d76773010702"
 behavior_unverified: 0
 overrides_applied: 0
 re_verification: false
