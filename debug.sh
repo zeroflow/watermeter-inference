@@ -43,6 +43,8 @@ if docker container inspect "$CONTAINER_NAME" &>/dev/null; then
   docker rm -f "$CONTAINER_NAME"
 fi
 
+# Auth: WATERMETER_ADMIN_PASSWORD (from the shell or .env) seeds the admin password only
+# while data_debug/auth.json does not exist; afterwards the stored password wins.
 echo "Starting container..."
 
 # Check if GPU device exists
@@ -69,6 +71,8 @@ if [[ $DETACH -eq 1 ]]; then
     -v ./digits/:/training/digits \
     -v ${HF_HOME:-$HOME/.cache/huggingface}:/root/.cache/huggingface \
     ${HF_TOKEN:+-e HF_TOKEN="$HF_TOKEN"} \
+    ${WATERMETER_ADMIN_PASSWORD:+-e WATERMETER_ADMIN_PASSWORD="$WATERMETER_ADMIN_PASSWORD"} \
+    ${WATERMETER_SETUP_TOKEN_REQUIRED:+-e WATERMETER_SETUP_TOKEN_REQUIRED="$WATERMETER_SETUP_TOKEN_REQUIRED"} \
     watermeter-dashboard
 
   echo "Waiting for container to become ready..."
@@ -79,8 +83,8 @@ if [[ $DETACH -eq 1 ]]; then
       docker logs "$CONTAINER_NAME" --tail 20
       exit 1
     fi
-    # Check if app responds on HTTP
-    if curl -sf http://localhost:8002/ >/dev/null 2>&1; then
+    # Check if app responds on HTTP (/health is open without a login)
+    if curl -sf http://localhost:8002/health >/dev/null 2>&1; then
       echo "Container is ready on http://localhost:8002"
       exit 0
     fi
@@ -103,5 +107,7 @@ else
     -v ./digits/:/training/digits \
     -v ${HF_HOME:-$HOME/.cache/huggingface}:/root/.cache/huggingface \
     ${HF_TOKEN:+-e HF_TOKEN="$HF_TOKEN"} \
+    ${WATERMETER_ADMIN_PASSWORD:+-e WATERMETER_ADMIN_PASSWORD="$WATERMETER_ADMIN_PASSWORD"} \
+    ${WATERMETER_SETUP_TOKEN_REQUIRED:+-e WATERMETER_SETUP_TOKEN_REQUIRED="$WATERMETER_SETUP_TOKEN_REQUIRED"} \
     watermeter-dashboard
 fi

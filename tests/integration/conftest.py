@@ -5,13 +5,18 @@ Starts a fresh, isolated watermeter container for testing.
 - No persistent volumes — config and models come from the image defaults
 - Ground truth data is copied in via `docker cp` for training/benchmark tests
 - Container is removed after the test session
+- Auth is on: a self-started container gets a fresh random admin password per run;
+  against --base-url the password comes from --admin-password, WATERMETER_TEST_PASSWORD
+  or WATERMETER_ADMIN_PASSWORD, and tests skip with a message when it is missing or rejected
 """
 
 import os
+import secrets
 import subprocess
 import sys
 import time
 import uuid
+from dataclasses import dataclass
 
 import httpx
 import pytest
@@ -54,13 +59,14 @@ def _docker_build(image, build_dir):
     print(f">>> Image '{image}' built successfully.\n", file=sys.stderr)
 
 
-def _docker_run(image, host_port):
-    """Start a fresh container and return its name."""
+def _docker_run(image, host_port, admin_password):
+    """Start a fresh container (seeded with the given admin password) and return its name."""
     name = f"watermeter-test-{uuid.uuid4().hex[:8]}"
     cmd = [
         "docker", "run", "-d",
         "--name", name,
         "-p", f"{host_port}:{CONTAINER_PORT}",
+        "-e", f"WATERMETER_ADMIN_PASSWORD={admin_password}",
         # GPU device for OpenVINO (optional, don't fail if missing)
         *(["--device", "/dev/dri/renderD128"] if os.path.exists("/dev/dri/renderD128") else []),
         image,
@@ -117,13 +123,24 @@ def _copy_ground_truth(container):
 # Fixtures
 # ---------------------------------------------------------------------------
 
+@dataclass(frozen=True)
+class Instance:
+    """The watermeter instance under test."""
+
+    url: str
+    password: str | None
+    self_started: bool
+
+
 @pytest.fixture(scope="session")
-def base_url(request):
+def watermeter_instance(request):
     """
     Start a fresh container or use an existing service.
 
     - Auto-builds the image unless --no-build is passed
-    - Use --base-url to test against an already-running service
+    - Use --base-url to test against an already-running service; its admin password
+      comes from --admin-password, WATERMETER_TEST_PASSWORD or WATERMETER_ADMIN_PASSWORD
+    - A self-started container always gets a fresh random password (never from the environment)
     """
     explicit_url = (
         request.config.getoption("--base-url")
@@ -134,7 +151,12 @@ def base_url(request):
         url = explicit_url.rstrip("/")
         if not _wait_healthy(url, timeout=30):
             pytest.skip(f"Service not reachable at {url}")
-        yield url
+        password = (
+            request.config.getoption("--admin-password")
+            or os.environ.get("WATERMETER_TEST_PASSWORD")
+            or os.environ.get("WATERMETER_ADMIN_PASSWORD")
+        )
+        yield Instance(url=url, password=password, self_started=False)
         return
 
     image = request.config.getoption("--image")
@@ -151,7 +173,8 @@ def base_url(request):
 
     port = _find_free_port()
     url = f"http://localhost:{port}"
-    container = _docker_run(image, port)
+    password = secrets.token_urlsafe(16)
+    container = _docker_run(image, port, password)
 
     try:
         if not _wait_healthy(url, timeout=90):
@@ -167,15 +190,40 @@ def base_url(request):
 
         _copy_ground_truth(container)
 
-        yield url
+        yield Instance(url=url, password=password, self_started=True)
     finally:
         _docker_rm(container)
 
 
 @pytest.fixture(scope="session")
-def api(base_url):
-    """httpx client with base_url pre-configured."""
-    with httpx.Client(base_url=base_url, timeout=30) as client:
+def base_url(watermeter_instance):
+    """URL of the instance under test."""
+    return watermeter_instance.url
+
+
+@pytest.fixture(scope="session")
+def admin_password(watermeter_instance):
+    """Admin password of the instance under test, or skip when there is none."""
+    if not watermeter_instance.password:
+        pytest.skip(
+            f"No admin password for {watermeter_instance.url}: "
+            "pass --admin-password or set WATERMETER_TEST_PASSWORD"
+        )
+    return watermeter_instance.password
+
+
+@pytest.fixture(scope="session")
+def api(base_url, admin_password):
+    """httpx client with base_url pre-configured, logged in once (the cookie jar keeps the session)."""
+    with httpx.Client(
+        base_url=base_url, timeout=30, headers={"X-Requested-With": "watermeter"}
+    ) as client:
+        r = client.post("/login", data={"password": admin_password}, follow_redirects=False)
+        if r.status_code != 303:
+            pytest.skip(
+                f"Login to {base_url} failed with HTTP {r.status_code}: wrong password? "
+                "Pass --admin-password or set WATERMETER_TEST_PASSWORD"
+            )
         yield client
 
 

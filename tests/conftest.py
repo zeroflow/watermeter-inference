@@ -21,6 +21,12 @@ def pytest_addoption(parser):
         help="Use an already-running service instead of starting a fresh container",
     )
     parser.addoption(
+        "--admin-password",
+        default=None,
+        help="Admin password of the instance given by --base-url "
+        "(falls back to WATERMETER_TEST_PASSWORD, then WATERMETER_ADMIN_PASSWORD)",
+    )
+    parser.addoption(
         "--image",
         default="watermeter-dashboard:latest",
         help="Docker image to use for integration tests",
