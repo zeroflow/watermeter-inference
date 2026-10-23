@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 01
 current_phase_name: Auth Core and Test/Script Plumbing
 status: executing
-stopped_at: Phase 1 context gathered
-last_updated: "2026-10-11T20:24:51.888Z"
-last_activity: 2026-10-11
-last_activity_desc: Roadmap created (4 phases, 40/40 v1 requirements mapped)
-state_head: 54ef8d376a9c7c58f76e222e0efb325d693cf899
+stopped_at: Completed 01-01-PLAN.md
+last_updated: "2026-10-23T08:18:31.910Z"
+last_activity: 2026-10-23
+last_activity_desc: Phase 01 execution started
+state_head: 76de6ef75fcc7d4c83239f04f217e3187fb96f1d
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 5
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-11)
 
 **Core value:** The value Home Assistant shows is either correct and current, or visibly flagged as not. It is never silently wrong or frozen.
-**Current focus:** Phase 1 - Auth Core and Test/Script Plumbing
+**Current focus:** Phase 01 — Auth Core and Test/Script Plumbing
 
 ## Current Position
 
-Phase: 01 (Auth Core and Test/Script Plumbing) — READY TO EXECUTE
-Plan: 0 of TBD in current phase
+Phase: 01 (Auth Core and Test/Script Plumbing) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-10-11 - Roadmap created (4 phases, 40/40 v1 requirements mapped)
+Last activity: 2026-10-23 — Phase 01 execution started
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -52,6 +52,11 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: -
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 01 P01 | 9 min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -64,6 +69,8 @@ Recent decisions affecting current work:
 - [Research]: Default-deny pure-ASGI auth gate, custom stdlib-`hmac` signed cookie, `hashlib.scrypt` password hash, secret and hash in `/data/auth.json` (not `config.yaml`).
 - [Research]: CSRF via Origin check plus required custom header (no token). SSRF guard is check-then-fetch with redirects off; the DNS-rebinding gap is accepted and recorded in `docs/decisions.md`.
 - [Research]: One pure `health.evaluate()` feeds the HA problem sensor, the dashboard banner and `/api/status`, so HA and the dashboard cannot disagree.
+- [Phase 01]: [01-01] auth.json that exists but is damaged, invalid or unreadable is UNAVAILABLE (fail closed), never UNCONFIGURED; cache key is stat identity plus mode, uid and gid
+- [Phase 01]: [01-01] Login throttle is per client key only, in memory, no global backstop; set-password CLI keeps secret and instance_id and bumps epoch
 
 ### Pending Todos
 
@@ -87,6 +94,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-11T19:28:58.358Z
-Stopped at: Phase 1 context gathered
-Resume file: .planning/phases/01-auth-core-and-test-script-plumbing/01-CONTEXT.md
+Last session: 2026-10-23T08:18:31.889Z
+Stopped at: Completed 01-01-PLAN.md
+Resume file: None
