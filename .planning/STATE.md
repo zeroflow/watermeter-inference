@@ -2,17 +2,17 @@
 gsd_state_version: "1.0"
 current_phase: 01
 current_phase_name: Auth Core and Test/Script Plumbing
-status: executing
-stopped_at: Completed 01-04-PLAN.md
-last_updated: "2026-10-23T08:44:19.613Z"
+status: verifying
+stopped_at: Completed 01-05-PLAN.md
+last_updated: "2026-10-23T20:03:44.108Z"
 last_activity: 2026-10-23
 last_activity_desc: Phase 01 execution started
-state_head: f77864a1f9548fbca9f54fa89f9e6706bbad97b6
+state_head: eba8b186dc3207d1767b0fa0b99bf76f683556b2
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 5
-  completed_plans: 4
+  completed_plans: 5
   percent: 0
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-11)
 
 Phase: 01 (Auth Core and Test/Script Plumbing) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-10-23 — Phase 01 execution started
 
 Progress: [░░░░░░░░░░] 0%
@@ -60,6 +60,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P02 | 7 min | 3 tasks | 5 files |
 | Phase 01 P03 | 5 min | 3 tasks | 7 files |
 | Phase 01 P04 | 14 min | 3 tasks | 12 files |
+| Phase 01 P05 | 60 min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -82,6 +83,8 @@ Recent decisions affecting current work:
 - [Phase 01]: 01-04: AuthMiddleware is installed unconditionally with no bypass flag; tests authenticate through a real auth.json and a minted cookie
 - [Phase 01]: 01-04: _auth_startup never raises and logs only the name of the seed variable, never the value; the volume warning is skipped when a seed variable is set
 - [Phase 01]: 01-04: CI smoke logic lives in scripts/auth_smoke.sh and runs before the GHCR push, so a broken gate blocks :dev
+- [Phase 01]: 01-05: debug_clean.sh passes PUID/PGID so the throwaway container's bind-mounted config dir stays removable by the caller
+- [Phase 01]: 01-05: full integration run classified, not hidden: 3 training tests fail identically on the pre-phase image (CPU too slow for the 300 s limit), benchmark cancel is a timing race; none is an auth regression
 
 ### Pending Todos
 
@@ -105,6 +108,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-23T08:44:19.588Z
-Stopped at: Completed 01-04-PLAN.md
+Last session: 2026-10-23T20:03:44.084Z
+Stopped at: Completed 01-05-PLAN.md
 Resume file: None
