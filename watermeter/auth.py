@@ -4,6 +4,7 @@ Leaf module: standard library only, so the ``set-password`` CLI can import it wi
 """
 
 import base64
+import getpass
 import hashlib
 import hmac
 import json
@@ -11,6 +12,7 @@ import logging
 import os
 import re
 import secrets
+import sys
 import tempfile
 import threading
 import time
@@ -575,3 +577,53 @@ def bootstrap_from_env(store: AuthStore | None = None) -> bool:
         return False
     logger.info("Admin password seeded from the environment")
     return True
+
+
+# -- Recovery CLI (AUTH-10) ------------------------------------------------------------------------------------------
+
+
+def _strip_one_newline(line: str) -> str:
+    if line.endswith("\r\n"):
+        return line[:-2]
+    return line[:-1] if line.endswith("\n") else line
+
+
+def cli_set_password(auth_file: str | None = None) -> int:
+    """Set or reset the admin password from the host: ``python -m watermeter set-password``. Returns the exit code.
+
+    On a TTY the password and a confirmation are prompted for; otherwise one line is read from stdin. An existing
+    auth.json keeps its session secret and instance ID and gets a new epoch, which logs every session out. The
+    password is never printed or logged.
+    """
+    store = AuthStore(Path(auth_file)) if auth_file else get_store()
+    path = store.path()
+    state = store.state()
+    if state is AuthState.UNAVAILABLE:
+        print(
+            f"The auth file {path} exists but cannot be read or is invalid. Fix or delete it, then run this again.",
+            file=sys.stderr,
+        )
+        return 2
+    if sys.stdin.isatty():
+        password = getpass.getpass("New admin password: ")
+        confirm = getpass.getpass("Repeat it: ")
+    else:
+        password = confirm = _strip_one_newline(sys.stdin.readline())
+    problem = validate_new_password(password, confirm)
+    if problem is not None:
+        print(f"Error: {problem}", file=sys.stderr)
+        return 1
+    password_hash = hash_password(password)
+    try:
+        if state is AuthState.UNCONFIGURED:
+            if not store.create(password_hash):
+                print(f"Error: {path} was created by someone else meanwhile; run this again.", file=sys.stderr)
+                return 1
+        else:
+            store.replace_password(password_hash)
+    except (OSError, AuthStoreError) as exc:
+        print(f"Error: could not write {path}: {exc}", file=sys.stderr)
+        return 1
+    print(f"Admin password saved to {path}.")
+    print("Every existing session is logged out. No restart is needed.")
+    return 0
