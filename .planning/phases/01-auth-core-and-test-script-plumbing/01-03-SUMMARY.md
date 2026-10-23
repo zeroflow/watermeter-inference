@@ -237,3 +237,8 @@ None - no external service configuration required. The router is not included in
 ---
 *Phase: 01-auth-core-and-test-script-plumbing*
 *Completed: 2026-10-23*
+
+## Post-plan fix (orchestrator, from security review)
+
+- **6572321**: The login and password-change throttle had a TOCTOU gap. `retry_after()` was checked, then the scrypt verify was awaited, and only after that was `record_failure()` called, so parallel guesses could all pass the check. `FailureLimiter.reserve()` now checks and books the attempt under one lock, and `release()` gives the booking back when the current password is verified. Only wrong passwords count, as before. Three new tests are in `tests/unit/test_ratelimit.py`, including a threaded race test.
+- The security review also flagged a setup-token bypass. It was raised against the Task 1 tracer, and Task 2 resolved it: the token is checked before `store.create`.
