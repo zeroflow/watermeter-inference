@@ -1,9 +1,11 @@
 """Tests for the admin credential store, scrypt hashing, session tokens and cookie builders."""
 
 import json
+import logging
 import os
 import re
 import stat
+import threading
 
 import pytest
 
@@ -247,3 +249,220 @@ def test_clear_cookie_attributes(record):
     plain = auth.build_clear_cookie(record, secure=False)
     assert plain == f"{record.cookie_name}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax"
     assert auth.build_clear_cookie(record, secure=True) == plain + "; Secure"
+
+
+# -- Fail-closed parsing, caching, races and ownership ---------------------------------------------------------------
+
+
+def _valid_dict(record):
+    return record.to_dict()
+
+
+def _broken(record, **changes):
+    data = _valid_dict(record)
+    for key, value in changes.items():
+        if value is KeyError:
+            del data[key]
+        else:
+            data[key] = value
+    return json.dumps(data)
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        pytest.param(lambda r: "", id="zero-byte"),
+        pytest.param(lambda r: "not json {", id="invalid-json"),
+        pytest.param(lambda r: "[]", id="json-list"),
+        pytest.param(lambda r: '"text"', id="json-string"),
+        pytest.param(lambda r: _broken(r, version=2), id="version-2"),
+        pytest.param(lambda r: _broken(r, version=KeyError), id="no-version"),
+        pytest.param(lambda r: _broken(r, password_hash=KeyError), id="no-password-hash"),
+        pytest.param(lambda r: _broken(r, password_hash="plaintext"), id="bad-password-hash"),
+        pytest.param(lambda r: _broken(r, password_hash=5), id="non-str-password-hash"),
+        pytest.param(lambda r: _broken(r, session_secret=KeyError), id="no-secret"),
+        pytest.param(lambda r: _broken(r, session_secret="ab" * 31), id="short-secret"),
+        pytest.param(lambda r: _broken(r, session_secret="AB" * 32), id="upper-secret"),
+        pytest.param(lambda r: _broken(r, instance_id=KeyError), id="no-instance-id"),
+        pytest.param(lambda r: _broken(r, instance_id="abc"), id="short-instance-id"),
+        pytest.param(lambda r: _broken(r, instance_id="ABCDEF01"), id="upper-instance-id"),
+        pytest.param(lambda r: _broken(r, instance_id="abcdef012"), id="long-instance-id"),
+        pytest.param(lambda r: _broken(r, epoch=KeyError), id="no-epoch"),
+        pytest.param(lambda r: _broken(r, epoch=True), id="bool-epoch"),
+        pytest.param(lambda r: _broken(r, epoch=0), id="zero-epoch"),
+        pytest.param(lambda r: _broken(r, epoch="1"), id="str-epoch"),
+        pytest.param(lambda r: _broken(r, created_at=KeyError), id="no-created-at"),
+        pytest.param(lambda r: _broken(r, created_at=7), id="non-str-created-at"),
+    ],
+)
+def test_invalid_auth_file_is_unavailable_and_not_overwritten(store, auth_path, record, build):
+    """Any damaged auth.json is UNAVAILABLE (never UNCONFIGURED), has no record, and cannot be re-created."""
+    content = build(record)
+    auth_path.write_text(content)
+    assert store.state() is auth.AuthState.UNAVAILABLE
+    assert store.record() is None
+    assert store.create("$scrypt$new") is False
+    assert auth_path.read_text() == content
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root can read a chmod 000 file")
+def test_unreadable_auth_file_is_unavailable(store, auth_path, record):
+    """An existing but unreadable file is UNAVAILABLE, and create refuses it."""
+    auth_path.chmod(0)
+    try:
+        assert store.state() is auth.AuthState.UNAVAILABLE
+        assert store.create("$scrypt$new") is False
+    finally:
+        auth_path.chmod(0o600)
+
+
+def test_missing_instance_id_never_falls_back_to_a_default_cookie_name(store, auth_path, record):
+    """No instance_id means UNAVAILABLE, so no default cookie name can ever exist."""
+    auth_path.write_text(_broken(record, instance_id=KeyError))
+    assert store.state() is auth.AuthState.UNAVAILABLE
+    assert store.record() is None
+
+
+def test_unavailable_state_is_logged_once_per_file_version(store, auth_path, record, caplog):
+    """The error is logged when the damaged file is first seen, not on every request."""
+    auth_path.write_text("garbage")
+    with caplog.at_level(logging.ERROR, logger="watermeter.auth"):
+        for _ in range(5):
+            assert store.state() is auth.AuthState.UNAVAILABLE
+    errors = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(errors) == 1
+    assert str(auth_path) in errors[0].getMessage()
+
+
+def test_valid_file_is_parsed_once_until_it_changes(store, auth_path, record, monkeypatch):
+    """The cache key is (mtime_ns, size, inode); an untouched file is not parsed again."""
+    store.state()
+    calls = []
+    real = auth.json.loads
+    monkeypatch.setattr(auth.json, "loads", lambda *a, **k: calls.append(1) or real(*a, **k))
+    for _ in range(5):
+        assert store.state() is auth.AuthState.CONFIGURED
+        assert store.record() == record
+    assert calls == []
+
+
+def test_replacement_by_another_process_is_seen_without_restart(store, auth_path, record):
+    """An os.replace done elsewhere (the CLI) shows up in the next record() call."""
+    assert store.record().epoch == 1
+    other = auth.AuthRecord(
+        password_hash=record.password_hash,
+        session_secret=record.session_secret,
+        instance_id=record.instance_id,
+        epoch=7,
+        created_at=record.created_at,
+    )
+    tmp = auth_path.with_name("other.tmp")
+    tmp.write_text(json.dumps(other.to_dict()))
+    os.replace(tmp, auth_path)
+    assert store.record().epoch == 7
+
+
+def test_deleting_the_file_returns_to_unconfigured_with_new_identity(store, auth_path, record, password_hash):
+    """Recovery by deleting auth.json rotates secret and instance id."""
+    auth_path.unlink()
+    assert store.state() is auth.AuthState.UNCONFIGURED
+    assert store.create(password_hash) is True
+    fresh = store.record()
+    assert fresh.session_secret != record.session_secret
+    assert fresh.instance_id != record.instance_id
+
+
+def test_concurrent_create_has_exactly_one_winner(store, auth_path):
+    """Two threads creating at the same moment: one True, and the file holds the winner's hash."""
+    barrier = threading.Barrier(2)
+    results = {}
+
+    def worker(name):
+        barrier.wait()
+        results[name] = store.create(f"$scrypt$thread-{name}")
+
+    threads = [threading.Thread(target=worker, args=(name,)) for name in ("a", "b")]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    winners = [name for name, won in results.items() if won]
+    assert len(winners) == 1
+    assert store.record().password_hash == f"$scrypt$thread-{winners[0]}"
+    assert [p.name for p in auth_path.parent.iterdir()] == ["auth.json"]
+
+
+def _record_chown_calls(monkeypatch, auth_path):
+    calls = []
+
+    def fake_chown(path, uid, gid):
+        calls.append((str(path), uid, gid, auth_path.exists()))
+
+    monkeypatch.setattr(auth.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(auth.os, "chown", fake_chown)
+    return calls
+
+
+def test_create_chowns_temp_file_to_parent_owner_when_root(store, auth_path, password_hash, monkeypatch):
+    """As root, the temp file takes the directory owner before it is linked into place."""
+    calls = _record_chown_calls(monkeypatch, auth_path)
+    assert store.create(password_hash) is True
+    parent = os.stat(auth_path.parent)
+    assert len(calls) == 1
+    path, uid, gid, final_existed = calls[0]
+    assert os.path.dirname(path) == str(auth_path.parent)
+    assert path != str(auth_path)
+    assert (uid, gid) == (parent.st_uid, parent.st_gid)
+    assert final_existed is False
+
+
+def test_replace_password_chowns_temp_file_to_parent_owner_when_root(store, auth_path, record, monkeypatch):
+    """The same holds for a replacement, which would otherwise leave a root-owned file."""
+    calls = _record_chown_calls(monkeypatch, auth_path)
+    store.replace_password(auth.hash_password("second password"))
+    parent = os.stat(auth_path.parent)
+    assert len(calls) == 1
+    path, uid, gid, _ = calls[0]
+    assert os.path.dirname(path) == str(auth_path.parent)
+    assert path != str(auth_path)
+    assert (uid, gid) == (parent.st_uid, parent.st_gid)
+
+
+def test_no_chown_when_not_root(store, auth_path, password_hash, monkeypatch):
+    """Non-root writers never call chown."""
+    calls = []
+    monkeypatch.setattr(auth.os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(auth.os, "chown", lambda *a: calls.append(a))
+    store.create(password_hash)
+    assert calls == []
+
+
+def test_failed_write_leaves_no_temp_file(store, auth_path, record, monkeypatch):
+    """If chown fails the temp file is removed and the original file survives."""
+    before = auth_path.read_text()
+
+    def boom(*args):
+        raise OSError("chown denied")
+
+    monkeypatch.setattr(auth.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(auth.os, "chown", boom)
+    with pytest.raises(OSError):
+        store.replace_password(auth.hash_password("second password"))
+    assert auth_path.read_text() == before
+    assert [p.name for p in auth_path.parent.iterdir()] == ["auth.json"]
+
+
+@pytest.mark.parametrize(
+    "stored",
+    [
+        "$scrypt$ln=30,r=8,p=3$c2FsdA$aGFzaA",
+        "$scrypt$ln=15,r=8,p=100$c2FsdA$aGFzaA",
+        "$scrypt$ln=15,r=999,p=3$c2FsdA$aGFzaA",
+        "$scrypt$ln=18,r=8,p=1$c2FsdA$aGFzaA",
+    ],
+)
+def test_verify_password_refuses_oversized_parameters_promptly(stored, monkeypatch):
+    """A tampered hash cannot make verify_password allocate gigabytes: it never reaches scrypt."""
+    monkeypatch.setattr(auth.hashlib, "scrypt", lambda *a, **k: pytest.fail("scrypt must not run"))
+    assert auth.verify_password("whatever", stored) is False
