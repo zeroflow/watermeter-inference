@@ -213,3 +213,48 @@ def test_nothing_is_persisted(ratelimit, clock, tmp_path, monkeypatch):
         elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
             assert node.func.id != "open"
     assert imported <= {"collections", "math", "threading", "time", "typing"}, sorted(imported)
+
+
+def test_reserve_books_the_attempt_atomically(limiter):
+    """A burst of parallel attempts cannot all pass the check before any failure is booked."""
+    granted = [limiter.reserve("a") for _ in range(3)]
+    assert granted[0][0] == 0 and granted[0][1] is not None
+    assert all(wait >= 1 and stamp is None for wait, stamp in granted[1:])
+
+
+def test_reserve_is_race_free_across_threads(ratelimit, clock):
+    """Concurrent reservations never exceed the window limit."""
+    limiter = ratelimit.FailureLimiter(windows=((3600, 20),), clock=clock)
+    results = []
+    lock = threading.Lock()
+
+    def worker():
+        for _ in range(10):
+            wait, _ = limiter.reserve("a")
+            with lock:
+                results.append(wait)
+
+    threads = [threading.Thread(target=worker) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert results.count(0) == 20
+
+
+def test_release_gives_back_only_that_attempt(limiter, clock):
+    """Releasing a reservation removes that one booking and keeps earlier failures."""
+    limiter.record_failure("a")
+    clock.advance(2)
+    _, stamp = limiter.reserve("a")
+    limiter.release("a", stamp)
+    clock.advance(2)
+    _, stamp = limiter.reserve("a")
+    limiter.release("a", stamp)
+    clock.advance(30)
+    for _ in range(3):
+        limiter.record_failure("a")
+        clock.advance(2)
+    # 4 real failures inside 60 s, the 2 released reservations do not count.
+    assert limiter.retry_after("a") == 0
+    limiter.release("unknown", 1.0)

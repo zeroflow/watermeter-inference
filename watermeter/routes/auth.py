@@ -211,7 +211,8 @@ async def login_submit(request: Request):
         return PlainTextResponse("Authentication is unavailable: the auth file cannot be read.", status_code=503)
     ip = _client_ip(request)
     next_target = auth.safe_next(form.get("next"))
-    wait = limiter.retry_after(ip)
+    # reserve() books the attempt before the awaited hash, so parallel guesses cannot all pass the check.
+    wait, _ = limiter.reserve(ip)
     if wait > 0:
         throttled = _render(
             request,
@@ -226,7 +227,6 @@ async def login_submit(request: Request):
     if len(password) <= auth.MAX_PASSWORD_LENGTH:
         ok = await asyncio.to_thread(auth.verify_password, password, record.password_hash)
     if not ok:
-        limiter.record_failure(ip)
         logger.warning(f"Failed login from {ip}")
         return _render(request, "login.html", _login_context(next_target, "Wrong password"), status_code=401)
     limiter.reset(ip)
@@ -287,23 +287,24 @@ async def change_password(request: Request, body: PasswordChangeRequest):
     """Change the password; this browser gets a cookie for the new epoch and stays logged in (D-03)."""
     ip = _client_ip(request)
     key = f"pw:{ip}"
-    wait = limiter.retry_after(key)
-    if wait > 0:
-        return _password_failure(f"Too many attempts, try again in {wait} s", 429, headers={"Retry-After": str(wait)})
     store = auth.get_store()
     record = store.record()
     if record is None:
         return _password_failure("Authentication is unavailable", 503)
     if not body.current:
         return _password_failure("Current password is required", 400)
+    # Booked before the awaited hash (see login_submit); given back when the current password is right.
+    wait, stamp = limiter.reserve(key)
+    if wait > 0:
+        return _password_failure(f"Too many attempts, try again in {wait} s", 429, headers={"Retry-After": str(wait)})
     ok = False
     if len(body.current) <= auth.MAX_PASSWORD_LENGTH:
         ok = await asyncio.to_thread(auth.verify_password, body.current, record.password_hash)
     if not ok:
-        limiter.record_failure(key)
         logger.warning(f"Failed password change from {ip}")
         # 403, not 401: auth.js treats a 401 as an expired session and would send the owner to the login page.
         return _password_failure("Current password is wrong", 403)
+    limiter.release(key, stamp)
     problem = auth.validate_new_password(body.new, body.confirm)
     if problem is not None:
         return _password_failure(problem, 400)

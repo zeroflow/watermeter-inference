@@ -40,33 +40,72 @@ class FailureLimiter:
         """Whole seconds to wait before ``key`` may try again; 0 when it is not throttled."""
         now = self._clock()
         with self._lock:
+            return self._wait_locked(key, now)
+
+    def reserve(self, key: str) -> tuple[int, float | None]:
+        """Check and book one attempt for ``key`` under a single lock.
+
+        A caller that checked ``retry_after`` and only recorded the failure after an awaited password hash would let a
+        burst of parallel guesses all pass the check. ``reserve`` books the attempt up front instead.
+
+        Returns:
+            ``(wait, None)`` when throttled (nothing booked), else ``(0, stamp)``. Pass ``stamp`` to ``release`` when
+            the attempt turns out not to be a failure.
+        """
+        now = self._clock()
+        with self._lock:
+            wait = self._wait_locked(key, now)
+            if wait:
+                return wait, None
+            self._append_locked(key, now)
+            return 0, now
+
+    def release(self, key: str, stamp: float | None) -> None:
+        """Give back one reservation made by ``reserve``; earlier failures stay. Unknown keys are ignored."""
+        if stamp is None:
+            return
+        with self._lock:
             hits = self._hits.get(key)
+            if hits is None:
+                return
+            try:
+                hits.remove(stamp)
+            except ValueError:
+                return
             if not hits:
-                return 0
-            blocked = False
-            wait = 0.0
-            for seconds, limit in self._windows:
-                recent = [stamp for stamp in hits if now - stamp < seconds]
-                if len(recent) >= limit:
-                    blocked = True
-                    # The window frees up when its limit-th newest failure turns seconds old.
-                    wait = max(wait, recent[-limit] + seconds - now)
+                del self._hits[key]
+
+    def _wait_locked(self, key: str, now: float) -> int:
+        hits = self._hits.get(key)
+        if not hits:
+            return 0
+        blocked = False
+        wait = 0.0
+        for seconds, limit in self._windows:
+            recent = [stamp for stamp in hits if now - stamp < seconds]
+            if len(recent) >= limit:
+                blocked = True
+                # The window frees up when its limit-th newest failure turns seconds old.
+                wait = max(wait, recent[-limit] + seconds - now)
         return max(1, math.ceil(wait)) if blocked else 0
 
     def record_failure(self, key: str) -> None:
         """Add one failure for ``key`` (identical failures count separately)."""
         now = self._clock()
         with self._lock:
-            hits = self._hits.get(key)
-            if hits is None:
-                hits = deque(maxlen=self._keep)
-                self._hits[key] = hits
-            hits.append(now)
-            while hits and now - hits[0] >= self._horizon:
-                hits.popleft()
-            self._hits.move_to_end(key)
-            while len(self._hits) > self._max_keys:
-                self._hits.popitem(last=False)
+            self._append_locked(key, now)
+
+    def _append_locked(self, key: str, now: float) -> None:
+        hits = self._hits.get(key)
+        if hits is None:
+            hits = deque(maxlen=self._keep)
+            self._hits[key] = hits
+        hits.append(now)
+        while hits and now - hits[0] >= self._horizon:
+            hits.popleft()
+        self._hits.move_to_end(key)
+        while len(self._hits) > self._max_keys:
+            self._hits.popitem(last=False)
 
     def reset(self, key: str) -> None:
         """Forget the failures of ``key`` (after a successful login). Unknown keys are ignored."""
