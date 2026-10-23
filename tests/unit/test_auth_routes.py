@@ -459,3 +459,163 @@ def test_auth_pages_are_not_cacheable(configured, client):
 def test_setup_page_is_not_cacheable(client):
     """The setup form is not cached either."""
     assert client.get("/setup").headers["cache-control"] == "no-store"
+
+
+# -- Account page and password change ------------------------------------------------------------------------------
+
+
+NEW_PASSWORD = "a brand new password"
+
+
+def cookie_value(set_cookie: str) -> str:
+    """Token part of a Set-Cookie header."""
+    return set_cookie.split(";", 1)[0].split("=", 1)[1]
+
+
+@pytest.fixture
+def logged_in(configured):
+    """Client that is logged in; returns (client, token minted before any password change)."""
+    resp = post_form(configured, "/login", {"password": PASSWORD})
+    assert resp.status_code == 303
+    return configured, cookie_value(resp.headers["set-cookie"])
+
+
+def change(client, current=PASSWORD, new=NEW_PASSWORD, confirm=None):
+    """POST the change-password API with a JSON body."""
+    body = {"current": current, "new": new, "confirm": new if confirm is None else confirm}
+    return client.post("/api/auth/password", json=body)
+
+
+def epoch() -> int:
+    return auth.get_store().record().epoch
+
+
+def test_account_page_has_forms_nav_and_no_session_details(logged_in):
+    """The account page sits in the normal layout, offers the password form and logout, and shows no session data."""
+    client, _ = logged_in
+    resp = client.get("/account")
+    assert resp.status_code == 200
+    for needle in ('name="current"', 'name="new"', 'name="confirm"', 'action="/logout"', "/static/account.js"):
+        assert needle in resp.text
+    assert "app-nav" in resp.text
+    assert resp.headers["cache-control"] == "no-store"
+    lowered = resp.text.lower()
+    assert "expires" not in lowered
+    assert "logged in since" not in lowered
+    assert "session id" not in lowered
+
+
+def test_account_template_has_no_inline_styles():
+    """The account template follows the no-inline-style rule."""
+    template = STATIC_DIR.parent / "templates" / "account.html"
+    assert "style=" not in template.read_text()
+
+
+def test_password_change_keeps_this_session_and_ends_others(logged_in):
+    """Success bumps the epoch, returns a cookie for the new epoch and invalidates the old token."""
+    client, old_token = logged_in
+    assert epoch() == 1
+    resp = change(client)
+    assert resp.status_code == 200
+    assert resp.json()["success"] is True
+    assert epoch() == 2
+    record = auth.get_store().record()
+    new_token = cookie_value(resp.headers["set-cookie"])
+    assert resp.headers["set-cookie"].startswith(record.cookie_name + "=")
+    assert auth.verify_token(record, new_token) is not None
+    assert auth.verify_token(record, old_token) is None
+
+
+def test_new_password_works_and_old_one_does_not(logged_in, clock):
+    """After the change only the new password logs in."""
+    client, _ = logged_in
+    assert change(client).status_code == 200
+    assert post_form(client, "/login", {"password": PASSWORD}).status_code == 401
+    clock.advance(4000)
+    assert post_form(client, "/login", {"password": NEW_PASSWORD}).status_code == 303
+
+
+def test_same_password_is_accepted_and_still_bumps_the_epoch(logged_in):
+    """Re-using the current password is a legitimate way to end all other sessions."""
+    client, old_token = logged_in
+    resp = change(client, new=PASSWORD)
+    assert resp.status_code == 200
+    assert epoch() == 2
+    assert auth.verify_token(auth.get_store().record(), old_token) is None
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"current": PASSWORD},
+        {"current": "", "new": NEW_PASSWORD, "confirm": NEW_PASSWORD},
+        {"current": PASSWORD, "new": "", "confirm": ""},
+        {"current": PASSWORD, "new": NEW_PASSWORD, "confirm": ""},
+        {"current": PASSWORD, "new": NEW_PASSWORD, "confirm": NEW_PASSWORD + "x"},
+        {"current": PASSWORD, "new": "1234567", "confirm": "1234567"},
+    ],
+    ids=["nothing", "only-current", "empty-current", "empty-new", "empty-confirm", "mismatch", "too-short"],
+)
+def test_invalid_password_change_is_400_and_changes_nothing(logged_in, limiter, body):
+    """Missing, empty, mismatched or too short values return 400 JSON and leave the epoch alone."""
+    client, _ = logged_in
+    resp = client.post("/api/auth/password", json=body)
+    assert resp.status_code == 400
+    assert resp.json()["success"] is False
+    assert epoch() == 1
+    assert len(limiter) == 0
+
+
+def test_wrong_current_password_is_403_throttled_and_logged(logged_in, limiter, monkeypatch, caplog):
+    """A wrong current password is 403 (never 401), counts under pw:<ip> and a retry is refused without hashing."""
+    client, _ = logged_in
+    caplog.set_level(logging.INFO)
+    resp = change(client, current="the wrong current")
+    assert resp.status_code == 403
+    assert resp.json()["success"] is False
+    assert epoch() == 1
+    assert "Failed password change from testclient" in caplog.text
+    assert "the wrong current" not in caplog.text
+    assert NEW_PASSWORD not in caplog.text
+    assert limiter.retry_after("pw:testclient") >= 1
+
+    def boom(password, stored):
+        raise AssertionError("verify_password must not run while throttled")
+
+    monkeypatch.setattr(auth, "verify_password", boom)
+    again = change(client)
+    assert again.status_code == 429
+    assert int(again.headers["retry-after"]) >= 1
+    assert again.json()["success"] is False
+    assert "Too many attempts, try again in" in again.json()["message"]
+
+
+def test_overlong_current_password_counts_as_wrong_without_hashing(logged_in, limiter, monkeypatch):
+    """A current password above 1024 characters is wrong without reaching scrypt."""
+    client, _ = logged_in
+
+    def boom(password, stored):
+        raise AssertionError("verify_password must not run")
+
+    monkeypatch.setattr(auth, "verify_password", boom)
+    resp = change(client, current="a" * 1025)
+    assert resp.status_code == 403
+    assert len(limiter) == 1
+
+
+def test_password_change_before_setup_is_503(client):
+    """Without an admin record there is nothing to change."""
+    resp = change(client)
+    assert resp.status_code == 503
+    assert resp.json()["success"] is False
+
+
+def test_password_change_success_logs_the_event(logged_in, caplog):
+    """The change is logged with the IP and without any password."""
+    client, _ = logged_in
+    caplog.set_level(logging.INFO)
+    change(client)
+    assert "Admin password changed from testclient" in caplog.text
+    assert NEW_PASSWORD not in caplog.text
+    assert PASSWORD not in caplog.text
