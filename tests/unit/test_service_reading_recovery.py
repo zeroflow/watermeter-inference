@@ -7,6 +7,7 @@ paho/inference are still mocked at sys.modules so the module-level imports succe
 
 import asyncio
 import sys
+from datetime import datetime, timedelta
 from types import ModuleType
 from unittest.mock import AsyncMock, MagicMock
 
@@ -262,6 +263,22 @@ def _live_predictions(digits=("0", "5", "6"), arrows=("5.2", "9.7", "0.3", "3.2"
 def test_live_stuck_sequence_reanchors_after_six_readings():
     """2026-10-04: baseline 56.5999 wrong, true 56.5003 -> 5 rejections, re-anchor on the 6th."""
     svc = _make_reading_service(previous_value=56.5999)
+    svc.run_inference = AsyncMock(return_value=_live_predictions())
+    statuses = []
+    for _ in range(6):
+        asyncio.run(svc.process_reading())
+        statuses.append(svc.current_state["status"])
+    assert statuses[:5] == ["rejected"] * 5
+    assert statuses[5] == "warning"
+    assert svc.previous_value == pytest.approx(56.5003)
+    assert svc.consecutive_rejections == 0
+    assert svc.publish_to_mqtt.call_args.args[0] == pytest.approx(56.5003)
+
+
+def test_forward_gap_after_downtime_reanchors_after_six_readings():
+    """2026-10-26: service down for days, baseline 55.3685 vs true 56.5003 -> rejected 5x, caught up on the 6th."""
+    svc = _make_reading_service(previous_value=55.3685)
+    svc.last_update_time = datetime.now() - timedelta(days=12)
     svc.run_inference = AsyncMock(return_value=_live_predictions())
     statuses = []
     for _ in range(6):

@@ -225,6 +225,48 @@ class TestEvaluateJitterAndReanchor:
         results = [chk.evaluate(56.5003, 56.5999, datetime.now()) for _ in range(10)]
         assert not any(r.is_valid for r in results)
 
+    def test_forward_gap_after_downtime_reanchors(self, chk, rate_tracker):
+        """Consistent higher readings after long downtime -> baseline catches up instead of freezing."""
+        rate_tracker.add(57.30)
+        last_accept = datetime.now() - timedelta(days=12)
+        values = [58.5328, 58.6146, 58.5145]  # 0.1-dial flips stay within max_rate_per_reading
+        results = [chk.evaluate(v, 57.3685, last_accept) for v in values]
+        assert [r.is_valid for r in results] == [False, False, True]
+        last = results[-1]
+        assert last.reanchored is True
+        assert last.baseline == 58.5145  # lowest of the run, so the next reading is not a reverse
+        assert any("Re-anchoring" in w for w in last.warnings)
+        assert len(rate_tracker) == 0
+
+    def test_forward_gap_too_large_for_elapsed_time_stays_rejected(self, chk):
+        """A jump the downtime cannot explain (2 m³ in 10 min at max 5 m³/h) never re-anchors."""
+        last_accept = datetime.now() - timedelta(minutes=10)
+        results = [chk.evaluate(102.0, 100.0, last_accept) for _ in range(10)]
+        assert not any(r.is_valid for r in results)
+
+    def test_forward_run_restarts_on_inconsistent_reading(self, chk):
+        last_accept = datetime.now() - timedelta(days=1)
+        values = [110.0, 110.0, 120.0, 110.0]  # 120 breaks the run, 110 starts a new one
+        results = [chk.evaluate(v, 100.0, last_accept) for v in values]
+        assert not any(r.is_valid for r in results)
+
+    def test_forward_reanchor_needs_last_update_time(self, chk):
+        results = [chk.evaluate(110.0, 100.0, None) for _ in range(5)]
+        assert not any(r.is_valid for r in results)
+
+    def test_forward_reanchor_disabled_with_zero(self, chk, cfg):
+        cfg['plausibility']['reanchor_after'] = 0
+        last_accept = datetime.now() - timedelta(days=1)
+        results = [chk.evaluate(110.0, 100.0, last_accept) for _ in range(10)]
+        assert not any(r.is_valid for r in results)
+
+    def test_reset_clears_forward_run(self, chk):
+        last_accept = datetime.now() - timedelta(days=1)
+        chk.evaluate(110.0, 100.0, last_accept)
+        chk.evaluate(110.0, 100.0, last_accept)
+        chk.reset_reanchor()
+        assert chk.evaluate(110.0, 100.0, last_accept).is_valid is False
+
     def test_missing_new_keys_use_defaults(self, checker):
         # fixture config has no reverse_tolerance/reanchor keys -> defaults 0.002 / 6 / 0.01
         r = checker.evaluate(99.999, 100.0, datetime.now())

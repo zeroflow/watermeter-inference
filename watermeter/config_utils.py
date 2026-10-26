@@ -425,7 +425,7 @@ CONFIG_SCHEMA = {
                 "reanchor_after": {
                     "type": "integer",
                     "minimum": 0,
-                    "description": "Re-anchor baseline after this many consistent lower readings (0 = off)",
+                    "description": "Re-anchor baseline after this many consistent lower readings, or higher readings after downtime (0 = off)",
                 },
                 "reanchor_max_spread": {
                     "type": "number",

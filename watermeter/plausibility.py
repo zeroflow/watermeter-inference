@@ -43,6 +43,8 @@ class PlausibilityChecker:
         self._rate_tracker = rate_tracker
         self._reanchor: Optional[ReanchorTracker] = None
         self._reanchor_params: Optional[Tuple[int, float, float]] = None
+        # Forward-rejected readings that agree with each other (catch-up after downtime)
+        self._forward_run: List[float] = []
 
     def check_consistency(self, predictions: Dict[str, Dict]) -> List[str]:
         """Check consistency between adjacent positions.
@@ -105,6 +107,7 @@ class PlausibilityChecker:
         """Forget any collected re-anchor candidates (on accept, reset, manual set)."""
         if self._reanchor is not None:
             self._reanchor.reset()
+        self._forward_run = []
 
     def _get_reanchor_tracker(self, config: dict, tolerance: float) -> Optional[ReanchorTracker]:
         required = int(config.get("reanchor_after", 6))
@@ -164,10 +167,12 @@ class PlausibilityChecker:
 
             # Max rate per reading - immediate rejection (time-independent)
             if value_diff > config["max_rate_per_reading"]:
+                caught_up = self._forward_reanchor(new_value, previous_value, last_update_time, config)
+                if caught_up is not None:
+                    return caught_up
                 msg = f"Change per reading too high: {value_diff:.4f} m³ (max: {config['max_rate_per_reading']})"
                 warnings.append(msg)
                 logger.error(msg)
-                self.reset_reanchor()
                 return PlausibilityResult(False, warnings)
 
             # Rate per hour - check against history if available
@@ -195,3 +200,44 @@ class PlausibilityChecker:
 
         self.reset_reanchor()
         return PlausibilityResult(True, warnings, baseline=new_value)
+
+    def _forward_reanchor(
+        self,
+        new_value: float,
+        previous_value: float,
+        last_update_time: Optional[datetime],
+        config: dict,
+    ) -> Optional[PlausibilityResult]:
+        """Catch the baseline up after downtime instead of rejecting every reading forever.
+
+        Water used while the service was down shows up as one forward jump above
+        ``max_rate_per_reading``. Re-anchor once ``reanchor_after`` consecutive rejected
+        readings agree with each other (steps within ``max_rate_per_reading``, so 0.1-dial
+        flips do not break the run) and the jump fits ``max_rate_per_hour`` over the time
+        since the last accepted reading. Returns None while the reading stays rejected.
+        """
+        if self._reanchor is not None:
+            self._reanchor.reset()
+        required = int(config.get("reanchor_after", 6))
+        step = config["max_rate_per_reading"]
+        if self._forward_run and abs(new_value - self._forward_run[-1]) <= step:
+            self._forward_run.append(new_value)
+        else:
+            self._forward_run = [new_value]
+        if required <= 0 or last_update_time is None or len(self._forward_run) < required:
+            return None
+
+        hours = (datetime.now() - last_update_time).total_seconds() / 3600
+        if new_value - previous_value > config["max_rate_per_hour"] * hours:
+            return None
+
+        # Lowest value of the run, so the next reading does not look like a reverse
+        baseline = min(self._forward_run)
+        msg = (
+            f"Re-anchoring baseline {previous_value:.4f} → {baseline:.4f} "
+            f"after {len(self._forward_run)} consistent higher readings ({hours:.1f} h since last accepted)"
+        )
+        logger.warning(msg)
+        self._forward_run = []
+        self._rate_tracker.reset()
+        return PlausibilityResult(True, [msg], baseline=baseline, reanchored=True)
