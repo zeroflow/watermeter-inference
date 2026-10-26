@@ -9,13 +9,23 @@ UNCONFIGURED_ALLOWED = {("GET", "/health"), ("GET", "/setup"), ("POST", "/setup"
 def _route_pairs(app):
     """(method, path template) for every non-mount route, HEAD and OPTIONS excluded."""
     pairs = []
-    for route in app.routes:
-        if isinstance(route, Mount):
-            continue
-        for method in sorted(getattr(route, "methods", None) or ()):
-            if method in ("HEAD", "OPTIONS"):
+
+    def walk(routes):
+        for route in routes:
+            if isinstance(route, Mount):
                 continue
-            pairs.append((method, route.path))
+            # Newer FastAPI keeps included routers as one wrapper entry instead of copying their routes.
+            # Our routers are included without a prefix, so the original paths are already complete.
+            included = getattr(route, "original_router", None)
+            if included is not None:
+                walk(included.routes)
+                continue
+            for method in sorted(getattr(route, "methods", None) or ()):
+                if method in ("HEAD", "OPTIONS"):
+                    continue
+                pairs.append((method, route.path))
+
+    walk(app.routes)
     return pairs
 
 
